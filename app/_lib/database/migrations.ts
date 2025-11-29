@@ -1,9 +1,10 @@
 import { dbUpdate } from "./database";
 
 async function migrate() {
+    //discordId stored as text because it's too big for int maybe? (value got rounded up when it was an int)
     const createUser = `CREATE TABLE IF NOT EXISTS user (
         userId INTEGER PRIMARY KEY AUTOINCREMENT,
-        discordId INTEGER NOT NULL UNIQUE,
+        discordId TEXT NOT NULL UNIQUE,
         discordName TEXT NOT NULL UNIQUE,
         imageUrl TEXT NOT NULL,
         riotId TEXT NULL,
@@ -14,7 +15,8 @@ async function migrate() {
         accessToken TEXT NULL,
         accessIv TEXT NULL,
         refreshToken TEXT NULL,
-        refreshIv TEXT NULL
+        refreshIv TEXT NULL,
+        isAdmin INTEGER NOT NULL DEFAULT 0
     );`;
 
     const createSession = `CREATE TABLE IF NOT EXISTS session (

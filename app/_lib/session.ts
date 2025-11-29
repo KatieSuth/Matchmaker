@@ -1,5 +1,6 @@
-import { dbSelect, dbUpdate } from "../database/database.ts"
-import { generateState } from "./security.ts"
+import { dbSelect, dbUpdate } from "./database/database.ts"
+import { cookies } from 'next/headers'
+import { generateState, decryptData } from "./security.ts"
 
 export async function storeSessionData(userId: integer) {
     if (userId == null) {
@@ -49,4 +50,27 @@ export async function getSession(userId: integer, sessionValue: string) {
         });
 
     return session
+}
+
+export async function getSessionCookieData() {
+    //decrypt the session from the cookie
+    const cookie = (await cookies()).get('matchmaker_session')?.value
+    
+    let userId = null,
+        sessionValue = null,
+        sessionKey = ""
+
+    if (cookie != null) {
+        const cookieArr = cookie.split(":");
+        userId = cookieArr[0]
+        const encryptedSession = cookieArr[1],
+              initVector = cookieArr[2]
+
+        sessionValue = await decryptData(encryptedSession, initVector);
+    }
+
+    return {
+        'userId': userId,
+        'sessionValue': sessionValue
+    }
 }

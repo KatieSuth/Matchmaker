@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import "./globals.css";
+import { Box, Container } from "@radix-ui/themes";
+import Header from "./_components/Header/Header"
+import Footer from "./_components/Footer"
+import { getCurrentUser } from "./_lib/user"
+//import { getSessionData } from "./_lib/security.ts"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,24 +21,73 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Galorants In-Houses",
-  description: "Galorants In-House Server Events",
+  title: "Matchmaker",
+  description: "Matchmaker Custom Games",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased p-5`}
-      >
-        <Theme appearance="dark">
-          {children}
-        </Theme>
-      </body>
-    </html>
-  );
+    const header = await headers()
+    const pathName = header.get('x-next-pathname') as string
+    const loginRoutes = ['/', '/login_redirect']
+
+    const isLoginRoute = loginRoutes.includes(pathName)
+
+    let userIsAdmin = false,
+        discordName = "Me",
+        discordId = "",
+        image = ""
+
+    try {
+        let currentUser = await getCurrentUser()
+
+        if (currentUser?.isAdmin == 1) {
+            userIsAdmin = true
+        }
+        discordName = currentUser.discordName
+        discordId = currentUser.discordId
+        image = currentUser.imageUrl
+    } catch (e) {
+        //console.log('e', e)
+        //TODO: log the user out (if logged in)
+        //for now, do nothing
+    }
+
+    return (
+        <html lang="en">
+            <body
+                className={`${geistSans.variable} ${geistMono.variable} antialiased p-5`}
+            >
+                <Theme appearance="dark">
+                    {isLoginRoute && (
+                        <header>
+                            <Box>
+                                <Container size="4">
+                                    <img src={process.env.NEXT_PUBLIC_SITE_BANNER} alt="Welcome Banner" style={{borderRadius:"0px 0px 15px 15px"}} />
+                                </Container>
+                            </Box>
+                        </header>
+                    )}
+
+                    {!isLoginRoute && (
+                        <Header
+                            discordId={discordId}
+                            discordName={discordName}
+                            image={image}
+                            isAdmin={userIsAdmin}
+                        />
+                    )}
+
+                    <main style={{padding:"1rem"}}>
+                        {children}
+                    </main>
+
+                    <Footer />
+                </Theme>
+            </body>
+        </html>
+    );
 }

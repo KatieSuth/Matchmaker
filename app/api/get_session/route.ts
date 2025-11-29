@@ -1,4 +1,4 @@
-import { getSession } from '../utilities/session.ts'
+import { getSession } from '../../_lib/session.ts'
 
 export async function POST(request: Request, response: Response) {
     const req = await request.json();

@@ -1,6 +1,6 @@
-import { getAccessTokens, verifyValidUser, verifyValidGalorantsMember, storeUserData } from '../utilities/user.ts'
-import { storeSessionData } from '../utilities/session.ts'
-import { validateState } from '../utilities/security.ts'
+import { getAccessTokens, verifyValidUser, verifyValidDiscordMember, storeUserData } from '../../_lib/user.ts'
+import { storeSessionData } from '../../_lib/session.ts'
+import { validateState } from '../../_lib/security.ts'
 
 export async function POST(request: Request, response: Response) {
     const req = await request.json();
@@ -20,7 +20,7 @@ export async function POST(request: Request, response: Response) {
     //verify we've got a valid user
     const validity = await Promise.all([
         verifyValidUser(data.access_token),
-        verifyValidGalorantsMember(data.access_token)
+        verifyValidDiscordMember(data.access_token)
     ]);
 
     if (validity[0]["id"] === -1 || validity[1] === false) {
@@ -28,7 +28,7 @@ export async function POST(request: Request, response: Response) {
         return new Response(JSON.stringify({error: 'not allowed'}), {status: 401})
     }
 
-    //we have a user data object & they're a valid Galorants user; store/update their user info
+    //we have a user data object & they're a valid Discord server user; store/update their user info
     let userData = validity[0]
     userData.access_token = data.access_token
     userData.refresh_token = data.refresh_token
@@ -36,6 +36,7 @@ export async function POST(request: Request, response: Response) {
     const user = await storeUserData(userData)
 
     if (user.userId == -1) {
+        console.log('couldnt store the user', user)
         return new Response(JSON.stringify({error: 'error storing up-to-date user info'}), {status: 500})
     }
 

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { decryptData } from "./app/api/utilities/security.ts"
+import { decryptData } from "./app/_lib/security.ts"
 
 //public routes
 const publicRoutes = ['/', '/login_redirect']
-const adminRoutes = []
+const adminRoutes = ['/admin_events', '/admin_users']
 
 export default async function middleware(req: NextRequest) {
     //check if the current route is protected or public
@@ -14,7 +14,7 @@ export default async function middleware(req: NextRequest) {
           isAdminRoute = adminRoutes.includes(path)
 
     //decrypt the session from the cookie
-    const cookie = (await cookies()).get('galorants_session')?.value
+    const cookie = (await cookies()).get('matchmaker_session')?.value
     
     let userId = null,
         session = {}
@@ -50,7 +50,7 @@ export default async function middleware(req: NextRequest) {
             }
         })
     }
-
+    
     if (!isPublicRoute && (userId == null || session?.userId == null)) {
         //redirect to home if we don't have a valid session for the user & the route isn't public
         return NextResponse.redirect(new URL('/', req.nextUrl))
@@ -61,7 +61,9 @@ export default async function middleware(req: NextRequest) {
     //TODO: implement admin
     //redirect to events if we have a valid session but the user isn't admin
 
-    return NextResponse.next()
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-next-pathname', req.nextUrl.pathname)
+    return NextResponse.next({ request: { headers: requestHeaders} })
 }
 
 //routes middleware shouldn't run on

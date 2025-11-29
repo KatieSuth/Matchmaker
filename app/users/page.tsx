@@ -14,7 +14,7 @@ const UsersPage = async () => {
     const users: User[] = await res.json();
 
     return (
-        <>
+        <div>
             <h1>Users</h1>
             <table className="table table-bordered">
                 <thead>
@@ -32,7 +32,7 @@ const UsersPage = async () => {
                     )}
                 </tbody>
             </table>
-        </>
+        </div>
     )
 }
 

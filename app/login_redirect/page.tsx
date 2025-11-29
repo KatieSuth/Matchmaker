@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Box, Container, Section, Heading, Button, Text } from "@radix-ui/themes";
-import { getCookie } from "../client-components/utilities.ts";
-import LoginButton from '../components/LoginButton/LoginButton';
+import { getCookie } from "../_lib/client-utilities.ts";
+import LoginButton from '../_components/LoginButton/LoginButton';
 
 const ErrorResponse = () => {
     return (
@@ -28,8 +28,11 @@ const NotAllowedResponse = () => {
             <Heading align="center" size="8">Something Went Wrong...</Heading>
             <Container py="5">
                 <Text as="p" align="center">
-                    Sorry; as far as we can tell, you're not a member of the Galorants server. If you think you're seeing this message in error, you probably are! Not only is this a new system, but also sometimes Discord services are just down and we can't do our verification process. Please reach out to the server mods and/or in-house event organizer and they'll take a look at our connections to Discord to see what went wrong. If you really aren't a member of the Galorants server and would like to join, please visit us at <a href="http://discord.gg/galorants">http://discord.gg/galorants</a>.
+                    Sorry; as far as we can tell, you're not a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server. If you think you're seeing this message in error, you probably are! Not only is this a new system that may still have a few bugs hanging around, but also sometimes Discord services are just down and we can't do our verification process. Please wait a couple minutes and try again, and if you keep getting this message, reach out to the server mods and/or in-house event organizer and they'll help figure out what's going wrong. If you really aren't a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} server and would like to join, please visit us at <a href={process.env.NEXT_PUBLIC_DISCORD_LINK}>{process.env.NEXT_PUBLIC_DISCORD_LINK}</a>.
                 </Text>
+                <div className="text-center pt-8">
+                    <LoginButton />
+                </div>
             </Container>
         </Section>
     )
@@ -40,7 +43,7 @@ const SuccessResponse = ({code, state}) => {
           [has401, setHas401] = useState(false)
 
     useEffect(() => {
-        let storedState = getCookie("galorants_state");
+        let storedState = getCookie("matchmaker_state");
 
         let obj = {
             'code': code,
@@ -64,7 +67,7 @@ const SuccessResponse = ({code, state}) => {
             return res.json()
         }).then((data) => {
             if (!has401) {
-              document.cookie = "galorants_session=" + data.session + ";" //TODO: add secure option before deploy
+              document.cookie = "matchmaker_session=" + data.session + ";" //TODO: add secure option before deploy
 
               if (data.newUser) {
                   console.log('LOGIN DONE! redirect new user')
@@ -98,7 +101,7 @@ const SuccessResponse = ({code, state}) => {
             <Heading align="center" size="8">Please wait...</Heading>
             <Container py="5">
                 <Text as="p" align="center">
-                    Please wait while we make sure you're a member of the Galorants Discord server...
+                    Please wait while we make sure you're a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME)} Discord server...
                 </Text>
             </Container>
         </Section>
@@ -112,12 +115,7 @@ const LoginRedirect = () => {
     const state = params.get('state')
 
     return (
-        <>
-            <Box>
-                <Container size="4">
-                    <img src="/GalorantsBanner.jpg" alt="Galorants Banner" style={{borderRadius:"0px 0px 15px 15px"}} />
-                </Container>
-            </Box>
+        <div>
             <Box py="5">
                 {(error != null || code == null || state == null) && (
                     <ErrorResponse />
@@ -126,7 +124,7 @@ const LoginRedirect = () => {
                     <SuccessResponse code={code} state={state} />
                 )}
             </Box>
-        </>
+        </div>
     )
 }
 

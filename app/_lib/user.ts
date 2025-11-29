@@ -1,5 +1,6 @@
-import { dbSelect, dbUpdate } from "../database/database.ts"
+import { dbSelect, dbUpdate } from "./database/database.ts"
 import { encryptData } from "./security.ts"
+import { getSessionCookieData, getSession } from "./session.ts"
 
 export async function getAccessTokens(code: string) {
     return fetch(process.env.DISCORD_API + '/oauth2/token', {
@@ -78,7 +79,12 @@ export async function verifyValidUser(access_token: string) {
     })
 }
 
-export async function verifyValidGalorantsMember(access_token: string) {
+export async function verifyValidDiscordMember(access_token: string) {
+    //only perform this check if the app is configured to limit access by discord server membership
+    if (!process.env.NEXT_PUBLIC_LIMIT_BY_DISCORD_SERVER) {
+        return true
+    }
+
     return fetch(process.env.DISCORD_API + '/users/@me/guilds', {
         method: 'GET',
         headers: {
@@ -87,7 +93,7 @@ export async function verifyValidGalorantsMember(access_token: string) {
         },
     }).then((res) => res.json())
       .then((data) => {
-          const result = Object.keys(data).find(i => data[i].id == process.env.GALORANTS_DISCORD_ID)
+          const result = Object.keys(data).find(i => data[i].id == process.env.LIMITING_DISCORD_ID)
 
           if (result != null) {
               return true
@@ -107,9 +113,9 @@ export async function storeUserData(userData: object) {
     const refreshToken = tokens[1];
 
     //check if we have the user already first
-    const userSelect = 'SELECT * FROM user WHERE discordId = ?';
+    const userSelect = 'SELECT * FROM user WHERE discordId = ?;';
 
-    const user = await dbSelect(userSelect, [userData.id])
+    const user = await dbSelect(userSelect, [userData.id.toString()])
         .then(data => {
             return data;
         }).catch(error => {
@@ -121,7 +127,7 @@ export async function storeUserData(userData: object) {
     let userUpdate = '';
     let values = []
     if (user.length > 0) { //found a user
-        userUpdate = 'UPDATE user SET discordId = ?, discordName = ?, imageUrl = ?, accessToken = ?, accessIv = ?, refreshToken = ?, refreshIv = ? WHERE userId = ?'
+        userUpdate = 'UPDATE user SET discordId = ?, discordName = ?, imageUrl = ?, accessToken = ?, accessIv = ?, refreshToken = ?, refreshIv = ? WHERE userId = ?;'
         values.push(
             userData.id,
             userData.username,
@@ -133,7 +139,7 @@ export async function storeUserData(userData: object) {
             user[0].userId
        );
     } else {
-        userUpdate = 'INSERT INTO user (discordId, discordName, imageUrl, accessToken, accessIv, refreshToken, refreshIv) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        userUpdate = 'INSERT INTO user (discordId, discordName, imageUrl, accessToken, accessIv, refreshToken, refreshIv) VALUES (?, ?, ?, ?, ?, ?, ?);'
         values.push(
             userData.id,
             userData.username,
@@ -160,7 +166,7 @@ export async function storeUserData(userData: object) {
     }
 
     //make sure we actually did store the user & get their user ID to return to the api endpoint
-    const validateUser = await dbSelect(userSelect, [userData.id])
+    const validateUser = await dbSelect(userSelect, [userData.id.toString()])
         .then(data => {
             return data;
         }).catch(error => {
@@ -174,4 +180,34 @@ export async function storeUserData(userData: object) {
         console.log('user length 0: ', user)
         return {userId: -1};
     }
+}
+
+export async function getCurrentUser() {
+    let sessionCookie = await getSessionCookieData()
+    try {
+        var session = await getSession(sessionCookie.userId, sessionCookie.sessionValue)
+    } catch (e) {
+        throw new Error('missing session')
+    }
+
+    let userId = session[0]?.userId
+
+    if (userId == null) {
+        throw new Error('missing data')
+    }
+
+    const userSelect = `SELECT userId, discordId, discordName, imageUrl, riotId,
+                               pronouns, currentRank, peakRank, region, isAdmin
+                        FROM user
+                        WHERE userId = ?`;
+
+    const userData = await dbSelect(userSelect, [userId])
+        .then(data => {
+            return data;
+        }).catch(error => {
+            console.error('Error fetching user: ', error.message);
+            return [{}]
+        });
+
+    return userData[0]
 }
