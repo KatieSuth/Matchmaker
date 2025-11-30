@@ -12,7 +12,7 @@ const ErrorResponse = () => {
             <Heading align="center" size="8">Something Went Wrong...</Heading>
             <Container py="5">
                 <Text as="p" align="center">
-                    Unfortunately, we couldn't log you in. If you canceled the login request from Discord by mistake, no worries! You can try to log in again below. If you keep getting this error message or if you have concerns about using this application for in-house registration, please reach out to the server mods and/or in-house event organizer.
+                    Unfortunately, we couldn't log you in. If you canceled the login request from Discord by mistake, no worries! You can try to log in again below. If you keep getting this error message or if you have concerns about using this application for custom game registration, please reach out to the server mods and/or custom game event organizer.
                 </Text>
                 <div className="text-center pt-8">
                     <LoginButton />
@@ -28,7 +28,15 @@ const NotAllowedResponse = () => {
             <Heading align="center" size="8">Something Went Wrong...</Heading>
             <Container py="5">
                 <Text as="p" align="center">
-                    Sorry; as far as we can tell, you're not a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server. If you think you're seeing this message in error, you probably are! Not only is this a new system that may still have a few bugs hanging around, but also sometimes Discord services are just down and we can't do our verification process. Please wait a couple minutes and try again, and if you keep getting this message, reach out to the server mods and/or in-house event organizer and they'll help figure out what's going wrong. If you really aren't a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} server and would like to join, please visit us at <a href={process.env.NEXT_PUBLIC_DISCORD_LINK}>{process.env.NEXT_PUBLIC_DISCORD_LINK}</a>.
+                   {process.env.NEXT_PUBLIC_LIMIT_BY_DISCORD_SERVER === 1 ? (
+                       <>
+                            Sorry; as far as we can tell, you're not a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server. If you think you're seeing this message in error, you probably are! Not only is this a new system that may still have a few bugs hanging around, but also sometimes Discord services are just down and we can't do our verification process. Please wait a couple minutes and try again, and if you keep getting this message, reach out to the server mods and/or in-house event organizer and they'll help figure out what's going wrong. If you really aren't a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} server and would like to join, please visit us at <a href={process.env.NEXT_PUBLIC_DISCORD_LINK}>{process.env.NEXT_PUBLIC_DISCORD_LINK}</a>.
+                        </>
+                    ) : (
+                        <>
+                            Sorry; we were unable to log you in. Please contact a site admin or submit an issue on our <a href="https://github.com/KatieSuth/Matchmaker">Github</a>.
+                        </>
+                    )}
                 </Text>
                 <div className="text-center pt-8">
                     <LoginButton />
@@ -101,7 +109,15 @@ const SuccessResponse = ({code, state}) => {
             <Heading align="center" size="8">Please wait...</Heading>
             <Container py="5">
                 <Text as="p" align="center">
-                    Please wait while we make sure you're a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME)} Discord server...
+                   {process.env.NEXT_PUBLIC_LIMIT_BY_DISCORD_SERVER === 1 ? (
+                       <>
+                            Please wait while we make sure you're a member of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server...
+                        </>
+                    ) : (
+                        <>
+                            Please wait while we log you in...
+                        </>
+                    )}
                 </Text>
             </Container>
         </Section>

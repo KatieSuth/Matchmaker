@@ -5,7 +5,6 @@ It's still very much in the early phases but is intended to one day support Valo
 ## Roadmap
 - [x] Basic login functionality via Discord
 - [x] User storage via SQLite
-- [ ] Logout functionality
 - [ ] User preferences form
 - [ ] One-off event admin configuration
 - [ ] One-off event sign-up for players

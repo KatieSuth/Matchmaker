@@ -74,3 +74,22 @@ export async function getSessionCookieData() {
         'sessionValue': sessionValue
     }
 }
+
+export async function logoutUserSession(userId: integer, sessionValue: string) {
+    if (userId == null || sessionValue == null) {
+        throw new Error('missing data')
+    }
+
+    const sessionDelete = 'DELETE FROM session WHERE userId = ? AND sessionValue = ?';
+
+    //store the session
+    const deleteResult = await dbUpdate(sessionDelete, [userId, sessionValue])
+        .then(data => {
+            return true
+        }).catch(error => {
+            console.error('Error deleting session: ', error.message);
+            throw error;
+        });
+
+    return true
+}

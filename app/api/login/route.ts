@@ -53,7 +53,7 @@ export async function POST(request: Request, response: Response) {
     try {
         var sessionResult = await storeSessionData(user.userId)
     } catch (error) {
-        console.log('error', error)
+        console.error('error', error)
         return new Response(JSON.stringify({error: 'error storing session'}), {status: 500})
     }
 

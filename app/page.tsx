@@ -11,13 +11,13 @@ export default function Home() {
                     <Heading align="center" size="8">Hello there!</Heading>
                     <Container py="5">
                         <Text as="p" align="center">
-                           {process.env.NEXT_PUBLIC_LIMIT_BY_DISCORD_SERVER ? (
+                           {process.env.NEXT_PUBLIC_LIMIT_BY_DISCORD_SERVER === 1 ? (
                                <>
-                                Welcome to the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} In-House Games signup site. This system allows members of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server to register for in-house custom 5v5 games. To get started, please log in via Discord.
+                                    Welcome to the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} In-House Games signup site. This system allows members of the {process.env.NEXT_PUBLIC_LIMITING_DISCORD_NAME} Discord server to register for in-house custom 5v5 games. To get started, please log in via Discord.
                                 </>
                             ) : (
                                 <>
-                                Welcome to Matchmaker, an application that helps make custom competitive games fairer for the competitors and easier to organize for admins. To get started, please log in via Discord.
+                                    Welcome to Matchmaker, an application that helps make custom competitive games fairer for the competitors and easier to organize for admins. To get started, please log in via Discord.
                                 </>
                             )}
                         </Text>
