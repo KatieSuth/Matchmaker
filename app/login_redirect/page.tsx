@@ -79,7 +79,7 @@ const SuccessResponse = ({code, state}) => {
 
               if (data.newUser) {
                   console.log('LOGIN DONE! redirect new user')
-                  const newUserUrl = process.env.NEXT_PUBLIC_URL + "/users/new";
+                  const newUserUrl = process.env.NEXT_PUBLIC_URL + "/my_account";
                   window.location.replace(newUserUrl)
               } else {
                   console.log('LOGIN DONE! redirect to events')

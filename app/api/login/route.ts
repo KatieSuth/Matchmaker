@@ -40,14 +40,17 @@ export async function POST(request: Request, response: Response) {
         return new Response(JSON.stringify({error: 'error storing up-to-date user info'}), {status: 500})
     }
 
-    let newUser = false
+    //TODO
+    let newUser = true
 
+    /* TODO: figure out whether to redirect to user preferences or not based on if this is a new user OR someone who simply hasn't finished filling in their profile yet
     if (user.riotId == null ||
         user.currentRank == null ||
         user.peakRank == null ||
         user.region == null) {
         newUser = true
     }
+   */
 
     //store the session & return it as a cookie
     try {

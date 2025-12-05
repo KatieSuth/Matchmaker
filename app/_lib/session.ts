@@ -39,7 +39,12 @@ export async function getSession(userId: integer, sessionValue: string) {
         throw new Error('missing data')
     }
 
-    const sessionSelect = 'SELECT * FROM session WHERE userId = ? AND sessionValue = ?';
+    //make sure we have both a valid session and valid user
+    const sessionSelect = `
+        SELECT S.* FROM session AS S
+        JOIN user AS U ON (S.userId = U.userId)
+        WHERE S.userId = ? AND S.sessionValue = ?
+    `;
 
     const session = await dbSelect(sessionSelect, [userId, sessionValue])
         .then(data => {

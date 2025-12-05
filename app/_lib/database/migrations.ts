@@ -7,16 +7,24 @@ async function migrate() {
         discordId TEXT NOT NULL UNIQUE,
         discordName TEXT NOT NULL UNIQUE,
         imageUrl TEXT NOT NULL,
-        riotId TEXT NULL,
         pronouns TEXT NULL,
-        currentRank TEXT NULL,
-        peakRank TEXT NULL,
-        region TEXT NULL,
+        showPronouns INTEGER NOT NULL,
         accessToken TEXT NULL,
         accessIv TEXT NULL,
         refreshToken TEXT NULL,
-        refreshIv TEXT NULL,
-        isAdmin INTEGER NOT NULL DEFAULT 0
+        refreshIv TEXT NULL
+    );`;
+
+    //we're only supporting valorant for now but this separation from the user table makes it flexible for later
+    const createUserGame = `CREATE TABLE IF NOT EXISTS userGame (
+        userGameId INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL UNIQUE,
+        game TEXT NOT NULL UNIQUE,
+        inGameName TEXT NOT NULL,
+        region TEXT NULL,
+        currentRank TEXT NULL,
+        peakRank TEXT NULL,
+        showRank INTEGER NOT NULL
     );`;
 
     const createSession = `CREATE TABLE IF NOT EXISTS session (
@@ -28,12 +36,21 @@ async function migrate() {
         device TEXT NULL
     );`;
 
+    const createUserGameIndex = `CREATE INDEX IF NOT EXISTS idx_userGame_userId ON session (userId);`;
     const createSessionIndex = `CREATE INDEX IF NOT EXISTS idx_session_userId ON session (userId);`;
 
     await Promise.all([
         dbUpdate(createUser, [])
             .then(data => {
                 console.log("user table created successfully.");
+            })
+            .catch(error => {
+                console.error(error)
+            }),
+
+        dbUpdate(createUserGame, [])
+            .then(data => {
+                console.log("user game table created successfully.");
             })
             .catch(error => {
                 console.error(error)
@@ -46,10 +63,17 @@ async function migrate() {
             .catch(error => {
                 console.error(error)
             }),
-
     ]);
 
     await Promise.all([
+        dbUpdate(createUserGameIndex, [])
+            .then(data => {
+                console.log("user game table indexes created successfully.");
+            })
+            .catch(error => {
+                console.error(error)
+            }),
+
         dbUpdate(createSessionIndex, [])
             .then(data => {
                 console.log("session table indexes created successfully.");

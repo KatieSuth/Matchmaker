@@ -139,11 +139,12 @@ export async function storeUserData(userData: object) {
             user[0].userId
        );
     } else {
-        userUpdate = 'INSERT INTO user (discordId, discordName, imageUrl, accessToken, accessIv, refreshToken, refreshIv) VALUES (?, ?, ?, ?, ?, ?, ?);'
+        userUpdate = 'INSERT INTO user (discordId, discordName, imageUrl, showPronouns, accessToken, accessIv, refreshToken, refreshIv) VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
         values.push(
             userData.id,
             userData.username,
             userData.avatar,
+            1,
             accessToken.encryptedData,
             accessToken.initVector,
             refreshToken.encryptedData,
@@ -174,10 +175,9 @@ export async function storeUserData(userData: object) {
             return []
         });
 
-    if (user.length > 0) {
-        return user[0];
+    if (validateUser.length > 0) {
+        return validateUser[0];
     } else {
-        console.log('user length 0: ', user)
         return {userId: -1};
     }
 }
@@ -196,8 +196,7 @@ export async function getCurrentUser() {
         throw new Error('missing data')
     }
 
-    const userSelect = `SELECT userId, discordId, discordName, imageUrl, riotId,
-                               pronouns, currentRank, peakRank, region, isAdmin
+    const userSelect = `SELECT userId, discordId, discordName, imageUrl, pronouns, showPronouns
                         FROM user
                         WHERE userId = ?`;
 

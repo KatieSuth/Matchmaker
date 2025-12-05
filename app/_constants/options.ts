@@ -6,8 +6,11 @@ export interface RegionOption {
 
 export const regionOpts: readonly RegionOption[] = [
     { value: '', label: 'Choose Region', isDisabled: true },
+    { value: 'NA', label: 'North America' },
+    { value: 'CN', label: 'China' },
     { value: 'EU', label: 'EU' },
-    { value: 'NA', label: 'NA' }
+    { value: 'APAC', label: 'Pacific' },
+    { value: 'SA', label: 'South America' }
 ];
 
 export interface PronounOption {
