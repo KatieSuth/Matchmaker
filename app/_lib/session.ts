@@ -9,14 +9,16 @@ export async function storeSessionData(userId: integer) {
 
     const sessionId = await generateState()
     const createdAt = new Date();
+    const nowEpoch = parseInt(Math.floor(createdAt.getTime() / 1000))
 
-    const sessionAdd = 'INSERT INTO session (userId, sessionValue, sessionIv, createdAt, device) VALUES (?, ?, ?, ?, ?)'
+    const sessionAdd = 'INSERT INTO session (userId, sessionValue, sessionIv, createdAt, expires, lastUpdate) VALUES (?, ?, ?, ?, ?, ?)'
     const values = [
         userId,
         sessionId.state,
         sessionId.initVector,
-        Math.floor(createdAt.getTime() / 1000),
-        '' //TODO
+        nowEpoch,
+        nowEpoch + parseInt(process.env.SESSION_EXPIRATION),
+        nowEpoch
     ];
 
     //store the session
@@ -55,6 +57,52 @@ export async function getSession(userId: integer, sessionValue: string) {
         });
 
     return session
+}
+
+export async function deleteSessionById(sessionId: integer) {
+    if (sessionId == null) {
+        throw new Error('missing data')
+    }
+
+    const sessionDelete = 'DELETE FROM session WHERE sessionId = ?'
+    const session = await dbUpdate(sessionDelete, [sessionId])
+        .then(data => {
+            return true
+        }).catch(error => {
+            console.error('Error deleting session: ', error.message);
+            throw error;
+        });
+}
+
+export async function updateSessionTime(session: object, skipLastUpdateCheck: boolean = false) {
+    if (session == null) {
+        throw new Error('missing data')
+    }
+
+    const currentTime = new Date();
+    const nowEpoch = parseInt(Math.floor(currentTime.getTime() / 1000))
+    const newExpires = nowEpoch + parseInt(process.env.SESSION_EXPIRATION)
+
+    let doUpdate = true
+    /*
+     * the expiration is set by default to a week, we don't need to update every single time
+     * the user interacts with a page (unless we purposely skip this check)--only do this
+     * update if it hasn't been done in the last (default value) 5 minutes
+     */
+    if (!skipLastUpdateCheck && nowEpoch - session.lastUpdate < process.env.SESSION_REFRESH) {
+        doUpdate = false
+    }
+
+    if (doUpdate) {
+        const sessionUpdate = 'UPDATE session SET expires = ?, lastUpdate = ? WHERE sessionId = ?'
+        const updateSession = await dbUpdate(sessionUpdate, [newExpires, nowEpoch, session.sessionId])
+            .then(data => {
+                return true
+            }).catch(error => {
+                console.error('Error storing session update: ', error.message);
+                throw error;
+            });
+    }
 }
 
 export async function getSessionCookieData() {

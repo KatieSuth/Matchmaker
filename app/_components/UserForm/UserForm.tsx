@@ -4,8 +4,24 @@ import { useFormStatus } from 'react-dom'
 import { Flex, Box, DropdownMenu, TextField } from '@radix-ui/themes'
 import { regionOpts, pronounOpts, rankOpts } from '../../_constants/options.ts'
 import { colourStyles } from '../../_constants/selectStyles.ts'
+import submitUserPreference from '../../_actions/submitUserPreferenceForm.ts'
 import Select from 'react-select'
 
+export default function UserForm() {
+    //const [state, formAction, pending] = useActionState(submitUserPreference, null);
+
+    return (
+        <form action={submitUserPreference}>
+            <label htmlFor="showPronouns">Publicly display my pronouns: </label>
+            <input type="checkbox" name="showPronouns" />
+            <br />
+            <button type="submit">Submit</button>
+        </form>
+    )
+}
+
+
+/*
 const initialState = {
     message: "",
 };
@@ -22,6 +38,7 @@ function SubmitButton() {
 
 //TODO: move out of client component
 async function updateUser(formData: FormData) {
+*/
     /*
     'use server'
 0|userId|INTEGER|0||1
@@ -39,6 +56,8 @@ async function updateUser(formData: FormData) {
 12|refreshIv|TEXT|0||0
 13|isAdmin|INTEGER|1|0|0
      */
+
+    /*
     const rawFormData = {
         region: formData.get('region'),
         riotId: formData.get('riotId'),
@@ -70,7 +89,10 @@ export default function UserForm() {
                 </Box>
                 <Box>
                     <label htmlFor="region">Preferred Pronouns</label>
-                    {/*styles={colourStyles}*/}
+                    {/*styles={colourStyles}*/
+    /*
+}
+                   /*
                     <Select
                         className="my-react-select-container"
                         classNamePrefix="my-react-select"
@@ -81,7 +103,9 @@ export default function UserForm() {
                 </Box>
                 <Box>
                     <label htmlFor="region">Riot ID</label>
-                    {/*<input type="text" name="riotId" />*/}
+                    {/*<input type="text" name="riotId" />*/
+       /*
+}
                     <TextField.Root size="3" placeholder="Riot ID (ex: matchmaker#tag)" name="riotId" />
                 </Box>
                 <Box>
@@ -114,3 +138,4 @@ export default function UserForm() {
         </form>
     )
 }
+*/

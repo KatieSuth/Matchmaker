@@ -1,10 +1,18 @@
 import React from 'react'
-import UserForm from '../../_components/UserForm/UserForm.tsx'
+import { Box, Container, Section, Heading, Button, Text } from "@radix-ui/themes";
+import UserForm from '../_components/UserForm/UserForm.tsx'
 
 const MyAccount = () => {
     return (
         <div>
-            <UserForm />
+            <Box py="5">
+                <Section>
+                    <Heading align="center" size="8">My Account Preferences</Heading>
+                    <Container py="5">
+                        <UserForm />
+                    </Container>
+                </Section>
+            </Box>
         </div>
     )
 }

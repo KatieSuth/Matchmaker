@@ -33,7 +33,8 @@ async function migrate() {
         sessionIv TEXT NOT NULL,
         userId INTEGER NOT NULL,
         createdAt INTEGER NOT NULL,
-        device TEXT NULL
+        expires INTEGER NOT NULL,
+        lastUpdate INTEGER NOT NULL
     );`;
 
     const createUserGameIndex = `CREATE INDEX IF NOT EXISTS idx_userGame_userId ON session (userId);`;
