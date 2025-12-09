@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { apiPOST } from './app/_lib/client-utilities.ts'
+import { apiPOST } from './app/_lib/api-utilities.ts'
 import { cookies } from 'next/headers'
 
 //public routes
 const publicRoutes = ['/', '/login_redirect']
 const adminRoutes = ['/admin_events', '/admin_users']
 
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
     //check if the current route is protected or public
     const path = req.nextUrl.pathname
+
     const cookie = (await cookies()).get('matchmaker_session')?.value
 
     const isPublicRoute = publicRoutes.includes(path),
           isAdminRoute = adminRoutes.includes(path)
 
     try {
-        var session = await apiPOST('get_session', cookie)
+        var session = await apiPOST('get_session')
     } catch (error) {
         console.error(error)
     }

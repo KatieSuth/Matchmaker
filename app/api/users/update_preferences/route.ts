@@ -1,4 +1,4 @@
-import { validateSession } from '../../_lib/api-utilities.ts'
+import { validateSession } from '../../../_lib/api-utilities.ts'
 
 export async function POST(request: Request, response: Response) {
     const validSession = await validateSession()

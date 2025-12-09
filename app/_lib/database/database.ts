@@ -1,7 +1,7 @@
-import path from "path";
-import sqlite3 from "sqlite3"
+export const runtime = "nodejs"
 
-const dbPath = path.join(process.cwd(), "app.db");
+import sqlite3 from "sqlite3"
+const dbPath = process.env.DB_PATH
 
 export const db = new sqlite3.Database(
     dbPath,
@@ -10,8 +10,9 @@ export const db = new sqlite3.Database(
     (err) => {
         if (err) {
             console.error(err.message);
+        } else {
+            console.log("Connected to the app database.");
         }
-        console.log("Connected to the app database.");
     }
 );
 

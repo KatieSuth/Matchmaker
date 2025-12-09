@@ -10,25 +10,26 @@
     "db": "tsx ./app/_lib/database/migrations.ts"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.0.0",
-    "@fortawesome/free-solid-svg-icons": "^7.0.0",
-    "@fortawesome/react-fontawesome": "^0.2.5",
+    "@fortawesome/fontawesome-svg-core": "^7.1.0",
+    "@fortawesome/free-solid-svg-icons": "^7.1.0",
+    "@fortawesome/react-fontawesome": "^3.1.1",
     "@radix-ui/themes": "^3.2.1",
     "chroma-js": "^3.1.2",
-    "next": "^15.4.6",
+    "next": "^16.0.8",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-select": "^5.10.2",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "swr": "^2.3.7"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@eslint/eslintrc": "^3.3.3",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "eslint": "^9",
-    "eslint-config-next": "^15.4.6",
+    "eslint-config-next": "^16.0.8",
     "tailwindcss": "^4",
     "tsx": "^4.20.4",
     "typescript": "^5"

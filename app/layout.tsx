@@ -42,6 +42,10 @@ export default async function RootLayout({
         image = ""
 
     try {
+        //note: this could be changed to use the useMyUser hook from SWR but I'm not doing that
+        //because the data that's being used here are the discord name & profile image, which
+        //will never be updated via this application, so it doesn't need revalidation like
+        //other things that use that hook
         let currentUser = await getCurrentUser()
 
         if (currentUser?.isAdmin == 1) {

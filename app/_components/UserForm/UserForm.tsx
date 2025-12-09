@@ -1,20 +1,148 @@
 'use client'
-import React, { useActionState } from 'react'
+import React, { useActionState, useEffect } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Flex, Box, DropdownMenu, TextField } from '@radix-ui/themes'
-import { regionOpts, pronounOpts, rankOpts } from '../../_constants/options.ts'
-import { colourStyles } from '../../_constants/selectStyles.ts'
-import submitUserPreference from '../../_actions/submitUserPreferenceForm.ts'
 import Select from 'react-select'
+//import { Flex, Box, DropdownMenu, TextField } from '@radix-ui/themes'
+import { Box, Container, Section, Heading, Button, Text } from "@radix-ui/themes";
+import { riotRegionOpts, gameTypeOpts, pronounOpts, valorantRankOpts } from '../../_constants/options.ts'
+import { colourStyles } from '../../_constants/selectStyles.ts'
+import styles from './UserForm.module.css';
+import submitUserPreference from '../../_actions/submitUserPreferenceForm.ts'
+import useMyUser from '../../_hooks/useMyUser.ts'
+
 
 export default function UserForm() {
     //const [state, formAction, pending] = useActionState(submitUserPreference, null);
+    const { user, isLoading, isError } = useMyUser()
+
+    console.log('data', user)
+    console.log('loading', isLoading)
+    console.log('error', isError)
+    if (isLoading) {
+        return (
+            <div role="status">
+                <svg aria-hidden="true" className="inline w-10 h-10 w-8 h-8 text-neutral-tertiary animate-spin fill-brand" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
+                    <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill"/>
+                </svg>
+                <span className="sr-only">Loading...</span>
+            </div>
+        )
+    }
 
     return (
         <form action={submitUserPreference}>
-            <label htmlFor="showPronouns">Publicly display my pronouns: </label>
-            <input type="checkbox" name="showPronouns" />
+            <table>
+                <tbody>
+                    <tr>
+                        <td colSpan="2">
+                            <Heading align="left" size="6">General</Heading>
+                            <hr />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label>Discord Name:</label></td>
+                        <td><label>{user.userObj.discordName}</label></td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="showPronouns">Publicly display my pronouns: </label></td>
+                        <td>
+                            <label className={styles.switch}>
+                                <input type="checkbox" name="showPronouns" />
+                                <span className={`${styles.slider} ${styles.round}`} />
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="pronouns">My pronouns: </label></td>
+                        <td>
+                            <Select
+                                className="my-react-select-container"
+                                classNamePrefix="my-react-select"
+                                name="pronouns"
+                                options={pronounOpts}
+                            />
+                            <br />
+                            <input type="text" name="otherPronouns" className="bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body" placeholder="Enter your preferred pronouns" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colSpan="2">
+                            <Heading align="left" size="6">Games</Heading>
+                            <hr />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="gameTypes">Games I play: </label></td>
+                        <td>
+                            <Select
+                                className="my-react-select-container"
+                                classNamePrefix="my-react-select"
+                                name="gameTypes"
+                                isMulti
+                                options={gameTypeOpts}
+                            />
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td colSpan="2">
+                            {/*TODO: repeat this per game*/}
+                            <Heading align="left" size="4">Valorant</Heading>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="region-val">Region: </label></td>
+                        <td>
+                            <Select
+                                className="my-react-select-container"
+                                classNamePrefix="my-react-select"
+                                name="region-val"
+                                options={riotRegionOpts}
+                            />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="accountName">Account Name: </label></td>
+                        <td>
+                            <input type="text" name="accountName" className="bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand block w-full px-3 py-2.5 shadow-xs placeholder:text-body" placeholder="myaccount#123" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="currentRank-val">Current Rank: </label></td>
+                        <td>
+                            <Select
+                                className="my-react-select-container"
+                                classNamePrefix="my-react-select"
+                                name="currentRank-val"
+                                options={valorantRankOpts}
+                            />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="peakRank-val">Peak Rank: </label></td>
+                        <td>
+                            <Select
+                                className="my-react-select-container"
+                                classNamePrefix="my-react-select"
+                                name="peakRank-val"
+                                options={valorantRankOpts}
+                            />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><label htmlFor="showRank-val">Publicly display my rank average: </label></td>
+                        <td>
+                            <label className={styles.switch}>
+                                <input type="checkbox" name="showRank-val" />
+                                <span className={`${styles.slider} ${styles.round}`} />
+                            </label>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
             <br />
+            
             <button type="submit">Submit</button>
         </form>
     )

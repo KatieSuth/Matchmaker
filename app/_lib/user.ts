@@ -2,6 +2,26 @@ import { dbSelect, dbUpdate } from "./database/database.ts"
 import { encryptData } from "./security.ts"
 import { getSessionCookieData, getSession } from "./session.ts"
 
+interface UserGames {
+    readonly userGameId: number;
+    game: string;
+    inGameName: string;
+    region: string;
+    currentRank: text;
+    peakRank: text;
+    showRank: boolean
+}
+
+interface UserObj {
+    readonly userId: number;
+    readonly discordId: string;
+    discordName: string;
+    imageUrl: string;
+    pronouns: string;
+    showPronouns: boolean;
+    games: any;
+}
+
 export async function getAccessTokens(code: string) {
     return fetch(process.env.DISCORD_API + '/oauth2/token', {
         method: 'POST',
@@ -180,6 +200,42 @@ export async function storeUserData(userData: object) {
     } else {
         return {userId: -1};
     }
+}
+
+export async function getUserById(userId: integer): UserObj {
+    if (userId == null) {
+        throw new Error('missing data')
+    }
+
+    const userSelect = `SELECT userId, discordId, discordName, imageUrl, pronouns, showPronouns
+                        FROM user
+                        WHERE userId = ?`;
+
+    const userData = await dbSelect(userSelect, [userId])
+        .then(data => {
+            return data;
+        }).catch(error => {
+            console.error('Error fetching user: ', error.message);
+            return [{}]
+        });
+
+    let userObj = userData[0]
+
+    const userGameSelect = `SELECT userGameId, game, inGameName, region, currentRank, peakRank, showRank
+                            FROM userGame
+                            WHERE userId = ?`;
+
+    const userGameData = await dbSelect(userGameSelect, [userId])
+        .then(data => {
+            return data;
+        }).catch(error => {
+            console.error('Error fetching user: ', error.message);
+            return []
+        });
+
+    userObj.games = userGameData
+
+    return userObj
 }
 
 export async function getCurrentUser() {

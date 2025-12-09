@@ -14,6 +14,7 @@ export function getCookie(cname: string) {
     return "";
 }
 
+/*
 export async function apiPOST(path: string, sessionCookie: string, body?: string, headers?: obj, opts?: obj) {
     if (body == null) {
         body = JSON.stringify({})
@@ -42,3 +43,28 @@ export async function apiPOST(path: string, sessionCookie: string, body?: string
 
     return response;
 }
+
+export async function apiGET(path: string, sessionCookie: string, headers?: obj, opts?: obj) {
+    try {
+        var response = await fetch(process.env.NEXT_PUBLIC_URL + '/api/' + path, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Cookie': 'matchmaker_session='+sessionCookie,
+                ...headers
+            },
+            ...opts
+        }).then((res) => {
+            return res.json()
+        }).then((data) => {
+            return data
+        }).catch((error) => {
+            throw error
+        })
+    } catch (error) {
+        throw error
+    }
+
+    return response;
+}
+*/

@@ -5,7 +5,7 @@ import UserForm from '../_components/UserForm/UserForm.tsx'
 const MyAccount = () => {
     return (
         <div>
-            <Box py="5">
+            <Box>
                 <Section>
                     <Heading align="center" size="8">My Account Preferences</Heading>
                     <Container py="5">

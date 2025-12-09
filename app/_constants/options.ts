@@ -4,7 +4,7 @@ export interface RegionOption {
     readonly isDisabled?: boolean;
 }
 
-export const regionOpts: readonly RegionOption[] = [
+export const riotRegionOpts: readonly RegionOption[] = [
     { value: '', label: 'Choose Region', isDisabled: true },
     { value: 'NA', label: 'North America' },
     { value: 'CN', label: 'China' },
@@ -19,7 +19,7 @@ export interface PronounOption {
     readonly isDisabled?: boolean;
 }
 
-export const pronounOpts: readonly RegionOption[] = [
+export const pronounOpts: readonly PronounOption[] = [
     { value: '', label: 'Choose Preferred Pronouns', isDisabled: true },
     { value: 'She/Her', label: 'She/Her' },
     { value: 'He/Him', label: 'He/Him' },
@@ -30,6 +30,17 @@ export const pronounOpts: readonly RegionOption[] = [
     { value: 'Other', label: 'Other' }
 ];
 
+export interface GameTypeOption {
+    readonly value: string;
+    readonly label: string;
+    readonly isDisabled?: boolean;
+}
+
+export const gameTypeOpts: readonly GameTypeOption[] = [
+    { value: '', label: 'Choose Games', isDisabled: true },
+    { value: 'VAL', label: 'Valorant' }
+];
+
 export interface RankOption {
     readonly value: integer;
     readonly label: string;
@@ -37,7 +48,7 @@ export interface RankOption {
     readonly rankValue: integer;
 }
 
-export const rankOpts: readonly RankOption[] = [
+export const valorantRankOpts: readonly RankOption[] = [
     { value: 0, label: 'Choose Rank', rankValue: 0, isDisabled: true },
     { value: 1, label: 'Iron 1', rankValue: 1 },
     { value: 2, label: 'Iron 2', rankValue: 3 },

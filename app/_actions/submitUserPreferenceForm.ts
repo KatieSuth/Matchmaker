@@ -1,17 +1,18 @@
 'use server'
 import { cookies } from 'next/headers';
 import { revalidateTag } from 'next/cache';
-import { apiPOST } from '../_lib/client-utilities.ts';
+import { apiPOST } from '../_lib/api-utilities.ts';
+import { useSWRConfig } from 'swr';
 
 export async function submitUserPreference(formData: FormData) {
     const showPronouns  = formData.get('showPronouns') as string;
-    const cookie = (await cookies()).get('matchmaker_session')?.value
 
     let obj = {
         'showPronouns': showPronouns
     }
 
-    const userUpdate = await apiPOST('update_user_preference', cookie, JSON.stringify(obj))
+    const userUpdate = await apiPOST('users/update_preferences', JSON.stringify(obj))
+    mutate('api/users/get_my_info')
     console.log('userUpdate', userUpdate)
 
     /*
