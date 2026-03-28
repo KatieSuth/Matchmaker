@@ -96,14 +96,21 @@ curl http://api.matchmaker.localhost/health
 ## Useful Commands
 
 ```bash
-make up            # Build & start production containers (detached)
-make dev           # Start dev containers with hot reload
-make dev-no-cache  # Build dev containers without cache and start with hot reload
-make down          # Stop and remove containers
-make down-v        # Stop and remove containers and volumes
-make logs          # Tail logs from all services
-make ps            # Show running containers
-make clean         # Remove containers, images, and volumes
+make prod            # Build & start production containers (detached)
+make prod-no-cache   # Build production containers without cache and start
+make prod-build      # Build production images without starting
+make prod-logs       # Stream logs from all production containers
+make prod-ps         # Show running production containers
+
+make dev           # Start development containers with hot reload
+make dev-no-cache  # Build development containers without cache and start with hot reload
+make dev-down      # Stop and remove development containers
+make dev-down-v    # Stop and remove development containers and volumes
+make dev-clean     # Remove development containers, images, and volumes
+make dev-build     # Build development containers without running
+make dev-logs      # Stream logs from all development containers
+make dev-ps        # Show running development containers
+
 make health        # Quick API health check
 ```
 
