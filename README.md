@@ -4,9 +4,8 @@ Matchmaker is a free, open-source web application for organizing custom competit
 
 It's still very much in the early phases but is intended to one day support Valorant and League of Legends, along with the ability for users to create their own custom settings for non-supported games or modify supported games (for example, 3v3 games instead of 5v5 games). See the roadmap for more information on where things are at & where we're going.
 
-The application uses Docker to manage the frontend, backend, db, and load balancer containers. The frontend uses Next.JS, the backend uses Golang with Gin, the db is Postgres, and the load balancer is Caddy.
-
 # Roadmap
+- [x] Initial infrastructure setup (containers, DB, etc)
 - [ ] Basic login functionality via Discord
 - [ ] User preferences
 - [ ] One-off event admin configuration
@@ -17,16 +16,8 @@ The application uses Docker to manage the frontend, backend, db, and load balanc
 - [ ] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, etc.)
+- [ ] Non-Discord login support
 - [ ] Tournament bracket event support
-
-# FAQ
-### Why do I need this when Valorant custom games have an autobalance button?
-
-The built-in team balancer is a great resource if you have exactly 10 players and just don't know how to configure the teams. If you have a pool of more than 10 players and could potentially be running multiple games at once though, it cannot be used to fairly determine who should be in which lobby. That said, this isn't just for enormous Discord servers that will have tens of players joining at once; it can also be used to determine good 2v2 or 3v3 matches from a pool of available competitors for Skirmish or other modes.
-
-### You've got a lot of roadmap there and not a lot of journey. Is this thing ever going to be done?
-
-This application currently has one developer and I work on it when I can, so things might take a while. Thanks for the interest though and please feel free to add issues & contribute! I will review them as I'm able.
 
 # Quick Start
 
@@ -115,3 +106,12 @@ make ps            # Show running containers
 make clean         # Remove containers, images, and volumes
 make health        # Quick API health check
 ```
+
+# FAQ
+### Why do I need this when Valorant custom games have an autobalance button?
+
+The built-in team balancer is a great resource if you have exactly 10 players and just don't know how to configure the teams. If you have a pool of more than 10 players and could potentially be running multiple games at once though, it cannot be used to fairly determine who should be in which lobby. That said, this isn't just for enormous Discord servers that will have tens of players joining at once; it can also be used to determine good 2v2 or 3v3 matches from a pool of available competitors for Skirmish or other modes.
+
+### You've got a lot of roadmap there and not a lot of journey. Is this thing ever going to be done?
+
+This application currently has one developer and I work on it when I can, so things might take a while. Thanks for the interest though and please feel free to add issues & contribute! I will review them as I'm able.
