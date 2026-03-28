@@ -1,0 +1,17 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      GIN_MODE: release
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://api.matchmaker.localhost
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.matchmaker.localhost

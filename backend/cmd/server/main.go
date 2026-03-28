@@ -1,0 +1,102 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
+	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
+	"github.com/KatieSuth/MatchmakerAPI/internal/store"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	env := os.Getenv("GIN_MODE")
+	if env == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	// In-memory store (swap for a real DB in production)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("db connect: %v", err)
+	}
+	defer pool.Close()
+
+	// Run migrations
+
+	// wrap the existing pgxpool in a *sql.DB interface without opening a second connection
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		log.Fatalf("goose dialect: %v", err)
+	}
+
+	goose.SetBaseFS(nil) // use OS filesystem
+	if err := goose.Up(sqlDB, "sql/migrations"); err != nil {
+		log.Fatalf("migrations: %v", err)
+	}
+
+	s := store.NewPostgresStore(pool)
+
+	// Handlers
+	h := handler.New(s)
+
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
+	r.SetTrustedProxies([]string{"172.20.0.0/16"})
+
+	// CORS — allow the Next.js origin
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{frontendURL},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
+	// Request ID
+	r.Use(middleware.RequestID())
+
+	// ── Routes ─────────────────────────────────────────────────
+	r.GET("/health", h.Health)
+
+	/*
+		v1 := r.Group("/api/v1")
+		{
+			items := v1.Group("/items")
+			{
+				items.GET("", h.ListItems)
+				items.POST("", h.CreateItem)
+				items.GET("/:id", h.GetItem)
+				items.PUT("/:id", h.UpdateItem)
+				items.DELETE("/:id", h.DeleteItem)
+			}
+		}
+	*/
+
+	log.Printf("🚀  API listening on :%s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}

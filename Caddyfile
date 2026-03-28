@@ -1,0 +1,13 @@
+matchmaker.localhost {
+    # Frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+
+api.matchmaker.localhost {
+    # API
+    handle {
+        reverse_proxy api:8080
+    }
+}

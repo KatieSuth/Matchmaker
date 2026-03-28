@@ -1,0 +1,16 @@
+# Node
+node_modules/
+.next/
+frontend/.env*.local
+
+# Go
+backend/tmp/
+
+# Docker
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+.vscode

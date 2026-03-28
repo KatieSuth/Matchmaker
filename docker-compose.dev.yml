@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["air", "-c", ".air.toml"]
+    environment:
+      GIN_MODE: debug
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8080:8080"   # expose directly for debugging without Caddy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: ["npm", "run", "dev"]
+    environment:
+      NEXT_PUBLIC_API_URL: https://api.matchmaker.localhost
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"   # expose directly for debugging without Caddy
+
+  db:
+    ports:
+      - "5432:5432"   # expose for local DB tools

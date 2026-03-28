@@ -1,0 +1,30 @@
+version: "2"
+sql:
+  - schema: "migrations/"
+    queries: "queries/"
+    engine: "postgresql"
+    gen:
+      go:
+        out: "../internal/db"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+        # Override for non-nullable UUID columns
+        - db_type: "uuid"
+          go_type:
+            import: "github.com/google/uuid"
+            type: "UUID"
+        # Override for nullable UUID columns to use a pointer
+        - db_type: "uuid"
+          nullable: true
+          go_type:
+            import: "github.com/google/uuid"
+            type: "UUID"
+            pointer: true
+        # Override for non-nullable Timestamp columns
+        - db_type: "timestamp"
+          go_type: "time.Time"
+        # Override for nullable Timestamp columns to use a pointer
+        - db_type: "timestamp"
+          nullable: true
+          go_type: "*time.Time"
