@@ -14,6 +14,7 @@ It's still very much in the early phases but is intended to one day support Valo
 - [ ] 1.0 web hosting with public availability
 - [ ] Player duo requests
 - [ ] Attendance tracking and host alerts for repetitive no-show players
+- [ ] Opt-in notifications for updates regarding events
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, etc.)
 - [ ] Non-Discord login support
@@ -23,14 +24,14 @@ It's still very much in the early phases but is intended to one day support Valo
 
 ## Tech Stack
 
-| Layer         | Technology                         |
-|---------------|------------------------------------|
-| Frontend      | Next.js 16, TypeScript, App Router |
-| Backend       | Go 1.25, Gin, CORS middleware      |
-| Container     | Docker, Docker Compose v2          |
-| Dev DX        | `air` (Go), `next dev` (Node)      |
-| Database      | Postgres, pgx (v5)                 |
-| Load balancer | Caddy                              |
+| Layer         | Technology                           |
+|---------------|--------------------------------------|
+| Frontend      | Next.js 16, TypeScript, App Router   |
+| Backend       | Go 1.25, Gin, CORS middleware, sqlc  |
+| Container     | Docker, Docker Compose v2            |
+| Dev DX        | `air` (Go), `next dev` (Node)        |
+| Database      | Postgres, pgx (v5), Goose            |
+| Load balancer | Caddy                                |
 
 ---
 
