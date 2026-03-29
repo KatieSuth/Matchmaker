@@ -81,15 +81,17 @@ curl http://api.matchmaker.localhost/health
 
 ### Backend (`backend/.env.example`)
 
-| Variable            | Default                       | Description                    |
-|---------------------|-------------------------------|--------------------------------|
-| `PORT`              | `8080`                        | Server port                    |
-| `DATABASE_URL`      | required, no default          | URL to connect to the DB       |
-| `POSTGRES_USER`     | required, no default          | Postgres Database username     |
-| `POSTGRES_PASSWORD` | required, no default          | Postgres Database username     |
-| `POSTGRES_DB`       | required, no default          | Postgres Database name         |
-| `GIN_MODE`          | `release`                     | `debug` or `release`           |
-| `FRONTEND_URL`      | `http://matchmaker.localhost` | CORS allowed origin            |
+| Variable             | Default                       | Description                                               |
+|----------------------|-------------------------------|-----------------------------------------------------------|
+| `PORT`               | `8080`                        | Server port                                               |
+| `DATABASE_URL`       | required, no default          | URL to connect to the DB                                  |
+| `POSTGRES_USER`      | required, no default          | Postgres Database username                                |
+| `POSTGRES_PASSWORD`  | required, no default          | Postgres Database username                                |
+| `COOKIE_HASH_KEY`    | required, no default          | A hash key for the secure cookie used on OAuth2 login     |
+| `COOKIE_ENCRYPT_KEY` | required, no default          | An encrypt key for the secure cookie used on OAuth2 login |
+| `POSTGRES_DB`        | required, no default          | Postgres Database name                                    |
+| `GIN_MODE`           | `release`                     | `debug` or `release`                                      |
+| `FRONTEND_URL`       | `http://matchmaker.localhost` | CORS allowed origin                                       |
 
 ---
 

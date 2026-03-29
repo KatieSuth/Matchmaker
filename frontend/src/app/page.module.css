@@ -78,8 +78,8 @@
 
 /* Logo */
 .logo_wrap {
-  width: 180px;
-  height: 180px;
+  width: 300px;
+  height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,8 +128,8 @@
 
 /* Body text */
 .body {
-  font-family: 'Crimson Pro', serif;
-  font-size: clamp(1rem, 2.5vw, 1.12rem);
+  font-family: inherit;
+  font-size: clamp(1.1rem, 2.5vw, 1.12rem);
   font-weight: 300;
   line-height: 1.8;
   color: rgba(180, 200, 235, 0.7);
@@ -142,7 +142,7 @@
 /* Footer */
 .footer {
   margin-top: 2rem;
-  font-family: 'Crimson Pro', serif;
+  font-family: inherit;
   font-size: 0.75rem;
   color: rgba(100, 120, 160, 0.35);
   letter-spacing: 0.06em;
@@ -164,5 +164,5 @@
 
 @media (max-width: 480px) {
   .card { padding: 2.5rem 1.5rem; }
-  .logo_wrap { width: 140px; height: 140px; }
+  .logo_wrap { width: 220px; height: 220px; }
 }

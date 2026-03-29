@@ -10,6 +10,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/securecookie"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -55,8 +56,24 @@ func main() {
 
 	s := store.NewPostgresStore(pool)
 
+	cookieHashKey := os.Getenv("COOKIE_HASH_KEY")
+	cookieEncryptKey := os.Getenv("COOKIE_ENCRYPT_KEY")
+
+	if cookieHashKey == "" {
+		log.Fatal("COOKIE_HASH_KEY is required")
+	}
+
+	if cookieEncryptKey == "" {
+		log.Fatal("COOKIE_ENCRYPT_KEY is required")
+	}
+
+	sc := securecookie.New(
+		[]byte(cookieHashKey),
+		[]byte(cookieEncryptKey),
+	)
+
 	// Handlers
-	h := handler.New(s)
+	h := handler.New(s, sc)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())

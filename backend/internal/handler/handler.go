@@ -6,14 +6,19 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/securecookie"
 )
 
 type Handler struct {
-	store store.Store
+	store        store.Store
+	secureCookie *securecookie.SecureCookie
 }
 
-func New(s store.Store) *Handler {
-	return &Handler{store: s}
+func New(s store.Store, sc *securecookie.SecureCookie) *Handler {
+	return &Handler{
+		store:        s,
+		secureCookie: sc,
+	}
 }
 
 // GET /health
