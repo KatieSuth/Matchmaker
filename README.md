@@ -14,6 +14,7 @@ It's still very much in the early phases but is intended to one day support Valo
 - [ ] 1.0 web hosting with public availability
 - [ ] Player duo requests
 - [ ] Attendance tracking and host alerts for repetitive no-show players
+- [ ] Opt-in notifications for updates regarding events
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, etc.)
 - [ ] Non-Discord login support
