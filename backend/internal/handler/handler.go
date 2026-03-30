@@ -7,17 +7,21 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
+
+	"golang.org/x/oauth2"
 )
 
 type Handler struct {
 	store        store.Store
 	secureCookie *securecookie.SecureCookie
+	oauth2Config *oauth2.Config
 }
 
-func New(s store.Store, sc *securecookie.SecureCookie) *Handler {
+func New(s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config) *Handler {
 	return &Handler{
 		store:        s,
 		secureCookie: sc,
+		oauth2Config: o2c,
 	}
 }
 

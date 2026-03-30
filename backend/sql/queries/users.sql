@@ -13,6 +13,9 @@ RETURNING *;
 -- name: GetUserByName :one
 SELECT * FROM users WHERE discord_name = $1;
 
+-- name: GetUserByDiscordID :one
+SELECT * FROM users WHERE discord_id = $1;
+
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 

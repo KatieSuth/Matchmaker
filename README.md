@@ -82,17 +82,20 @@ curl http://api.matchmaker.localhost/health
 
 ### Backend (`backend/.env.example`)
 
-| Variable             | Default                       | Description                                               |
-|----------------------|-------------------------------|-----------------------------------------------------------|
-| `PORT`               | `8080`                        | Server port                                               |
-| `DATABASE_URL`       | required, no default          | URL to connect to the DB                                  |
-| `POSTGRES_USER`      | required, no default          | Postgres Database username                                |
-| `POSTGRES_PASSWORD`  | required, no default          | Postgres Database username                                |
-| `COOKIE_HASH_KEY`    | required, no default          | A hash key for the secure cookie used on OAuth2 login     |
-| `COOKIE_ENCRYPT_KEY` | required, no default          | An encrypt key for the secure cookie used on OAuth2 login |
-| `POSTGRES_DB`        | required, no default          | Postgres Database name                                    |
-| `GIN_MODE`           | `release`                     | `debug` or `release`                                      |
-| `FRONTEND_URL`       | `http://matchmaker.localhost` | CORS allowed origin                                       |
+| Variable                | Default                                             | Description                                                     |
+|-------------------------|-----------------------------------------------------|-----------------------------------------------------------------|
+| `PORT`                  | `8080`                                              | Server port                                                     |
+| `DATABASE_URL`          | required, no default                                | URL to connect to the DB                                        |
+| `POSTGRES_USER`         | required, no default                                | Postgres Database username                                      |
+| `POSTGRES_PASSWORD`     | required, no default                                | Postgres Database username                                      |
+| `COOKIE_HASH_KEY`       | required, no default                                | A hash key for the secure cookie used on OAuth2 login           |
+| `COOKIE_ENCRYPT_KEY`    | required, no default                                | An encrypt key for the secure cookie used on OAuth2 login       |
+| `DISCORD_CLIENT_ID`     | required, no default                                | Client ID provided by Discord developer portal app              |
+| `DISCORD_CLIENT_SECRET` | required, no default                                | Client Secret provided by Discord developer portal app          |
+| `DISCORD_REDIRECT_URI`  | `https://api.matchmaker.localhost/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal |
+| `POSTGRES_DB`           | required, no default                                | Postgres Database name                                          |
+| `GIN_MODE`              | `release`                                           | `debug` or `release`                                            |
+| `FRONTEND_URL`          | `http://matchmaker.localhost`                       | CORS allowed origin                                             |
 
 ---
 

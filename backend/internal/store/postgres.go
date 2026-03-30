@@ -13,7 +13,7 @@ type PostgresStore struct {
 }
 
 type Store interface {
-	doSomething()
+	GetUser()
 	/*
 	   List() []model.Item
 	   Get(id int) (model.Item, error)
@@ -27,6 +27,6 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{q: db.New(pool)}
 }
 
-func (s *PostgresStore) doSomething() {
+func (s *PostgresStore) GetUser() {
 	fmt.Print("something")
 }

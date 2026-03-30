@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"log"
 	"os"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+
+	"golang.org/x/oauth2"
 )
 
 func main() {
@@ -56,6 +59,7 @@ func main() {
 
 	s := store.NewPostgresStore(pool)
 
+	// discord OAuth2 setup
 	cookieHashKey := os.Getenv("COOKIE_HASH_KEY")
 	cookieEncryptKey := os.Getenv("COOKIE_ENCRYPT_KEY")
 
@@ -63,17 +67,53 @@ func main() {
 		log.Fatal("COOKIE_HASH_KEY is required")
 	}
 
+	hashKeyBytes, err := hex.DecodeString(cookieHashKey)
+	if err != nil {
+		log.Fatal("invalid COOKIE_HASH_KEY")
+	}
+
 	if cookieEncryptKey == "" {
 		log.Fatal("COOKIE_ENCRYPT_KEY is required")
 	}
+	encryptKeyBytes, err := hex.DecodeString(cookieEncryptKey)
+	if err != nil {
+		log.Fatal("invalid COOKIE_ENCRYPT_KEY")
+	}
 
 	sc := securecookie.New(
-		[]byte(cookieHashKey),
-		[]byte(cookieEncryptKey),
+		[]byte(hashKeyBytes),
+		[]byte(encryptKeyBytes),
 	)
 
+	discordClientID := os.Getenv("DISCORD_CLIENT_ID")
+	discordClientSecret := os.Getenv("DISCORD_CLIENT_SECRET")
+	discordRedirectURI := os.Getenv("DISCORD_REDIRECT_URI")
+
+	if discordClientID == "" {
+		log.Fatal("DISCORD_CLIENT_ID is required")
+	}
+
+	if discordClientSecret == "" {
+		log.Fatal("DISCORD_CLIENT_SECRET is required")
+	}
+
+	if discordRedirectURI == "" {
+		discordRedirectURI = "https://api.matchmaker.localhost/discord_redirect"
+	}
+
+	var discordOauth = &oauth2.Config{
+		ClientID:     discordClientID,
+		ClientSecret: discordClientSecret,
+		RedirectURL:  discordRedirectURI,
+		Scopes:       []string{"identify", "guilds"},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://discord.com/oauth2/authorize",
+			TokenURL: "https://discord.com/api/oauth2/token",
+		},
+	}
+
 	// Handlers
-	h := handler.New(s, sc)
+	h := handler.New(s, sc, discordOauth)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -97,6 +137,8 @@ func main() {
 
 	// ── Routes ─────────────────────────────────────────────────
 	r.GET("/health", h.Health)
+	r.GET("/login", h.LoginHandler)
+	r.GET("/discord_redirect", h.DiscordCallback)
 
 	/*
 		v1 := r.Group("/api/v1")

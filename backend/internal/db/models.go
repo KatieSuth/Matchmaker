@@ -5,8 +5,9 @@
 package db
 
 import (
+	"time"
+
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ApiLink struct {
@@ -15,16 +16,16 @@ type ApiLink struct {
 	Name           *string
 	RefreshToken   *string
 	RefreshTokenIv *string
-	CreatedAt      pgtype.Timestamp
-	UpdatedAt      pgtype.Timestamp
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Event struct {
 	ID        uuid.UUID
 	GroupID   *uuid.UUID
-	StartTime pgtype.Timestamp
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	StartTime **time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type EventGroup struct {
@@ -37,16 +38,16 @@ type EventGroup struct {
 	DeprioritizeNoshows bool
 	MaxNoshows          int32
 	DiscordGuild        *string
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type Game struct {
 	ID        uuid.UUID
 	Name      string
 	OwnerID   *uuid.UUID
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type GameMode struct {
@@ -55,8 +56,8 @@ type GameMode struct {
 	Name      string
 	TeamSize  int32
 	OwnerID   *uuid.UUID
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type GameRank struct {
@@ -64,33 +65,33 @@ type GameRank struct {
 	GameID    *uuid.UUID
 	Name      string
 	Order     int32
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Lobby struct {
 	ID        uuid.UUID
 	EventID   *uuid.UUID
 	Host      *uuid.UUID
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Player struct {
 	LobbyID    uuid.UUID
 	UserID     uuid.UUID
 	TeamNumber *int32
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type RefreshToken struct {
 	Token     string
 	UserID    uuid.UUID
-	ExpiresAt pgtype.Timestamp
-	RevokedAt pgtype.Timestamp
-	CreatedAt pgtype.Timestamp
-	UpdatedAt pgtype.Timestamp
+	ExpiresAt time.Time
+	RevokedAt **time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Registration struct {
@@ -99,8 +100,8 @@ type Registration struct {
 	CanSubstitute bool
 	CanLobbyHost  bool
 	DuoRequest    *string
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type User struct {
@@ -110,8 +111,9 @@ type User struct {
 	ImageUrl     *string
 	Pronouns     *string
 	ShowPronouns bool
-	CreatedAt    pgtype.Timestamp
-	UpdatedAt    pgtype.Timestamp
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Region       *string
 }
 
 type UserGame struct {
@@ -124,8 +126,8 @@ type UserGame struct {
 	ShowRank      bool
 	ApiPermission bool
 	ApiLinksID    *uuid.UUID
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type UserNoshow struct {

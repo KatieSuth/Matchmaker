@@ -21,7 +21,7 @@ VALUES (
     $2,
     $3
 )
-RETURNING id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at
+RETURNING id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region
 `
 
 type CreateUserParams struct {
@@ -42,12 +42,34 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ShowPronouns,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Region,
+	)
+	return i, err
+}
+
+const getUserByDiscordID = `-- name: GetUserByDiscordID :one
+SELECT id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region FROM users WHERE discord_id = $1
+`
+
+func (q *Queries) GetUserByDiscordID(ctx context.Context, discordID *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByDiscordID, discordID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DiscordID,
+		&i.DiscordName,
+		&i.ImageUrl,
+		&i.Pronouns,
+		&i.ShowPronouns,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Region,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at FROM users WHERE id = $1
+SELECT id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -62,12 +84,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.ShowPronouns,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Region,
 	)
 	return i, err
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at FROM users WHERE discord_name = $1
+SELECT id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region FROM users WHERE discord_name = $1
 `
 
 func (q *Queries) GetUserByName(ctx context.Context, discordName *string) (User, error) {
@@ -82,6 +105,7 @@ func (q *Queries) GetUserByName(ctx context.Context, discordName *string) (User,
 		&i.ShowPronouns,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Region,
 	)
 	return i, err
 }
@@ -95,7 +119,7 @@ SET updated_at = NOW(),
     pronouns = $4,
     show_pronouns = $5
 WHERE id = $6
-RETURNING id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at
+RETURNING id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region
 `
 
 type UpdateUserParams struct {
@@ -126,6 +150,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.ShowPronouns,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Region,
 	)
 	return i, err
 }
