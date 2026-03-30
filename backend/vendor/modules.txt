@@ -63,8 +63,7 @@ github.com/gabriel-vasile/mimetype/internal/scan
 ## explicit; go 1.23.0
 github.com/gin-contrib/cors
 # github.com/gin-contrib/sessions v1.1.0
-## explicit; go 1.25.0
-github.com/gin-contrib/sessions
+## explicit
 # github.com/gin-contrib/sse v1.1.0
 ## explicit; go 1.23
 github.com/gin-contrib/sse
@@ -112,14 +111,12 @@ github.com/goccy/go-yaml/token
 ## explicit
 github.com/google/uuid
 # github.com/gorilla/context v1.1.2
-## explicit; go 1.20
-github.com/gorilla/context
+## explicit
 # github.com/gorilla/securecookie v1.1.2
 ## explicit; go 1.20
 github.com/gorilla/securecookie
 # github.com/gorilla/sessions v1.4.0
-## explicit; go 1.23
-github.com/gorilla/sessions
+## explicit
 # github.com/jackc/pgpassfile v1.0.0
 ## explicit; go 1.12
 github.com/jackc/pgpassfile
