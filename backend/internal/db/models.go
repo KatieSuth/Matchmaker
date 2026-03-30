@@ -114,6 +114,7 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Region       *string
+	NewUser      bool
 }
 
 type UserGame struct {

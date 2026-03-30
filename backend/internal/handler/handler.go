@@ -15,13 +15,15 @@ type Handler struct {
 	store        store.Store
 	secureCookie *securecookie.SecureCookie
 	oauth2Config *oauth2.Config
+	frontendURL  string
 }
 
-func New(s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config) *Handler {
+func New(s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, fURL string) *Handler {
 	return &Handler{
 		store:        s,
 		secureCookie: sc,
 		oauth2Config: o2c,
+		frontendURL:  fURL,
 	}
 }
 

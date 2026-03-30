@@ -1,9 +1,11 @@
 package store
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/model"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 )
@@ -13,20 +15,11 @@ type PostgresStore struct {
 }
 
 type Store interface {
-	GetUser()
-	/*
-	   List() []model.Item
-	   Get(id int) (model.Item, error)
-	   Create(req model.CreateItemRequest) model.Item
-	   Update(id int, req model.UpdateItemRequest) (model.Item, error)
-	   Delete(id int) error
-	*/
+	GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error)
+	CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
+	UpdateUserFromLogin(ctx context.Context, userId uuid.UUID, discordUser model.DiscordUser) (model.User, error)
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{q: db.New(pool)}
-}
-
-func (s *PostgresStore) GetUser() {
-	fmt.Print("something")
 }

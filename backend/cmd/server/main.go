@@ -112,18 +112,19 @@ func main() {
 		},
 	}
 
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+
 	// Handlers
-	h := handler.New(s, sc, discordOauth)
+	h := handler.New(s, sc, discordOauth, frontendURL)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	r.SetTrustedProxies([]string{"172.20.0.0/16"})
 
 	// CORS — allow the Next.js origin
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:3000"
-	}
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{frontendURL},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},

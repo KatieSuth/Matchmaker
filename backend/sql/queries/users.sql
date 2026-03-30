@@ -29,3 +29,11 @@ SET updated_at = NOW(),
     show_pronouns = $5
 WHERE id = $6
 RETURNING *;
+
+-- name: UpdateUserFromLogin :one
+UPDATE users
+SET updated_at = NOW(),
+    discord_name = $1,
+    image_url = $2
+WHERE id = $3
+RETURNING *;
