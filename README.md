@@ -22,6 +22,8 @@ It's still very much in the early phases but is intended to one day support Valo
 
 # Quick Start
 
+
+
 ## Tech Stack
 
 | Layer         | Technology                           |
@@ -42,25 +44,68 @@ It's still very much in the early phases but is intended to one day support Valo
 ### Development (hot reload)
 
 Both services reload on file save.
+- Next.js uses `next dev` with volume-mounted source
+- Gin uses [`air`](https://github.com/air-verse/air) for live-reload
 
-Prior to first run, navigate to the frontend directory and run `npm install` if using VSCode for development.
+1. Prior to first run, navigate to the frontend directory and run `npm install` if using VSCode for development.
 
+2.
 ```bash
 make dev
 # or:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-- Next.js uses `next dev` with volume-mounted source
-- Gin uses [`air`](https://github.com/air-verse/air) for live-reload
+Choose either 3a or 3b:
+3a. From the same directory as the Caddyfile, run `docker compose exec caddy caddy trust`
+
+3b: Manually export and install the CA cert file from caddy's container. From the same directory as the Caddyfile while the containers are running:
+
+```bash
+# 1. Copy the CA cert out of the caddy_data volume
+docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+
+# 2a. install on macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-root.crt
+
+# 2b. install on Windows (run in elevated PowerShell)
+Import-Certificate -FilePath "caddy-root.crt" -CertStoreLocation Cert:\LocalMachine\Root
+
+# 2c. install on Linux (Ubuntu/Debian)
+sudo cp caddy-root.crt /usr/local/share/ca-certificates/caddy.crt
+sudo update-ca-certificates
+```
+
+#### Firefox-specific steps
+
+1. Firefox requires a couple of manual changes to run as expected in a development environment. For SSL to work, Caddy's local CA cert must be exported from the container and imported into browser manually since Firefox has its own cert store separate from the OS. Follow the `docker exec` step in 3b to download the cert. Next, import it directly into Firefox:
+
+```
+1. Settings → Privacy & Security → scroll to the bottom → View Certificates
+2. Authorities tab → Import
+3. Select the caddy-root.crt file you exported earlier
+4. Check "Trust this CA to identify websites"
+5. OK → restart Firefox
+```
+
+2. Firefox treats localhost itself as a secure context by default for cookie purposes, but it doesn't treat .localhost subdomains the same way. To prevent Firefox from rejecting the auth-related cookies:
+```
+1. In Firefox, go to about:config
+2. Search for network.dns.localDomains
+3. Set or add the values: matchmaker.localhost,api.matchmaker.localhost
+```
+
 
 ---
 
 ## API Reference
 
-| Method | Path                  | Description        |
-|--------|-----------------------|--------------------|
-| GET    | `/health`             | Health check       |
+| Method | Path                     | Description                       |
+|--------|--------------------------|-----------------------------------|
+| GET    | `/health`                | Health check                      |
+| POST   | `/auth/login`            | User login (redirects to Discord) |
+| POST   | `/auth/discord_redirect` | Callback from Discord             |
+| POST   | `/auth/refresh`          | JWT token refresh endpoint        |
 
 ### Example
 
@@ -82,20 +127,24 @@ curl http://api.matchmaker.localhost/health
 
 ### Backend (`backend/.env.example`)
 
-| Variable                | Default                                             | Description                                                     |
-|-------------------------|-----------------------------------------------------|-----------------------------------------------------------------|
-| `PORT`                  | `8080`                                              | Server port                                                     |
-| `DATABASE_URL`          | required, no default                                | URL to connect to the DB                                        |
-| `POSTGRES_USER`         | required, no default                                | Postgres Database username                                      |
-| `POSTGRES_PASSWORD`     | required, no default                                | Postgres Database username                                      |
-| `COOKIE_HASH_KEY`       | required, no default                                | A hash key for the secure cookie used on OAuth2 login           |
-| `COOKIE_ENCRYPT_KEY`    | required, no default                                | An encrypt key for the secure cookie used on OAuth2 login       |
-| `DISCORD_CLIENT_ID`     | required, no default                                | Client ID provided by Discord developer portal app              |
-| `DISCORD_CLIENT_SECRET` | required, no default                                | Client Secret provided by Discord developer portal app          |
-| `DISCORD_REDIRECT_URI`  | `https://api.matchmaker.localhost/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal |
-| `POSTGRES_DB`           | required, no default                                | Postgres Database name                                          |
-| `GIN_MODE`              | `release`                                           | `debug` or `release`                                            |
-| `FRONTEND_URL`          | `http://matchmaker.localhost`                       | CORS allowed origin                                             |
+| Variable                 | Default                                             | Description                                                          |
+|--------------------------|-----------------------------------------------------|----------------------------------------------------------------------|
+| `COOKIE_HASH_KEY`        | required, no default                                | A hash key for the secure cookie used on OAuth2 login                |
+| `COOKIE_ENCRYPT_KEY`     | required, no default                                | An encrypt key for the secure cookie used on OAuth2 login            |
+| `COOKIE_DOMAIN`          | `api.matchmaker.localhost`                          | The domain used for setting cookies on login                         |
+| `DATABASE_URL`           | required, no default                                | URL to connect to the DB                                             |
+| `DISCORD_CLIENT_ID`      | required, no default                                | Client ID provided by Discord developer portal app                   |
+| `DISCORD_CLIENT_SECRET`  | required, no default                                | Client Secret provided by Discord developer portal app               |
+| `DISCORD_REDIRECT_URI`   | `https://api.matchmaker.localhost/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
+| `FRONTEND_COOKIE_DOMAIN` | `matchmaker.localhost`                              | The domain used for setting a lightweight auth cookie for middleware |
+| `FRONTEND_URL`           | `http://matchmaker.localhost`                       | CORS allowed origin                                                  |
+| `GIN_MODE`               | `release`                                           | `debug` or `release`                                                 |
+| `JWT_SECRET`             | required, no default                                | A key for signing the JWT access tokens                              |
+| `PORT`                   | `8080`                                              | Server port                                                          |
+| `POSTGRES_DB`            | required, no default                                | Postgres Database name                                               |
+| `POSTGRES_PASSWORD`      | required, no default                                | Postgres Database password                                           |
+| `POSTGRES_USER`          | required, no default                                | Postgres Database username                                           |
+| `REFRESH_EXPIRE_LIMIT`   | `604800` (7 days)                                   | Time in seconds for the expiration of the refresh tokens             |
 
 ---
 
@@ -119,6 +168,8 @@ make dev-ps        # Show running development containers
 
 make health        # Quick API health check
 ```
+
+---
 
 # FAQ
 ### Why do I need this when Valorant custom games have an autobalance button?

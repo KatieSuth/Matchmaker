@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
@@ -15,9 +16,15 @@ type PostgresStore struct {
 }
 
 type Store interface {
+	//users
 	GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error)
 	CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
 	UpdateUserFromLogin(ctx context.Context, userId uuid.UUID, discordUser model.DiscordUser) (model.User, error)
+
+	//refresh tokens
+	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
+	GetRefreshToken(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
+	DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {

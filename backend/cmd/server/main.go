@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
@@ -25,8 +26,8 @@ func main() {
 		port = "8080"
 	}
 
-	env := os.Getenv("GIN_MODE")
-	if env == "release" {
+	ginEnv := os.Getenv("GIN_MODE")
+	if ginEnv == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
@@ -112,13 +113,44 @@ func main() {
 		},
 	}
 
+	// jwt setup
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
+	jwtSecretBytes, err := hex.DecodeString(jwtSecret)
+	if err != nil {
+		log.Fatal("invalid JWT_SECRET")
+	}
+
+	refreshExpiration := os.Getenv("REFRESH_EXPIRE_LIMIT")
+	var refreshInt int
+	if refreshExpiration == "" {
+		refreshInt = 604800 //7 days (7 * 24 * 60 * 60)
+	} else {
+		refreshInt, err = strconv.Atoi(refreshExpiration)
+		if err != nil {
+			log.Fatal("invalid refresh expiration--must be integer value")
+		}
+	}
+
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:3000"
+		frontendURL = "https://matchmaker.localhost"
+	}
+
+	cookieDomain := os.Getenv("COOKIE_DOMAIN")
+	if cookieDomain == "" {
+		cookieDomain = "api.matchmaker.localhost"
+	}
+
+	feCookieDomain := os.Getenv("FRONTEND_COOKIE_DOMAIN")
+	if feCookieDomain == "" {
+		feCookieDomain = "matchmaker.localhost"
 	}
 
 	// Handlers
-	h := handler.New(s, sc, discordOauth, frontendURL)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, feCookieDomain, jwtSecretBytes, refreshInt)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -138,8 +170,17 @@ func main() {
 
 	// ── Routes ─────────────────────────────────────────────────
 	r.GET("/health", h.Health)
-	r.GET("/login", h.LoginHandler)
-	r.GET("/discord_redirect", h.DiscordCallback)
+
+	//public routes
+	auth := r.Group("/auth")
+	{
+		auth.GET("/login", h.LoginHandler)
+		auth.GET("/discord_redirect", h.DiscordCallbackHandler)
+		auth.POST("/refresh", h.RefreshHandler)
+		//TODO: logout
+	}
+
+	//TODO: protected routes, attach with middleware
 
 	/*
 		v1 := r.Group("/api/v1")
