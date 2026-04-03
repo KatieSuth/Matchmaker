@@ -136,16 +136,14 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	isSecure := h.ginMode == "release"
-
 	log.Printf("Setting cookies - domain: %s, frontend domain: %s", h.cookieDomain, h.frontendCookieDomain)
 	log.Printf("refresh_token: %s", refreshToken[:10]) // first 10 chars only
 	log.Printf("auth_session: 1")
-	//set refresh token that lasts 7 days in HttpOnly cookie
-	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, isSecure, true)
+	//set refresh token that lasts the specific amount of time (default: 7 days) in HttpOnly cookie
+	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
 
 	//set lightweight auth indicator for the frontend middleware
-	c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.frontendCookieDomain, isSecure, false)
+	c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.frontendCookieDomain, true, false)
 
 	//return token and "new user" bool for front end redirect
 	redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&new_user=%t", h.frontendURL, accessToken, user.NewUser)
@@ -171,8 +169,6 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	isSecure := h.ginMode == "release"
-
 	if time.Now().After(refresh.ExpiresAt) {
 		//refresh token has expired, delete it
 		err = h.store.DeleteRefreshToken(c.Request.Context(), refreshHashStr)
@@ -181,8 +177,8 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		}
 
 		//clear the cookies
-		c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, isSecure, true)
-		c.SetCookie("auth_session", "", -1, "/", h.frontendCookieDomain, isSecure, false)
+		c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, true, true)
+		c.SetCookie("auth_session", "", -1, "/", h.frontendCookieDomain, true, false)
 
 		//return unauthorized
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -212,9 +208,9 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	//set refresh token that lasts 7 days in HttpOnly cookie
-	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, isSecure, true)
-	c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.frontendCookieDomain, isSecure, false)
+	//set refresh token that lasts the specific amount of time (default: 7 days) in HttpOnly cookie
+	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
+	c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.frontendCookieDomain, true, false)
 
 	//delete the old refresh token
 	err = h.store.DeleteRefreshToken(c.Request.Context(), refreshHashStr)

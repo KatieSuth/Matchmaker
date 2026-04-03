@@ -24,6 +24,15 @@ func (s *PostgresStore) GetUserByDiscordID(ctx context.Context, discordId string
 	return model.MapDbUserToUser(dbUser), nil
 }
 
+func (s *PostgresStore) GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error) {
+	dbUser, err := s.q.GetUserByID(ctx, userID)
+	if err != nil || errors.Is(err, pgx.ErrNoRows) {
+		return model.User{}, fmt.Errorf("looking up user: %w", err)
+	}
+
+	return model.MapDbUserToUser(dbUser), nil
+}
+
 func (s *PostgresStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error) {
 	dbUser, err := s.q.CreateUser(ctx, db.CreateUserParams{
 		DiscordID:   &discordUser.ID,

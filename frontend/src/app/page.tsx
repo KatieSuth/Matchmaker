@@ -36,9 +36,16 @@ export default function Page() {
 
       </div>
 
-      <p className={styles.footer}>
-        © {new Date().getFullYear()} Matchmaker · All rights reserved
-      </p>
+      <footer className={styles.footer}>
+        <a
+          href="https://github.com/KatieSuth/Matchmaker"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.footerLink}
+        >
+          Source on GitHub
+        </a>
+      </footer>
     </main>
   );
 }

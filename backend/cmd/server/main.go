@@ -180,7 +180,14 @@ func main() {
 		//TODO: logout
 	}
 
-	//TODO: protected routes, attach with middleware
+	protected := r.Group("/")
+	protected.Use(middleware.Auth([]byte(jwtSecret)))
+	{
+		users := protected.Group("/users")
+		{
+			users.GET("/me", h.UsersMeHandler)
+		}
+	}
 
 	/*
 		v1 := r.Group("/api/v1")

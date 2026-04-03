@@ -25,6 +25,9 @@ type Store interface {
 	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
 	GetRefreshToken(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error
+
+	//users
+	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
