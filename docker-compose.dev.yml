@@ -16,9 +16,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     command: ["npm", "run", "dev"]
-    environment:
-      NEXT_PUBLIC_API_URL: https://api.matchmaker.localhost
-      NODE_ENV: development
+    env_file:
+      ./frontend/.env
     volumes:
       - ./frontend:/app
       - /app/node_modules

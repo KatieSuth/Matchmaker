@@ -1,13 +1,12 @@
 matchmaker.localhost {
+    # Backend
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8080
+    }
+
     # Frontend
     handle {
         reverse_proxy frontend:3000
-    }
-}
-
-api.matchmaker.localhost {
-    # API
-    handle {
-        reverse_proxy api:8080
     }
 }

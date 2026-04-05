@@ -92,7 +92,7 @@ sudo update-ca-certificates
 ```
 1. In Firefox, go to about:config
 2. Search for network.dns.localDomains
-3. Set or add the values: matchmaker.localhost,api.matchmaker.localhost
+3. Set or add the value: matchmaker.localhost
 ```
 
 
@@ -111,7 +111,7 @@ sudo update-ca-certificates
 
 ```bash
 # Health
-curl http://api.matchmaker.localhost/health
+curl https://matchmaker.localhost/api/health
 ```
 
 ---
@@ -122,29 +122,29 @@ curl http://api.matchmaker.localhost/health
 
 | Variable               | Default                             | Description              |
 |------------------------|-------------------------------------|--------------------------|
-| `NEXT_PUBLIC_API_URL`  | `https://api.matchmaker.localhost`  | Gin API base URL         |
+| `NEXT_PUBLIC_API_URL`  | `https://matchmaker.localhost/api`  | Gin API base URL         |
 | `NODE_ENV`             | `development`                       | Node environment flag    |
 
 ### Backend (`backend/.env.example`)
 
-| Variable                 | Default                                             | Description                                                          |
-|--------------------------|-----------------------------------------------------|----------------------------------------------------------------------|
-| `COOKIE_HASH_KEY`        | required, no default                                | A hash key for the secure cookie used on OAuth2 login                |
-| `COOKIE_ENCRYPT_KEY`     | required, no default                                | An encrypt key for the secure cookie used on OAuth2 login            |
-| `COOKIE_DOMAIN`          | `api.matchmaker.localhost`                          | The domain used for setting cookies on login                         |
-| `DATABASE_URL`           | required, no default                                | URL to connect to the DB                                             |
-| `DISCORD_CLIENT_ID`      | required, no default                                | Client ID provided by Discord developer portal app                   |
-| `DISCORD_CLIENT_SECRET`  | required, no default                                | Client Secret provided by Discord developer portal app               |
-| `DISCORD_REDIRECT_URI`   | `https://api.matchmaker.localhost/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
-| `FRONTEND_COOKIE_DOMAIN` | `matchmaker.localhost`                              | The domain used for setting a lightweight auth cookie for middleware |
-| `FRONTEND_URL`           | `http://matchmaker.localhost`                       | CORS allowed origin                                                  |
-| `GIN_MODE`               | `release`                                           | `debug` or `release`                                                 |
-| `JWT_SECRET`             | required, no default                                | A key for signing the JWT access tokens                              |
-| `PORT`                   | `8080`                                              | Server port                                                          |
-| `POSTGRES_DB`            | required, no default                                | Postgres Database name                                               |
-| `POSTGRES_PASSWORD`      | required, no default                                | Postgres Database password                                           |
-| `POSTGRES_USER`          | required, no default                                | Postgres Database username                                           |
-| `REFRESH_EXPIRE_LIMIT`   | `604800` (7 days)                                   | Time in seconds for the expiration of the refresh tokens             |
+| Variable                 | Default                                                  | Description                                                          |
+|--------------------------|----------------------------------------------------------|----------------------------------------------------------------------|
+| `COOKIE_HASH_KEY`        | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                |
+| `COOKIE_ENCRYPT_KEY`     | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login            |
+| `COOKIE_DOMAIN`          | `matchmaker.localhost`                                   | The domain used for setting cookies on login                         |
+| `DATABASE_URL`           | required, no default                                     | URL to connect to the DB                                             |
+| `DISCORD_CLIENT_ID`      | required, no default                                     | Client ID provided by Discord developer portal app                   |
+| `DISCORD_CLIENT_SECRET`  | required, no default                                     | Client Secret provided by Discord developer portal app               |
+| `DISCORD_REDIRECT_URI`   | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
+| `FRONTEND_COOKIE_DOMAIN` | `matchmaker.localhost`                                   | The domain used for setting a lightweight auth cookie for middleware |
+| `FRONTEND_URL`           | `https://matchmaker.localhost`                            | CORS allowed origin                                                  |
+| `GIN_MODE`               | `release`                                                | `debug` or `release`                                                 |
+| `JWT_SECRET`             | required, no default                                     | A key for signing the JWT access tokens                              |
+| `PORT`                   | `8080`                                                   | Server port                                                          |
+| `POSTGRES_DB`            | required, no default                                     | Postgres Database name                                               |
+| `POSTGRES_PASSWORD`      | required, no default                                     | Postgres Database password                                           |
+| `POSTGRES_USER`          | required, no default                                     | Postgres Database username                                           |
+| `REFRESH_EXPIRE_LIMIT`   | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens             |
 
 ---
 

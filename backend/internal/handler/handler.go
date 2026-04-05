@@ -12,27 +12,26 @@ import (
 )
 
 type Handler struct {
-	ginMode              string
-	store                store.Store
-	secureCookie         *securecookie.SecureCookie
-	oauth2Config         *oauth2.Config
-	cookieDomain         string
-	frontendURL          string
-	frontendCookieDomain string
-	jwtSecret            []byte
-	refreshExpiration    int
+	ginMode           string
+	store             store.Store
+	secureCookie      *securecookie.SecureCookie
+	oauth2Config      *oauth2.Config
+	cookieDomain      string
+	frontendURL       string
+	jwtSecret         []byte
+	refreshExpiration int
 }
 
-func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, fecd string, jwt []byte, refExp int) *Handler {
+func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int) *Handler {
 	return &Handler{
-		ginMode:              gm,
-		store:                s,
-		secureCookie:         sc,
-		oauth2Config:         o2c,
-		cookieDomain:         cd,
-		frontendURL:          fURL,
-		frontendCookieDomain: fecd,
-		jwtSecret:            jwt,
+		ginMode:           gm,
+		store:             s,
+		secureCookie:      sc,
+		oauth2Config:      o2c,
+		cookieDomain:      cd,
+		frontendURL:       fURL,
+		jwtSecret:         jwt,
+		refreshExpiration: refExp,
 	}
 }
 

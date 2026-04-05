@@ -34,7 +34,7 @@ dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 	@echo "\n🔥  Dev mode — hot reload active"
 	@echo "    Frontend → https://matchmaker.localhost"
-	@echo "    API      → https://api.matchmaker.localhost\n"
+	@echo "    API      → https://matchmaker.localhost/api\n"
 	
 # Start dev environment without cache
 dev-no-cache:
@@ -42,7 +42,7 @@ dev-no-cache:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 	@echo "\n🔥  Dev mode — hot reload active"
 	@echo "    Frontend → https://matchmaker.localhost"
-	@echo "    API      → https://api.matchmaker.localhost\n"
+	@echo "    API      → https://matchmaker.localhost/api\n"
 
 # Stop and remove dev containers
 dev-down:
@@ -70,4 +70,4 @@ dev-clean:
 
 # Check API health
 health:
-	@curl -sk https://api.matchmaker.localhost/health | python3 -m json.tool
+	@curl -sk https://matchmaker.localhost/api/health | python3 -m json.tool

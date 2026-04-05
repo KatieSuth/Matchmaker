@@ -99,7 +99,7 @@ func main() {
 	}
 
 	if discordRedirectURI == "" {
-		discordRedirectURI = "https://api.matchmaker.localhost/discord_redirect"
+		discordRedirectURI = "https://matchmaker.localhost/api/auth/discord_redirect"
 	}
 
 	var discordOauth = &oauth2.Config{
@@ -141,16 +141,11 @@ func main() {
 
 	cookieDomain := os.Getenv("COOKIE_DOMAIN")
 	if cookieDomain == "" {
-		cookieDomain = "api.matchmaker.localhost"
-	}
-
-	feCookieDomain := os.Getenv("FRONTEND_COOKIE_DOMAIN")
-	if feCookieDomain == "" {
-		feCookieDomain = "matchmaker.localhost"
+		cookieDomain = "matchmaker.localhost"
 	}
 
 	// Handlers
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, feCookieDomain, jwtSecretBytes, refreshInt)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -174,8 +169,9 @@ func main() {
 	//public routes
 	auth := r.Group("/auth")
 	{
-		auth.GET("/login", h.LoginHandler)
+		auth.POST("/complete", h.CompleteAuthHandler)
 		auth.GET("/discord_redirect", h.DiscordCallbackHandler)
+		auth.GET("/login", h.LoginHandler)
 		auth.POST("/refresh", h.RefreshHandler)
 		//TODO: logout
 	}
@@ -183,6 +179,7 @@ func main() {
 	protected := r.Group("/")
 	protected.Use(middleware.Auth([]byte(jwtSecret)))
 	{
+
 		users := protected.Group("/users")
 		{
 			users.GET("/me", h.UsersMeHandler)

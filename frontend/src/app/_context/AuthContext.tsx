@@ -22,6 +22,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // On mount, try a silent refresh to restore session after page reload
     // The refresh_token HttpOnly cookie will be sent automatically if it exists
     useEffect(() => {
+        if (window.location.pathname === "/auth/callback") {
+            setIsLoading(false);
+            return;
+        }
+
         refreshAccessToken()
             .then(() => api.get<User>("/users/me"))
             .then((res) => {

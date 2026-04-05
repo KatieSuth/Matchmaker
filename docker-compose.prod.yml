@@ -10,8 +10,5 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_URL=https://api.matchmaker.localhost
-    environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://api.matchmaker.localhost
+    env_file:
+      ./frontend/.env

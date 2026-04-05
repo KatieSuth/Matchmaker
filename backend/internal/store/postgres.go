@@ -20,14 +20,16 @@ type Store interface {
 	GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error)
 	CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
 	UpdateUserFromLogin(ctx context.Context, userId uuid.UUID, discordUser model.DiscordUser) (model.User, error)
+	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
 
 	//refresh tokens
 	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
 	GetRefreshToken(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error
 
-	//users
-	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
+	//one-time codes
+	CreateOneTimeCode(ctx context.Context, code string, userID uuid.UUID) error
+	ConsumeOneTimeCode(ctx context.Context, code string) (uuid.UUID, error)
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
