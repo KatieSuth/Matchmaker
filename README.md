@@ -100,12 +100,15 @@ sudo update-ca-certificates
 
 ## API Reference
 
-| Method | Path                     | Description                       |
-|--------|--------------------------|-----------------------------------|
-| GET    | `/health`                | Health check                      |
-| POST   | `/auth/login`            | User login (redirects to Discord) |
-| POST   | `/auth/discord_redirect` | Callback from Discord             |
-| POST   | `/auth/refresh`          | JWT token refresh endpoint        |
+| Method | Path                     | Description                        |
+|--------|--------------------------|------------------------------------|
+| POST   | `/auth/complete`         | Finishes login flow, issues tokens |
+| GET    | `/auth/discord_redirect` | Callback from Discord              |
+| GET    | `/auth/login`            | User login (redirects to Discord)  |
+| POST   | `/auth/logout`           | User logout                        |
+| POST   | `/auth/refresh`          | JWT token refresh endpoint         |
+| GET    | `/users/me`              | Gets the current user's data       |
+| GET    | `/health`                | Health check                       |
 
 ### Example
 
@@ -136,7 +139,6 @@ curl https://matchmaker.localhost/api/health
 | `DISCORD_CLIENT_ID`      | required, no default                                     | Client ID provided by Discord developer portal app                   |
 | `DISCORD_CLIENT_SECRET`  | required, no default                                     | Client Secret provided by Discord developer portal app               |
 | `DISCORD_REDIRECT_URI`   | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
-| `FRONTEND_COOKIE_DOMAIN` | `matchmaker.localhost`                                   | The domain used for setting a lightweight auth cookie for middleware |
 | `FRONTEND_URL`           | `https://matchmaker.localhost`                            | CORS allowed origin                                                  |
 | `GIN_MODE`               | `release`                                                | `debug` or `release`                                                 |
 | `JWT_SECRET`             | required, no default                                     | A key for signing the JWT access tokens                              |
