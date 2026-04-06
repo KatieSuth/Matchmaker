@@ -10,10 +10,11 @@ export default function Page() {
         {/* Logo */}
         <div className={styles.logo_wrap}>
           <Image
-            className={styles.logo_img}
             src="/logo-full.png"
+            className={styles.logo_img}
             alt="Matchmaker"
             fill
+            sizes="(max-width: 480px) 220px, 300px"
             priority
           />
         </div>

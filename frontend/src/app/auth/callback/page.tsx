@@ -32,9 +32,12 @@ export default function CallbackPage() {
                 return;
             }
 
+            const domain = process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN
+            const expire = process.env.NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT
+
             const accessToken = response.data.access_token;
             setAccessToken(accessToken);
-            document.cookie = `auth_session=1; domain=matchmaker.localhost; path=/; secure; max-age${7 * 24 * 60 * 60}`;
+            document.cookie = `auth_session=1; domain=${domain}; path=/; secure; max-age=${expire}`;
             
             return api.get<User>("/users/me").then((res) => {
                 if (!res.data) {
