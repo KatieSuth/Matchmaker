@@ -71,3 +71,6 @@ dev-clean:
 # Check API health
 health:
 	@curl -sk https://matchmaker.localhost/api/health | python3 -m json.tool
+
+test:
+	cd backend && go test ./...

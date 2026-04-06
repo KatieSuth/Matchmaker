@@ -10,10 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func generateState() (string, error) {
@@ -165,7 +163,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 	}
 
 	//generate fresh tokens
-	accessToken, refreshToken, err := h.generateTokens(refresh.UserID.String())
+	accessToken, refreshToken, err := model.GenerateTokens(refresh.UserID.String(), h.jwtSecret)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
@@ -231,7 +229,7 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 	}
 
 	//generate tokens
-	accessToken, refreshToken, err := h.generateTokens(otcUserID.String())
+	accessToken, refreshToken, err := model.GenerateTokens(otcUserID.String(), h.jwtSecret)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
@@ -281,31 +279,4 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 	c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, true, true)
 	c.SetCookie("auth_session", "", -1, "/", h.cookieDomain, true, false)
 	c.Status(http.StatusNoContent)
-}
-
-// generate auth token and refresh tokens
-func (h *Handler) generateTokens(userID string) (accessToken, refreshToken string, err error) {
-	//access token
-	accessClaims := middleware.Claims{
-		UserID: userID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	accessToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(h.jwtSecret)
-	if err != nil {
-		return
-	}
-
-	//refresh token
-	key := make([]byte, 32)
-	_, err = rand.Read(key)
-	if err != nil {
-		return
-	}
-	refreshToken = hex.EncodeToString(key)
-
-	return
 }

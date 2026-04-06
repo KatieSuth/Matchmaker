@@ -123,11 +123,15 @@ curl https://matchmaker.localhost/api/health
 
 ### Frontend (`frontend/.env.example`)
 
-| Variable               | Default                             | Description              |
-|------------------------|-------------------------------------|--------------------------|
-| `NEXT_PUBLIC_API_URL`  | `https://matchmaker.localhost/api`  | Gin API base URL         |
-| `NODE_ENV`             | `development`                       | Node environment flag    |
+| Variable                               | Default                             | Description                                                                       |
+|----------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
+| `NEXT_PUBLIC_API_URL`                  | `https://matchmaker.localhost/api`  | Gin API base URL                                                                  |
+| `NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN`   | `matchmaker.localhost`              | Domain for setting cookies                                                        |
+| `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
+| `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 
+# Node values
+NODE_ENV=development
 ### Backend (`backend/.env.example`)
 
 | Variable                 | Default                                                  | Description                                                          |
@@ -136,10 +140,11 @@ curl https://matchmaker.localhost/api/health
 | `COOKIE_ENCRYPT_KEY`     | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login            |
 | `COOKIE_DOMAIN`          | `matchmaker.localhost`                                   | The domain used for setting cookies on login                         |
 | `DATABASE_URL`           | required, no default                                     | URL to connect to the DB                                             |
+| `DATABASE_URL_TESTS`     | no default                                               | URL to connect to the DB for testing                                 |
 | `DISCORD_CLIENT_ID`      | required, no default                                     | Client ID provided by Discord developer portal app                   |
 | `DISCORD_CLIENT_SECRET`  | required, no default                                     | Client Secret provided by Discord developer portal app               |
 | `DISCORD_REDIRECT_URI`   | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
-| `FRONTEND_URL`           | `https://matchmaker.localhost`                            | CORS allowed origin                                                  |
+| `FRONTEND_URL`           | `https://matchmaker.localhost`                           | CORS allowed origin                                                  |
 | `GIN_MODE`               | `release`                                                | `debug` or `release`                                                 |
 | `JWT_SECRET`             | required, no default                                     | A key for signing the JWT access tokens                              |
 | `PORT`                   | `8080`                                                   | Server port                                                          |
@@ -169,6 +174,7 @@ make dev-logs      # Stream logs from all development containers
 make dev-ps        # Show running development containers
 
 make health        # Quick API health check
+make test          # Run Go tests
 ```
 
 ---
