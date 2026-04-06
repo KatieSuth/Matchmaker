@@ -9,6 +9,8 @@ interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     user: User | null;
+    setUser: (user: User) => void;
+    setIsAuthenticated: (value: boolean) => void;
     logout: () => Promise<void>;
 }
 
@@ -36,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .catch(() => {
                 setIsAuthenticated(false)
                 setUser(null)
+                document.cookie = "auth_session=; Max-Age=0; domain="+ process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN;
             })
             .finally(() => setIsLoading(false));
     }, []);
@@ -47,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, isLoading, user, logout }}>
+        <AuthContext.Provider value={{ isAuthenticated, setIsAuthenticated, isLoading, user, setUser, logout }}>
             {children}
         </AuthContext.Provider>
     );

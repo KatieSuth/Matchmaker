@@ -9,12 +9,11 @@ import { useAuth } from "@/app/_context/AuthContext";
 import styles from "./AppNav.module.css";
 
 // Discord avatar URL helper
-function avatarUrl(userId: string, avatarHash: string | null): string {
-  if (!avatarHash) {
-    const index = (BigInt(userId) >> 22n) % 6n;
-    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+function avatarUrl(discordId: string | null, avatarHash: string | null): string {
+  if (!avatarHash || !discordId) {
+    return `https://cdn.discordapp.com/embed/avatars/0.png`;
   }
-  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.webp?size=64`;
+  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.webp?size=64`;
 }
 
 const NAV_LINKS = [
@@ -25,7 +24,7 @@ const NAV_LINKS = [
 export default function AppNav() {
   const pathname = usePathname();
   const router   = useRouter();
-  const { user, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -57,7 +56,7 @@ export default function AppNav() {
         <Link href="/events" className={styles.logoLink}>
           <div className={styles.logoWrap}>
             <Image
-              src="/logo.png"
+              src="/logo-small.png"
               alt="Matchmaker"
               fill
               sizes="120px"
@@ -83,7 +82,7 @@ export default function AppNav() {
         </ul>
 
         {/* ── User menu ── */}
-        {user && (
+        {isAuthenticated && (
           <div className={styles.userArea} ref={dropdownRef}>
             <button
               className={styles.avatarBtn}
@@ -92,15 +91,21 @@ export default function AppNav() {
               aria-haspopup="menu"
             >
               <div className={styles.avatarRing}>
-                <Image
-                  src={avatarUrl(user.discord_id, user.image_url)}
-                  alt={user.discord_name ?? "discord image"}
-                  width={36}
-                  height={36}
-                  className={styles.avatar}
-                />
+                {user?.image_url ? (
+                  <Image
+                    src={avatarUrl(user.discord_id, user.image_url)}
+                    alt={user.discord_name ?? "discord image"}
+                    width={36}
+                    height={36}
+                    className={styles.avatar}
+                  />
+                ) : (
+                  <div className={styles.avatarPlaceholder} />
+                )}
               </div>
-              <span className={styles.username}>{user.discord_name}</span>
+              <span className={styles.username}>
+               {user?.discord_name ?? "Account"} 
+              </span>
               <svg
                 className={`${styles.chevron} ${dropdownOpen ? styles.chevronOpen : ""}`}
                 width="12" height="12" viewBox="0 0 12 12" fill="none"
@@ -114,33 +119,13 @@ export default function AppNav() {
             {dropdownOpen && (
               <div className={styles.dropdown} role="menu">
                 <div className={styles.dropdownArrow} aria-hidden />
-                <Link
-                  href="/my_account"
-                  className={styles.dropdownItem}
-                  role="menuitem"
-                  onClick={() => setDropdownOpen(false)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-                    strokeLinejoin="round" aria-hidden>
-                    <circle cx="12" cy="8" r="4"/>
-                    <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                  </svg>
+                <Link href="/my_account" className={styles.dropdownItem} role="menuitem"
+                  onClick={() => setDropdownOpen(false)}>
                   My Account
                 </Link>
                 <div className={styles.dropdownDivider} />
-                <button
-                  className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}
-                  role="menuitem"
-                  onClick={handleLogout}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-                    strokeLinejoin="round" aria-hidden>
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                  </svg>
+                <button className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}
+                  role="menuitem" onClick={handleLogout}>
                   Logout
                 </button>
               </div>

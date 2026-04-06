@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 func (h *Handler) UsersMeHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
+		log.Printf("UserID: %v, exists, %v", userID, exists)
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}

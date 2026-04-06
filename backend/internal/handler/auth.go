@@ -128,45 +128,6 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 
 	redirectURL := fmt.Sprintf("%s/auth/callback?&otc=%s&new_user=%t", h.frontendURL, otc, user.NewUser)
 	c.Redirect(http.StatusFound, redirectURL)
-
-	/*
-		//generate tokens for the user login
-		accessToken, _, err := h.generateTokens(user.ID.String())
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"message": "Could not generate required tokens",
-			})
-			return
-		}
-
-		//hash & store the refresh token
-		refreshHash := sha256.Sum256([]byte(refreshToken))
-		refreshHashStr := hex.EncodeToString(refreshHash[:])
-		expireTime := time.Now().Add(time.Duration(h.refreshExpiration) * time.Second)
-		_, err = h.store.CreateNewRefreshToken(c.Request.Context(), refreshHashStr, user.ID, expireTime)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"message": "Could not store required tokens",
-			})
-			return
-		}
-
-		log.Printf("Setting cookies - domain: %s, frontend domain: %s", h.cookieDomain, h.frontendCookieDomain)
-		log.Printf("refresh_token: %s", refreshToken[:10]) // first 10 chars only
-		log.Printf("auth_session: 1")
-		//set refresh token that lasts the specific amount of time (default: 7 days) in HttpOnly cookie
-		c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
-
-		//set lightweight auth indicator for the frontend middleware
-		c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.frontendCookieDomain, true, false)
-
-		//return token and "new user" bool for front end redirect
-		redirectURL := fmt.Sprintf("%s/auth/callback?access_token=%s&new_user=%t", h.frontendURL, accessToken, user.NewUser)
-		log.Printf("Redirecting to: %s", redirectURL)
-		c.Redirect(http.StatusFound, redirectURL)
-	*/
 }
 
 // POST /auth/refresh
@@ -279,26 +240,48 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 		return
 	}
 
-	//c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
-	log.Printf("refresh expiration: %d", h.refreshExpiration)
-	cookie := fmt.Sprintf(
-		"refresh_token=%s; Path=/; Domain=%s; Max-Age=%d; HttpOnly; Secure; SameSite=None",
-		refreshToken,
-		h.cookieDomain,
-		h.refreshExpiration,
-	)
-	c.Writer.Header().Add("Set-Cookie", cookie)
+	//hash & store the refresh token
+	refreshHash := sha256.Sum256([]byte(refreshToken))
+	refreshHashStr := hex.EncodeToString(refreshHash[:])
+	expireTime := time.Now().Add(time.Duration(h.refreshExpiration) * time.Second)
+	_, err = h.store.CreateNewRefreshToken(c.Request.Context(), refreshHashStr, otcUserID, expireTime)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not store required tokens",
+		})
+		return
+	}
+
+	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": accessToken,
 	})
 }
 
 // POST /auth/logout
-/*
 func (h *Handler) LogoutHandler(c *gin.Context) {
 	//TODO: delete refresh_token db value & cookie, delete auth_session cookie
+	cookieVal, err := c.Cookie("refresh_token")
+	if err != nil {
+		//No cookie, already logged out
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	// hash the token, look it up in DB & delete
+	hash := sha256.Sum256([]byte(cookieVal))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	if err := h.store.DeleteRefreshToken(c.Request.Context(), tokenHash); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, true, true)
+	c.SetCookie("auth_session", "", -1, "/", h.cookieDomain, true, false)
+	c.Status(http.StatusNoContent)
 }
-*/
 
 // generate auth token and refresh tokens
 func (h *Handler) generateTokens(userID string) (accessToken, refreshToken string, err error) {

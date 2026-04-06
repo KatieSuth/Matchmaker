@@ -173,11 +173,11 @@ func main() {
 		auth.GET("/discord_redirect", h.DiscordCallbackHandler)
 		auth.GET("/login", h.LoginHandler)
 		auth.POST("/refresh", h.RefreshHandler)
-		//TODO: logout
+		auth.POST("/logout", h.LogoutHandler)
 	}
 
 	protected := r.Group("/")
-	protected.Use(middleware.Auth([]byte(jwtSecret)))
+	protected.Use(middleware.Auth(jwtSecretBytes))
 	{
 
 		users := protected.Group("/users")

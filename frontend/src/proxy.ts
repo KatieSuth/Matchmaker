@@ -8,7 +8,6 @@ export  function proxy(request: NextRequest) {
      * If they didn't want the app to "break" they shouldn't have manually changed this value anyway.
      */
     const isAuthenticated = request.cookies.has("auth_session");
-    console.log("isAuthenticated: ", isAuthenticated)
     const { pathname } = request.nextUrl;
 
     // If no refresh token, always redirect to "/"
@@ -26,6 +25,6 @@ export  function proxy(request: NextRequest) {
 
 export const config = {
     // Run middleware on all routes except Next.js internals and static files
-    matcher: ["/((?!_next/static|_next/image|favicon.ico|auth/callback).*)"],
+    matcher: ["/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp|.*\\.gif).*)"],
     //matcher: ["/:path*"],
 };

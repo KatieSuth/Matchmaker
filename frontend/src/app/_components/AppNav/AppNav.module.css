@@ -35,13 +35,11 @@
 }
 
 .nav {
-  max-width: 1280px;
-  margin: 0 auto;
   padding: 0 1.5rem;
   height: 60px;
   display: flex;
   align-items: center;
-  gap: 2rem;
+  position: relative;
 }
 
 /* ─── Logo ───────────────────────────────────────────────── */
@@ -75,7 +73,9 @@
   align-items: center;
   gap: 0.25rem;
   list-style: none;
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .link {
@@ -85,7 +85,7 @@
   align-items: center;
   gap: 0;
   padding: 0.4rem 0.85rem;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -169,8 +169,16 @@
   border: 1.5px solid #06080f; /* creates the ring gap */
 }
 
+.avatarPlaceholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid #06080f;
+}
+
 .username {
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   max-width: 120px;

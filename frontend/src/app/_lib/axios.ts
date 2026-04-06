@@ -1,7 +1,7 @@
 import axios from "axios";
 import { refreshAccessToken, getAccessToken, setAccessToken } from "./auth";
 
-const api = axios.create({
+export const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL,
     withCredentials: true, // sends the HttpOnly refresh_token cookie automatically
 });

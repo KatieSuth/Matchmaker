@@ -6,7 +6,7 @@ It's still very much in the early phases but is intended to one day support Valo
 
 # Roadmap
 - [x] Initial infrastructure setup (containers, DB, etc)
-- [ ] Basic login functionality via Discord
+- [x] Basic login functionality via Discord
 - [ ] User preferences
 - [ ] One-off event admin configuration
 - [ ] One-off event sign-up for players
@@ -56,22 +56,22 @@ make dev
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-Choose either 3a or 3b:
-3a. From the same directory as the Caddyfile, run `docker compose exec caddy caddy trust`
-
-3b: Manually export and install the CA cert file from caddy's container. From the same directory as the Caddyfile while the containers are running:
+3: Manually export and install the CA cert file from caddy's container. From the same directory as the Caddyfile while the containers are running:
 
 ```bash
-# 1. Copy the CA cert out of the caddy_data volume
+# 3a. Copy the CA cert out of the caddy_data volume
 docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+```
 
-# 2a. install on macOS
+``` bash
+# choose the right one for you:
+# 3b. install on macOS
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-root.crt
 
-# 2b. install on Windows (run in elevated PowerShell)
+# 3b. install on Windows (run in elevated PowerShell)
 Import-Certificate -FilePath "caddy-root.crt" -CertStoreLocation Cert:\LocalMachine\Root
 
-# 2c. install on Linux (Ubuntu/Debian)
+# 3b. install on Linux (Ubuntu/Debian)
 sudo cp caddy-root.crt /usr/local/share/ca-certificates/caddy.crt
 sudo update-ca-certificates
 ```
