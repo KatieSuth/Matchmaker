@@ -7,7 +7,6 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 )
 
@@ -32,6 +31,6 @@ type Store interface {
 	ConsumeOneTimeCode(ctx context.Context, code string) (uuid.UUID, error)
 }
 
-func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
-	return &PostgresStore{q: db.New(pool)}
+func NewPostgresStore(dbtx db.DBTX) *PostgresStore {
+	return &PostgresStore{q: db.New(dbtx)}
 }

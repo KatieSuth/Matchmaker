@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -25,7 +26,7 @@ func LoadEnv(t *testing.T) {
 	}
 }
 
-func WithTestTx(t *testing.T, fn func(q *db.Queries)) {
+func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
 	LoadEnv(t)
 	dsn := os.Getenv("DATABASE_URL_TESTS")
 	if dsn == "" {
@@ -45,7 +46,9 @@ func WithTestTx(t *testing.T, fn func(q *db.Queries)) {
 	}
 	defer tx.Rollback(context.Background())
 
-	fn(db.New(tx))
+	store := store.NewPostgresStore(tx)
+
+	fn(db.New(tx), store)
 }
 
 func GetJWTSecret(t *testing.T) ([]byte, error) {

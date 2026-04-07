@@ -8,6 +8,7 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
+	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/testutil"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -24,7 +25,7 @@ func TestValidateAuth(t *testing.T) {
 		t.Errorf("Token is empty; 401 expected if no Bearer token is provided")
 	}
 
-	testutil.WithTestTx(t, func(q *db.Queries) {
+	testutil.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
 		//create a user for the token
 		discordId := "discordID1234"
 		discordName := "discordName1234"

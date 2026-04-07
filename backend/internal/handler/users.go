@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/model"
+	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -17,23 +21,29 @@ func (h *Handler) UsersMeHandler(c *gin.Context) {
 		return
 	}
 
-	userUUID, err := uuid.Parse(userID.(string))
+	user, err := GetUserById(userID.(string), h.store, c.Request.Context())
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": "Could not parse user ID",
-		})
-		return
-	}
-
-	user, err := h.store.GetUserByUserID(c.Request.Context(), userUUID)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Failed to fetch user",
+			"message": err,
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+func GetUserById(userId string, s store.Store, ctx context.Context) (model.User, error) {
+	userUUID, err := uuid.Parse(userId)
+	if err != nil {
+		log.Printf("Error parsing user ID string (%s) into UUID: %v", userId, err)
+		return model.User{}, errors.New("Could now parse user ID")
+	}
+
+	user, err := s.GetUserByUserID(ctx, userUUID)
+	if err != nil {
+		log.Printf("Error fetching user (%s): %v", userUUID.String(), err)
+		return model.User{}, errors.New("Failed to fetch user")
+	}
+	return user, nil
 }
