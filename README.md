@@ -78,7 +78,7 @@ sudo update-ca-certificates
 
 #### Firefox-specific steps
 
-1. Firefox requires a couple of manual changes to run as expected in a development environment. For SSL to work, Caddy's local CA cert must be exported from the container and imported into browser manually since Firefox has its own cert store separate from the OS. Follow the `docker exec` step in 3b to download the cert. Next, import it directly into Firefox:
+1. Firefox requires a couple of manual changes to run as expected in a development environment. For SSL to work, Caddy's local CA cert must be exported from the container and imported into browser manually since Firefox has its own cert store separate from the OS. Follow the `docker exec` step in 3a to download the cert. Next, import it directly into Firefox:
 
 ```
 1. Settings → Privacy & Security → scroll to the bottom → View Certificates
