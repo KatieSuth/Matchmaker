@@ -3,6 +3,7 @@ package model
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -15,6 +16,10 @@ type Claims struct {
 
 // generate auth token and refresh tokens
 func GenerateTokens(userID string, jwtSecret []byte) (accessToken, refreshToken string, err error) {
+	if userID == "" {
+		err = errors.New("userID must not be empty")
+		return
+	}
 	//access token
 	accessClaims := Claims{
 		UserID: userID,

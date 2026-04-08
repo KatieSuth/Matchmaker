@@ -1,0 +1,301 @@
+openapi: 3.1.0
+info:
+  title: MatchmakerAPI
+  version: 1.0.0
+  description: >
+    REST API for Matchmaker. Authentication is handled via Discord OAuth2.
+    After completing the OAuth2 flow, clients receive a short-lived JWT access token
+    and a long-lived HttpOnly refresh token cookie.
+
+tags:
+  - name: health
+    description: Service health
+  - name: auth
+    description: Authentication via Discord OAuth2
+  - name: users
+    description: User profile operations
+
+paths:
+
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy
+
+  # ---------------------------------------------------------------------------
+  # Auth
+  # ---------------------------------------------------------------------------
+
+  /auth/login:
+    get:
+      tags: [auth]
+      summary: Initiate Discord OAuth2 login
+      operationId: login
+      description: >
+        Generates a CSRF state token, stores it in a signed `oauth_state` cookie,
+        and redirects the browser to Discord's authorization endpoint.
+      responses:
+        "307":
+          description: Redirect to Discord authorization URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: Discord OAuth2 authorization URL
+            Set-Cookie:
+              schema:
+                type: string
+              description: >
+                `oauth_state` — signed, HttpOnly, Secure, 5-minute TTL.
+                Contains the CSRF state value.
+        "500":
+          description: Failed to generate state or encode cookie
+
+  /auth/discord_redirect:
+    get:
+      tags: [auth]
+      summary: Discord OAuth2 callback
+      operationId: discordCallback
+      description: >
+        Handles the redirect from Discord after the user authorizes the application.
+        Validates the state parameter against the `oauth_state` cookie, exchanges the
+        authorization code for a Discord token, fetches the Discord user, and
+        upserts the local user record. Issues a short-lived one-time code (OTC)
+        and redirects the browser to the frontend callback URL.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Authorization code returned by Discord
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: CSRF state value returned by Discord; must match the `oauth_state` cookie
+          schema:
+            type: string
+      responses:
+        "302":
+          description: >
+            Redirect to `{frontendURL}/auth/callback?otc={otc}&new_user={bool}`.
+            The frontend should POST the OTC to `/auth/complete` to receive tokens.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "401":
+          description: Missing or invalid `oauth_state` cookie, state mismatch, or failed code exchange
+        "500":
+          description: Discord API unreachable, malformed Discord response, or failed to upsert user
+
+  /auth/complete:
+    post:
+      tags: [auth]
+      summary: Exchange one-time code for tokens
+      operationId: completeAuth
+      description: >
+        Consumes a one-time code (OTC) issued during the Discord callback and returns
+        a JWT access token. Also sets an HttpOnly `refresh_token` cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [otc]
+              properties:
+                otc:
+                  type: string
+                  description: One-time code received in the frontend redirect query parameter
+                  example: "a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6"
+      responses:
+        "200":
+          description: Tokens issued successfully
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: >
+                `refresh_token` — HttpOnly, Secure, long-lived (default 7 days).
+                Used to obtain new access tokens via `/auth/refresh`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+        "400":
+          description: Missing or empty `otc` field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: OTC not found or already consumed
+        "500":
+          description: Token generation or storage failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      operationId: refreshToken
+      description: >
+        Reads the `refresh_token` HttpOnly cookie, validates it, and issues a new
+        access token plus a rotated refresh token (old token is deleted).
+      responses:
+        "200":
+          description: New access token issued and refresh token rotated
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Rotated `refresh_token` and `auth_session` cookies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+        "401":
+          description: Missing, invalid, or expired refresh token cookie
+        "500":
+          description: Token generation or storage failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout
+      operationId: logout
+      description: >
+        Deletes the refresh token from the database and clears the `refresh_token`
+        and `auth_session` cookies. Idempotent — returns 204 even if already logged out.
+      responses:
+        "204":
+          description: Logged out successfully (or was already logged out)
+        "500":
+          description: Failed to delete the refresh token from storage
+
+  # ---------------------------------------------------------------------------
+  # Users (protected — requires Bearer JWT)
+  # ---------------------------------------------------------------------------
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: Get current user profile
+      operationId: getUsersMe
+      description: Returns the authenticated user's profile.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch user from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+# =============================================================================
+# Components
+# =============================================================================
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from `/auth/complete` or `/auth/refresh`
+
+  schemas:
+
+    AccessTokenResponse:
+      type: object
+      required: [access_token]
+      properties:
+        access_token:
+          type: string
+          description: "Short-lived JWT for use in the `Authorization: Bearer` header"
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    ErrorResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [error]
+          example: error
+        message:
+          type: string
+          example: "Could not generate required tokens"
+
+    User:
+      type: object
+      description: Local user record, populated from Discord identity
+      required: [id, show_pronouns, created_at, updated_at, new_user]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Internal user UUID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        discord_id:
+          type: ["string", "null"]
+          description: Discord snowflake ID
+          example: "123456789012345678"
+        discord_name:
+          type: ["string", "null"]
+          description: Discord username
+          example: "katie"
+        image_url:
+          type: ["string", "null"]
+          description: Discord avatar hash
+          example: "a_1234abcd5678ef90"
+        pronouns:
+          type: ["string", "null"]
+          description: User-specified pronouns
+          example: "she/her"
+        show_pronouns:
+          type: boolean
+          description: Whether pronouns are shown publicly
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of account creation
+          example: "2024-01-15T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last profile update
+          example: "2024-06-01T08:30:00Z"
+        region:
+          type: ["string", "null"]
+          description: User's region
+          example: "NA-East"
+        new_user:
+          type: boolean
+          description: True if this account was created during this login
+          example: false

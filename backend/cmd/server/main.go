@@ -31,7 +31,7 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// In-memory store (swap for a real DB in production)
+	// Database
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("DATABASE_URL is required")

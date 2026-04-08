@@ -8,7 +8,6 @@ export default function DiscordLoginButton() {
 
   const handleLogin = () => {
     setLoading(true);
-    // Replace with your actual Discord OAuth URL
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     window.location.href = `${apiUrl}/auth/login`;
   };

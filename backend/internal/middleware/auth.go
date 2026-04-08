@@ -14,7 +14,7 @@ func Auth(jwtSecret []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 
-		userId, response := validateAuth(jwtSecret, authHeader)
+		userId, response := ValidateAuth(jwtSecret, authHeader)
 		if response != 0 {
 			c.AbortWithStatus(response)
 			return
@@ -26,7 +26,7 @@ func Auth(jwtSecret []byte) gin.HandlerFunc {
 	}
 }
 
-func validateAuth(jwtSecret []byte, authHeader string) (string, int) {
+func ValidateAuth(jwtSecret []byte, authHeader string) (string, int) {
 	//verify the header isn't empty
 	if authHeader == "" {
 		return "", http.StatusUnauthorized

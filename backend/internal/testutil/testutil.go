@@ -47,7 +47,6 @@ func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
 	defer tx.Rollback(context.Background())
 
 	store := store.NewPostgresStore(tx)
-
 	fn(db.New(tx), store)
 }
 

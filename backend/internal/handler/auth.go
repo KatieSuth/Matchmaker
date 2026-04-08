@@ -20,6 +20,16 @@ func generateState() (string, error) {
 	return hex.EncodeToString(state), err
 }
 
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
+}
+
+func (h *Handler) setAuthCookies(c *gin.Context, refreshToken string, maxAge int) {
+	c.SetCookie("refresh_token", refreshToken, maxAge, "/", h.cookieDomain, true, true)
+	c.SetCookie("auth_session", "1", maxAge, "/", h.cookieDomain, true, false)
+}
+
 // GET /auth/login
 func (h *Handler) LoginHandler(c *gin.Context) {
 	//generate state for the Discord
@@ -137,8 +147,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 	}
 
 	//parse and validate refresh token
-	refreshHash := sha256.Sum256([]byte(cookieVal))
-	refreshHashStr := hex.EncodeToString(refreshHash[:])
+	refreshHashStr := hashToken(cookieVal)
 
 	refresh, err := h.store.GetRefreshToken(c.Request.Context(), refreshHashStr)
 	if err != nil {
@@ -154,8 +163,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		}
 
 		//clear the cookies
-		c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, true, true)
-		c.SetCookie("auth_session", "", -1, "/", h.cookieDomain, true, false)
+		h.setAuthCookies(c, "", -1)
 
 		//return unauthorized
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -173,8 +181,8 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 	}
 
 	//store the new refresh token
-	refreshHashNew := sha256.Sum256([]byte(refreshToken))
-	refreshHashNewStr := hex.EncodeToString(refreshHashNew[:])
+	refreshHashNewStr := hashToken(refreshToken)
+
 	expireTime := time.Now().Add(time.Duration(h.refreshExpiration) * time.Second)
 	_, err = h.store.CreateNewRefreshToken(c.Request.Context(), refreshHashNewStr, refresh.UserID, expireTime)
 	if err != nil {
@@ -186,8 +194,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 	}
 
 	//set refresh token that lasts the specific amount of time (default: 7 days) in HttpOnly cookie
-	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
-	c.SetCookie("auth_session", "1", h.refreshExpiration, "/", h.cookieDomain, true, false)
+	h.setAuthCookies(c, refreshToken, h.refreshExpiration)
 
 	//delete the old refresh token
 	err = h.store.DeleteRefreshToken(c.Request.Context(), refreshHashStr)
@@ -239,8 +246,8 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 	}
 
 	//hash & store the refresh token
-	refreshHash := sha256.Sum256([]byte(refreshToken))
-	refreshHashStr := hex.EncodeToString(refreshHash[:])
+	refreshHashStr := hashToken(refreshToken)
+
 	expireTime := time.Now().Add(time.Duration(h.refreshExpiration) * time.Second)
 	_, err = h.store.CreateNewRefreshToken(c.Request.Context(), refreshHashStr, otcUserID, expireTime)
 	if err != nil {
@@ -251,7 +258,7 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("refresh_token", refreshToken, h.refreshExpiration, "/", h.cookieDomain, true, true)
+	h.setAuthCookies(c, refreshToken, h.refreshExpiration)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": accessToken,
 	})
@@ -268,15 +275,13 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 	}
 
 	// hash the token, look it up in DB & delete
-	hash := sha256.Sum256([]byte(cookieVal))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := hashToken(cookieVal)
 
 	if err := h.store.DeleteRefreshToken(c.Request.Context(), tokenHash); err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	c.SetCookie("refresh_token", "", -1, "/", h.cookieDomain, true, true)
-	c.SetCookie("auth_session", "", -1, "/", h.cookieDomain, true, false)
+	h.setAuthCookies(c, "", -1)
 	c.Status(http.StatusNoContent)
 }
