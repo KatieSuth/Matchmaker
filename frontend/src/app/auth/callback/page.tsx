@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { setAccessToken } from "@/app/_lib/auth";
 import { api } from "@/app/_lib/axios";
 import { useAuth } from "@/app/_context/AuthContext";
-import type { User } from "@/app/_types/user";
+import type { User } from "@/app/_types/types";
 
 interface CompleteAuthResponse {
     access_token: string;

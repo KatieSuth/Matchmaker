@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { setAccessToken, refreshAccessToken } from "@/app/_lib/auth";
-import type { User } from "@/app/_types/user";
+import type { User } from "@/app/_types/types";
 import api from "@/app/_lib/axios";
 
 interface AuthContextType {

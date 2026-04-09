@@ -1,26 +1,311 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@import "tailwindcss";
+
+/* ─── Design tokens ─────────────────────────────────────── */
+
+@theme {
+  /* Colors */
+  --color-bg:               #06080f;
+  --color-text:             #e8edf5;
+  --color-text-body:        rgba(180, 200, 235, 0.7);
+  --color-text-muted:       rgba(180, 200, 235, 0.55);
+  --color-text-soft:        rgba(180, 200, 235, 0.75);
+  --color-text-faint:       rgba(100, 120, 160, 0.35);
+  --color-text-faint-hover: rgba(140, 165, 210, 0.6);
+  --color-text-danger:      rgba(255, 100, 80, 0.7);
+  --color-text-danger-hover:rgba(255, 120, 100, 0.95);
+  --color-white-full:       #e8edf5;
+
+  --color-accent-blue:      #1e78ff;
+  --color-accent-orange:    #e06e14;
+  --color-accent-purple:    #b432dc;
+  --color-discord:          #5865f2;
+
+  --color-surface-card:     rgba(14, 20, 38, 0.97);
+  --color-surface-dropdown: rgba(14, 20, 38, 0.98);
+  --color-surface-hover:    rgba(255, 255, 255, 0.05);
+  --color-border-subtle:    rgba(255, 255, 255, 0.07);
+  --color-border-faint:     rgba(100, 120, 160, 0.2);
+
+  /* Animations */
+  --animate-rise:           rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-1:         rise 0.9s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-2:         rise 0.9s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-3:         rise 0.9s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-5:         rise 0.9s 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rise-btn:       rise 0.9s 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-drift:          drift 12s ease-in-out infinite alternate;
+  --animate-drift-reverse:  drift 10s ease-in-out infinite alternate-reverse;
+  --animate-drop-in:        dropIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  --keyframes-rise: {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: translateY(0); }
+  };
+  --keyframes-drift: {
+    from { transform: translate(0, 0); }
+    to   { transform: translate(40px, 30px); }
+  };
+  --keyframes-drop-in: {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  };
 }
 
-html, body { height: 100%; }
+/* ─── Base ───────────────────────────────────────────────── */
 
-body {
-  font-family:
-    -apple-system,        /* macOS/iOS: San Francisco */
-    BlinkMacSystemFont,   /* Chrome on macOS */
-    'Segoe UI',           /* Windows */
-    'Helvetica Neue',     /* older macOS */
-    Arial,                /* universal fallback */
-    sans-serif;
-  background: #06080f;
-  color: #e8edf5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      'Helvetica Neue', Arial, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgba(58, 140, 255, 0.45);
+    color: #fff;
+  }
 }
 
-::selection {
-  background: rgba(58, 140, 255, 0.45);
+/* ─── Utilities ──────────────────────────────────────────── */
+
+/* Page backgrounds */
+@utility bg-page {
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(ellipse 70% 45% at 20% 50%, rgba(30, 80, 200, 0.25) 0%, transparent 65%),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(220, 90, 20, 0.18) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 35% at 50% 0%,  rgba(180, 50, 200, 0.15) 0%, transparent 60%);
+}
+
+@utility bg-shell {
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(ellipse 70% 45% at 20% 50%, rgba(30, 80, 200, 0.12) 0%, transparent 65%),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(220, 90, 20, 0.09) 0%, transparent 65%);
+}
+
+/* Glow orbs */
+@utility glow-orb-blue {
+  background: radial-gradient(circle, rgba(30, 100, 255, 0.06) 0%, transparent 70%);
+}
+
+@utility glow-orb-orange {
+  background: radial-gradient(circle, rgba(230, 80, 20, 0.06) 0%, transparent 70%);
+}
+
+/* Gradient accents */
+@utility bg-top-edge {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 120, 255, 0.8)  0%,
+    rgba(180, 50, 220, 0.6)  50%,
+    rgba(230, 110, 20, 0.8) 100%
+  );
+}
+
+@utility bg-brand-gradient {
+  background: linear-gradient(135deg, #1e78ff 0%, #b432dc 50%, #e06e14 100%);
+}
+
+@utility bg-divider-blue {
+  background: linear-gradient(90deg, transparent, rgba(30, 120, 255, 0.35));
+}
+
+@utility bg-divider-orange {
+  background: linear-gradient(270deg, transparent, rgba(230, 110, 20, 0.35));
+}
+
+/* Card */
+@utility card {
+  background: linear-gradient(160deg, rgba(14, 20, 38, 0.97) 0%, rgba(8, 11, 20, 0.99) 100%);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 30px 90px rgba(0, 0, 0, 0.7),
+    0 0 80px rgba(30, 80, 200, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Logo filters */
+@utility logo-glow-lg {
+  filter:
+    drop-shadow(0 0 24px rgba(30, 100, 255, 0.25))
+    drop-shadow(0 0 40px rgba(220, 80, 20, 0.15));
+}
+
+@utility logo-glow-sm {
+  filter:
+    drop-shadow(0 0 10px rgba(30, 100, 255, 0.3))
+    drop-shadow(0 0 18px rgba(220, 80, 20, 0.15));
+}
+
+/* Divider gem */
+@utility divider-gem {
+  background: linear-gradient(135deg, #1e78ff, #e06e14);
+  box-shadow: 0 0 8px rgba(180, 100, 255, 0.5);
+}
+
+/* Footer link */
+@utility footer-link {
+  border-bottom: 1px solid var(--color-border-faint);
+  color: var(--color-text-faint);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--color-text-faint-hover);
+    border-bottom-color: rgba(140, 165, 210, 0.35);
+  }
+}
+
+/* Nav header */
+@utility nav-header {
+  background: linear-gradient(180deg, rgba(10, 14, 28, 0.97) 0%, rgba(6, 8, 15, 0.95) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* Nav link animated underline */
+@utility link-underline {
+  position: absolute;
+  bottom: 2px;
+  left: 0.85rem;
+  right: 0.85rem;
+  height: 1.5px;
+  background: linear-gradient(90deg, #1e78ff, #e06e14);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@utility nav-link {
+  color: var(--color-text-muted);
+
+  &:hover {
+    color: rgba(210, 225, 255, 0.9);
+    background: rgba(255, 255, 255, 0.04);
+
+    & .link-underline { transform: scaleX(1); }
+  }
+}
+
+@utility nav-link-active {
+  color: var(--color-text);
+
+  & .link-underline { transform: scaleX(1); }
+}
+
+/* Avatar button */
+@utility avatar-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border-subtle);
+  color: rgba(180, 200, 235, 0.8);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: var(--color-text);
+  }
+}
+
+/* Dropdown */
+@utility dropdown-panel {
+  background: linear-gradient(160deg, rgba(14, 20, 38, 0.98) 0%, rgba(8, 11, 20, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 20px 60px rgba(0, 0, 0, 0.65),
+    0 0 40px rgba(30, 80, 200, 0.08);
+}
+
+@utility dropdown-arrow {
+  background: rgba(14, 20, 38, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+@utility dropdown-item {
+  color: var(--color-text-soft);
+  background: transparent;
+  text-decoration: none;
+
+  &:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+}
+
+@utility dropdown-item-danger {
+  color: var(--color-text-danger);
+
+  &:hover {
+    background: rgba(255, 80, 60, 0.08);
+    color: var(--color-text-danger-hover);
+  }
+}
+
+/* Login button */
+@utility login-btn {
+  background: var(--color-discord);
   color: #fff;
+  box-shadow:
+    0 4px 24px rgba(88, 101, 242, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.2) inset;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.12) 50%,
+      transparent 60%
+    );
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      rgba(100, 160, 255, 0.6),
+      rgba(255, 255, 255, 0.3),
+      rgba(255, 150, 60, 0.4)
+    );
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 32px rgba(88, 101, 242, 0.55),
+      0 1px 0 rgba(255, 255, 255, 0.12) inset;
+
+    &::before { transform: translateX(100%); }
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 12px rgba(88, 101, 242, 0.4);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 }

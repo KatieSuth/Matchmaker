@@ -183,7 +183,16 @@ func main() {
 		users := protected.Group("/users")
 		{
 			users.GET("/me", h.UsersMeHandler)
+			//users.GET("/me/games", h.UsersMeGamesHandler)
 		}
+
+		/*
+			games := protected.Group("/games")
+			{
+				games.GET("", h.SystemGamesHandler)
+				games.GET("/:gameId/ranks", h.GetGameRanks)
+			}
+		*/
 	}
 
 	/*
