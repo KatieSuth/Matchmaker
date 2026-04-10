@@ -354,7 +354,7 @@ function GameCard({
               render={({ field }) => (
                 <ToggleRow
                   label="Show rank publicly"
-                  description={field.value ? "Visible to everyone" : "Visible only to the host of games you register for"}
+                  description={field.value ? "Visible to everyone in games you register for" : "Visible only to the host of games you register for"}
                   checked={field.value}
                   onChange={field.onChange}
                 />
@@ -539,7 +539,7 @@ export default function UserPreferencesForm() {
               render={({ field }) => (
                 <ToggleRow
                   label="Display pronouns publicly"
-                  description="Other players will see your pronouns on your profile"
+                  description={field.value ? "Visible to everyone in games you register for" : "Visible only to the host of games you register for"}
                   checked={field.value}
                   onChange={field.onChange}
                 />
