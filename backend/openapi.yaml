@@ -14,7 +14,9 @@ tags:
     description: Authentication via Discord OAuth2
   - name: users
     description: User profile operations
-
+  - name: games
+    description: Game catalogue
+    
 paths:
 
   /health:
@@ -215,6 +217,103 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /users/me/games:
+    get:
+      tags: [users]
+      summary: Get current user's games
+      operationId: getUsersMeGames
+      description: Returns all games associated with the authenticated user.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of user games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGame"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch user games from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ---------------------------------------------------------------------------
+  # Games (protected — requires Bearer JWT)
+  # ---------------------------------------------------------------------------
+
+  /games:
+    get:
+      tags: [games]
+      summary: Get all system games
+      operationId: getSystemGames
+      description: Returns all games defined in the system.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of system games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Game"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch games from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/ranks:
+    get:
+      tags: [games]
+      summary: Get ranks for a game
+      operationId: getGameRanks
+      description: Returns all ranks defined for the specified game.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: UUID of the game
+          schema:
+            type: string
+            format: uuid
+          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+      responses:
+        "200":
+          description: List of ranks for the game
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameRank"
+        "400":
+          description: Invalid or unparseable `gameId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch ranks from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 # =============================================================================
 # Components
 # =============================================================================
@@ -299,3 +398,119 @@ components:
           type: boolean
           description: True if this account was created during this login
           example: false
+
+    UserGame:
+      type: object
+      description: A game associated with a user, including rank information
+      required: [user_id, game_id, game_name, current_rank_name, peak_rank_name, show_rank, created_at, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUID of the user
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        game_id:
+          type: string
+          format: uuid
+          description: UUID of the game
+          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+        game_name:
+          type: string
+          description: Display name of the game
+          example: "Valorant"
+        in_game_name:
+          type: ["string", "null"]
+          description: The user's in-game name or tag
+          example: "katie#NA1"
+        current_rank:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the user's current rank, if set
+          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+        current_rank_name:
+          type: string
+          description: Display name of the current rank
+          example: "Diamond 2"
+        peak_rank:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the user's peak rank, if set
+          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+        peak_rank_name:
+          type: string
+          description: Display name of the peak rank
+          example: "Immortal 1"
+        show_rank:
+          type: boolean
+          description: Whether rank information is shown publicly
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when this game was added to the user's profile
+          example: "2024-01-15T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last update to this game entry
+          example: "2024-06-01T08:30:00Z"
+
+    Game:
+      type: object
+      description: A game defined in the system
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the game
+          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+        name:
+          type: string
+          description: Display name of the game
+          example: "Valorant"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the game was added to the system
+          example: "2024-01-15T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last update to this game
+          example: "2024-06-01T08:30:00Z"
+
+    GameRank:
+      type: object
+      description: A rank tier belonging to a specific game
+      required: [id, name, order, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the rank
+          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+        game_id:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the game this rank belongs to
+          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+        name:
+          type: string
+          description: Display name of the rank
+          example: "Diamond 2"
+        order:
+          type: integer
+          format: int32
+          description: Numeric ordering of the rank within the game (ascending)
+          example: 14
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the rank was created
+          example: "2024-01-15T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last update to this rank
+          example: "2024-06-01T08:30:00Z"

@@ -127,7 +127,6 @@ type UserGame struct {
 	UserID        uuid.UUID
 	GameID        uuid.UUID
 	InGameName    string
-	Region        *string
 	CurrentRank   *uuid.UUID
 	PeakRank      *uuid.UUID
 	ShowRank      bool

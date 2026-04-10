@@ -60,7 +60,6 @@ CREATE TABLE "user_games" (
   "user_id" UUID,
   "game_id" UUID,
   "in_game_name" TEXT NOT NULL,
-  "region" TEXT,
   "current_rank" UUID,
   "peak_rank" UUID,
   "show_rank" BOOLEAN NOT NULL DEFAULT false,

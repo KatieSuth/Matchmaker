@@ -183,31 +183,15 @@ func main() {
 		users := protected.Group("/users")
 		{
 			users.GET("/me", h.UsersMeHandler)
-			//users.GET("/me/games", h.UsersMeGamesHandler)
+			users.GET("/me/games", h.UsersMeGamesHandler)
 		}
 
-		/*
-			games := protected.Group("/games")
-			{
-				games.GET("", h.SystemGamesHandler)
-				games.GET("/:gameId/ranks", h.GetGameRanks)
-			}
-		*/
-	}
-
-	/*
-		v1 := r.Group("/api/v1")
+		games := protected.Group("/games")
 		{
-			items := v1.Group("/items")
-			{
-				items.GET("", h.ListItems)
-				items.POST("", h.CreateItem)
-				items.GET("/:id", h.GetItem)
-				items.PUT("/:id", h.UpdateItem)
-				items.DELETE("/:id", h.DeleteItem)
-			}
+			games.GET("", h.GetSystemGamesHandler)
+			games.GET("/:gameId/ranks", h.GetGameRanksByGame)
 		}
-	*/
+	}
 
 	log.Printf("🚀  API listening on :%s", port)
 	if err := r.Run(":" + port); err != nil {

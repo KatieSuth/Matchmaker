@@ -29,6 +29,15 @@ type Store interface {
 	//one-time codes
 	CreateOneTimeCode(ctx context.Context, code string, userID uuid.UUID) error
 	ConsumeOneTimeCode(ctx context.Context, code string) (uuid.UUID, error)
+
+	//user's games
+	GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
+
+	//games
+	GetSystemGames(ctx context.Context) ([]model.Game, error)
+
+	//game ranks
+	GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
 }
 
 func NewPostgresStore(dbtx db.DBTX) *PostgresStore {

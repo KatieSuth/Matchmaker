@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import api from "@/app/_lib/axios";
 import { User, Game, GameRank, UserGame } from "@/app/_types/types"
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
@@ -18,7 +19,6 @@ const REGIONS = ["NA", "EMEA", "APAC"] as const;
 const userGameSchema = z.object({
   game_id: z.string().uuid("Please select a game"),
   in_game_name: z.string().min(1, "In-game name is required"),
-  region: z.enum(REGIONS).nullable().optional(),
   current_rank: z.string().nullable().optional(),
   peak_rank: z.string().nullable().optional(),
   show_rank: z.boolean(),
@@ -39,47 +39,33 @@ type PreferencesFormValues = z.infer<typeof preferencesSchema>;
 // ---------------------------------------------------------------------------
 
 async function fetchGames(): Promise<Game[]> {
-  const res = await fetch("/games");
-  if (!res.ok) throw new Error(`Failed to load games: ${res.status}`);
-  return res.json();
+  const res = await api.get<Game[]>("/games");
+  return res.data;
 }
 
 async function fetchRanksForGame(gameId: string): Promise<GameRank[]> {
-  const res = await fetch(`/games/ranks/${gameId}`);
-  if (!res.ok) throw new Error(`Failed to load ranks: ${res.status}`);
-  const data: GameRank[] = await res.json();
-  return data.sort((a, b) => a.order - b.order);
+  const res = await api.get<GameRank[]>(`/games/${gameId}/ranks`);
+  return res.data.sort((a, b) => a.order - b.order);
 }
 
 async function fetchUserGames(): Promise<UserGame[]> {
-  const res = await fetch("/users/me/games");
-  if (!res.ok) throw new Error(`Failed to load user games: ${res.status}`);
-  return res.json();
+  const res = await api.get<UserGame[]>("/users/me/games");
+  return res.data;
 }
 
 async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
-  const res = await fetch("/users/me", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      pronouns: data.pronouns || null,
-      show_pronouns: data.show_pronouns,
-      region: data.region ?? null,
-      games: data.games.map((g) => ({
-        game_id: g.game_id,
-        in_game_name: g.in_game_name,
-        region: g.region ?? null,
-        current_rank: g.current_rank ?? null,
-        peak_rank: g.peak_rank ?? null,
-        show_rank: g.show_rank,
-        api_permission: g.api_permission,
-      })),
-    }),
+  await api.put("/users/me", {
+    pronouns: data.pronouns || null,
+    show_pronouns: data.show_pronouns,
+    region: data.region ?? null,
+    games: data.games.map((g) => ({
+      game_id: g.game_id,
+      in_game_name: g.in_game_name,
+      current_rank: g.current_rank ?? null,
+      peak_rank: g.peak_rank ?? null,
+      show_rank: g.show_rank,
+    })),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `Request failed: ${res.status}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +195,7 @@ interface GameCardProps {
   register: ReturnType<typeof useForm<PreferencesFormValues>>["register"];
   errors: ReturnType<typeof useForm<PreferencesFormValues>>["formState"]["errors"];
   watchedGameId: string;
+  takenGameIds: string[];
   onRemove: () => void;
   onGameChange: (gameId: string) => void;
 }
@@ -220,6 +207,7 @@ function GameCard({
   register,
   errors,
   watchedGameId,
+  takenGameIds,
   onRemove,
   onGameChange,
 }: GameCardProps) {
@@ -259,7 +247,9 @@ function GameCard({
                   onGameChange(v);
                 }}
                 placeholder="— Select a game —"
-                options={allGames.map((g) => ({ value: g.id, label: g.name }))}
+                options={allGames
+                  .filter((g) => g.id === watchedGameId || !takenGameIds.includes(g.id))
+                  .map((g) => ({ value: g.id, label: g.name }))}
               />
             </div>
           )}
@@ -319,21 +309,8 @@ function GameCard({
                 className={inputCls}
               />
             </Field>
-
-            <Field label="Region">
-              <Controller
-                control={control}
-                name={`games.${index}.region`}
-                render={({ field }) => (
-                  <Select
-                    value={field.value ?? ""}
-                    onChange={(v) => field.onChange(v || null)}
-                    placeholder="— Any —"
-                    options={REGIONS.map((r) => ({ value: r, label: r }))}
-                  />
-                )}
-              />
-            </Field>
+            
+            <br />
 
             {ranks.length > 0 && (
               <>
@@ -377,24 +354,13 @@ function GameCard({
               render={({ field }) => (
                 <ToggleRow
                   label="Show rank publicly"
-                  description="Visible on your profile and in search results"
+                  description={field.value ? "Visible to everyone" : "Visible only to the host of games you register for"}
                   checked={field.value}
                   onChange={field.onChange}
                 />
               )}
             />
-            <Controller
-              control={control}
-              name={`games.${index}.api_permission`}
-              render={({ field }) => (
-                <ToggleRow
-                  label="Allow API access"
-                  description="Let the platform fetch your stats automatically"
-                  checked={field.value}
-                  onChange={field.onChange}
-                />
-              )}
-            />
+
           </div>
         </>
       )}
@@ -454,12 +420,12 @@ export default function UserPreferencesForm() {
       region: (user.region as (typeof REGIONS)[number]) ?? null,
       games: userGames.map((ug) => ({
         game_id: ug.game_id,
-        in_game_name: ug.in_game_name,
-        region: (ug.region as (typeof REGIONS)[number]) ?? null,
+        in_game_name: ug.in_game_name ?? "",
+        region: null,
         current_rank: ug.current_rank ?? null,
         peak_rank: ug.peak_rank ?? null,
         show_rank: ug.show_rank,
-        api_permission: ug.api_permission,
+        api_permission: false,
       })),
     });
   }, [user, userGames, reset]);
@@ -482,7 +448,6 @@ export default function UserPreferencesForm() {
     append({
       game_id: "",
       in_game_name: "",
-      region: null,
       current_rank: null,
       peak_rank: null,
       show_rank: true,
@@ -616,6 +581,7 @@ export default function UserPreferencesForm() {
                 register={register}
                 errors={errors}
                 watchedGameId={watchedGames?.[index]?.game_id ?? ""}
+                takenGameIds={watchedGames?.map((g) => g.game_id).filter(Boolean) ?? []}
                 onRemove={() => remove(index)}
                 onGameChange={() => handleGameChange(index)}
               />
