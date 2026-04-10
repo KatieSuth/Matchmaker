@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// POST /users/me
+// GET /users/me
 func (h *Handler) UsersMeHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -47,6 +47,12 @@ func GetUserById(userId string, s store.Store, ctx context.Context) (model.User,
 	}
 	return user, nil
 }
+
+/*
+// PUT /users/me
+func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
+}
+*/
 
 // GET /users/me/games
 func (h *Handler) UsersMeGamesHandler(c *gin.Context) {

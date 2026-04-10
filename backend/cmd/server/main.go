@@ -183,6 +183,7 @@ func main() {
 		users := protected.Group("/users")
 		{
 			users.GET("/me", h.UsersMeHandler)
+			//users.PUT("/me", h.UpdateUsersMeHandler)
 			users.GET("/me/games", h.UsersMeGamesHandler)
 		}
 

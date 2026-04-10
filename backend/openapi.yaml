@@ -16,7 +16,7 @@ tags:
     description: User profile operations
   - name: games
     description: Game catalogue
-    
+
 paths:
 
   /health:
@@ -116,7 +116,7 @@ paths:
                 otc:
                   type: string
                   description: One-time code received in the frontend redirect query parameter
-                  example: "a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6"
+                  examples: ["a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6"]
       responses:
         "200":
           description: Tokens issued successfully
@@ -289,7 +289,9 @@ paths:
           schema:
             type: string
             format: uuid
-          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+          examples:
+            default:
+              value: "987fcdeb-51a2-43d7-b890-123456789abc"
       responses:
         "200":
           description: List of ranks for the game
@@ -336,7 +338,7 @@ components:
         access_token:
           type: string
           description: "Short-lived JWT for use in the `Authorization: Bearer` header"
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          examples: ["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."]
 
     ErrorResponse:
       type: object
@@ -345,10 +347,10 @@ components:
         status:
           type: string
           enum: [error]
-          example: error
+          examples: [error]
         message:
           type: string
-          example: "Could not generate required tokens"
+          examples: ["Could not generate required tokens"]
 
     User:
       type: object
@@ -359,45 +361,45 @@ components:
           type: string
           format: uuid
           description: Internal user UUID
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          examples: ["123e4567-e89b-12d3-a456-426614174000"]
         discord_id:
           type: ["string", "null"]
           description: Discord snowflake ID
-          example: "123456789012345678"
+          examples: ["123456789012345678"]
         discord_name:
           type: ["string", "null"]
           description: Discord username
-          example: "katie"
+          examples: ["katie"]
         image_url:
           type: ["string", "null"]
           description: Discord avatar hash
-          example: "a_1234abcd5678ef90"
+          examples: ["a_1234abcd5678ef90"]
         pronouns:
           type: ["string", "null"]
           description: User-specified pronouns
-          example: "she/her"
+          examples: ["she/her"]
         show_pronouns:
           type: boolean
           description: Whether pronouns are shown publicly
-          example: true
+          examples: [true]
         created_at:
           type: string
           format: date-time
           description: Timestamp of account creation
-          example: "2024-01-15T12:00:00Z"
+          examples: ["2024-01-15T12:00:00Z"]
         updated_at:
           type: string
           format: date-time
           description: Timestamp of last profile update
-          example: "2024-06-01T08:30:00Z"
+          examples: ["2024-06-01T08:30:00Z"]
         region:
           type: ["string", "null"]
           description: User's region
-          example: "NA-East"
+          examples: ["NA-East"]
         new_user:
           type: boolean
           description: True if this account was created during this login
-          example: false
+          examples: [false]
 
     UserGame:
       type: object
@@ -408,52 +410,52 @@ components:
           type: string
           format: uuid
           description: UUID of the user
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          examples: ["123e4567-e89b-12d3-a456-426614174000"]
         game_id:
           type: string
           format: uuid
           description: UUID of the game
-          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+          examples: ["987fcdeb-51a2-43d7-b890-123456789abc"]
         game_name:
           type: string
           description: Display name of the game
-          example: "Valorant"
+          examples: ["Valorant"]
         in_game_name:
           type: ["string", "null"]
           description: The user's in-game name or tag
-          example: "katie#NA1"
+          examples: ["katie#NA1"]
         current_rank:
           type: ["string", "null"]
           format: uuid
           description: UUID of the user's current rank, if set
-          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+          examples: ["aabbccdd-1234-5678-abcd-ef0123456789"]
         current_rank_name:
           type: string
           description: Display name of the current rank
-          example: "Diamond 2"
+          examples: ["Diamond 2"]
         peak_rank:
           type: ["string", "null"]
           format: uuid
           description: UUID of the user's peak rank, if set
-          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+          examples: ["aabbccdd-1234-5678-abcd-ef0123456789"]
         peak_rank_name:
           type: string
           description: Display name of the peak rank
-          example: "Immortal 1"
+          examples: ["Immortal 1"]
         show_rank:
           type: boolean
           description: Whether rank information is shown publicly
-          example: true
+          examples: [true]
         created_at:
           type: string
           format: date-time
           description: Timestamp when this game was added to the user's profile
-          example: "2024-01-15T12:00:00Z"
+          examples: ["2024-01-15T12:00:00Z"]
         updated_at:
           type: string
           format: date-time
           description: Timestamp of the last update to this game entry
-          example: "2024-06-01T08:30:00Z"
+          examples: ["2024-06-01T08:30:00Z"]
 
     Game:
       type: object
@@ -464,21 +466,21 @@ components:
           type: string
           format: uuid
           description: UUID of the game
-          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+          examples: ["987fcdeb-51a2-43d7-b890-123456789abc"]
         name:
           type: string
           description: Display name of the game
-          example: "Valorant"
+          examples: ["Valorant"]
         created_at:
           type: string
           format: date-time
           description: Timestamp when the game was added to the system
-          example: "2024-01-15T12:00:00Z"
+          examples: ["2024-01-15T12:00:00Z"]
         updated_at:
           type: string
           format: date-time
           description: Timestamp of the last update to this game
-          example: "2024-06-01T08:30:00Z"
+          examples: ["2024-06-01T08:30:00Z"]
 
     GameRank:
       type: object
@@ -489,28 +491,28 @@ components:
           type: string
           format: uuid
           description: UUID of the rank
-          example: "aabbccdd-1234-5678-abcd-ef0123456789"
+          examples: ["aabbccdd-1234-5678-abcd-ef0123456789"]
         game_id:
           type: ["string", "null"]
           format: uuid
           description: UUID of the game this rank belongs to
-          example: "987fcdeb-51a2-43d7-b890-123456789abc"
+          examples: ["987fcdeb-51a2-43d7-b890-123456789abc"]
         name:
           type: string
           description: Display name of the rank
-          example: "Diamond 2"
+          examples: ["Diamond 2"]
         order:
           type: integer
           format: int32
           description: Numeric ordering of the rank within the game (ascending)
-          example: 14
+          examples: [14]
         created_at:
           type: string
           format: date-time
           description: Timestamp when the rank was created
-          example: "2024-01-15T12:00:00Z"
+          examples: ["2024-01-15T12:00:00Z"]
         updated_at:
           type: string
           format: date-time
           description: Timestamp of the last update to this rank
-          example: "2024-06-01T08:30:00Z"
+          examples: ["2024-06-01T08:30:00Z"]
