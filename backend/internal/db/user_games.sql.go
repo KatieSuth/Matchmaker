@@ -12,6 +12,84 @@ import (
 	"github.com/google/uuid"
 )
 
+const createGameForUser = `-- name: CreateGameForUser :one
+INSERT INTO user_games (user_id, game_id, created_at, updated_at, in_game_name, current_rank, peak_rank, show_rank)
+VALUES (
+    $1,
+    $2,
+    NOW(),
+    NOW(),
+    $3,
+    $4,
+    $5,
+    $6
+)
+RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+`
+
+type CreateGameForUserParams struct {
+	UserID      uuid.UUID
+	GameID      uuid.UUID
+	InGameName  string
+	CurrentRank *uuid.UUID
+	PeakRank    *uuid.UUID
+	ShowRank    bool
+}
+
+func (q *Queries) CreateGameForUser(ctx context.Context, arg CreateGameForUserParams) (UserGame, error) {
+	row := q.db.QueryRow(ctx, createGameForUser,
+		arg.UserID,
+		arg.GameID,
+		arg.InGameName,
+		arg.CurrentRank,
+		arg.PeakRank,
+		arg.ShowRank,
+	)
+	var i UserGame
+	err := row.Scan(
+		&i.UserID,
+		&i.GameID,
+		&i.InGameName,
+		&i.CurrentRank,
+		&i.PeakRank,
+		&i.ShowRank,
+		&i.ApiPermission,
+		&i.ApiLinksID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGameForUserByIds = `-- name: GetGameForUserByIds :one
+SELECT user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+FROM user_games AS UG
+WHERE user_id = $1 AND game_id = $2
+`
+
+type GetGameForUserByIdsParams struct {
+	UserID uuid.UUID
+	GameID uuid.UUID
+}
+
+func (q *Queries) GetGameForUserByIds(ctx context.Context, arg GetGameForUserByIdsParams) (UserGame, error) {
+	row := q.db.QueryRow(ctx, getGameForUserByIds, arg.UserID, arg.GameID)
+	var i UserGame
+	err := row.Scan(
+		&i.UserID,
+		&i.GameID,
+		&i.InGameName,
+		&i.CurrentRank,
+		&i.PeakRank,
+		&i.ShowRank,
+		&i.ApiPermission,
+		&i.ApiLinksID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getGamesForUser = `-- name: GetGamesForUser :many
 SELECT UG.user_id, UG.game_id, UG.in_game_name, UG.current_rank, UG.peak_rank, UG.show_rank, UG.created_at, UG.updated_at,
        G.name as game_name,
@@ -68,4 +146,50 @@ func (q *Queries) GetGamesForUser(ctx context.Context, userID uuid.UUID) ([]GetG
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateGameForUser = `-- name: UpdateGameForUser :one
+UPDATE user_games
+SET updated_at = NOW(),
+    in_game_name = $1,
+    current_rank = $2,
+    peak_rank = $3,
+    show_rank = $4
+WHERE user_id = $5
+AND game_id = $6
+RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+`
+
+type UpdateGameForUserParams struct {
+	InGameName  string
+	CurrentRank *uuid.UUID
+	PeakRank    *uuid.UUID
+	ShowRank    bool
+	UserID      uuid.UUID
+	GameID      uuid.UUID
+}
+
+func (q *Queries) UpdateGameForUser(ctx context.Context, arg UpdateGameForUserParams) (UserGame, error) {
+	row := q.db.QueryRow(ctx, updateGameForUser,
+		arg.InGameName,
+		arg.CurrentRank,
+		arg.PeakRank,
+		arg.ShowRank,
+		arg.UserID,
+		arg.GameID,
+	)
+	var i UserGame
+	err := row.Scan(
+		&i.UserID,
+		&i.GameID,
+		&i.InGameName,
+		&i.CurrentRank,
+		&i.PeakRank,
+		&i.ShowRank,
+		&i.ApiPermission,
+		&i.ApiLinksID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

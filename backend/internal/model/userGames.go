@@ -22,7 +22,7 @@ type UserGame struct {
 }
 
 /*
- * Mapping function to enable json mappings (sqlc can do
+ * Mapping functions to enable json mappings (sqlc can do
  * this but handling it manually gives more flexibility)
  */
 func MapDbUserGamesToUserGames(dbUserGames []db.GetGamesForUserRow) []UserGame {
@@ -45,4 +45,19 @@ func MapDbUserGamesToUserGames(dbUserGames []db.GetGamesForUserRow) []UserGame {
 	}
 
 	return userGames
+}
+
+func MapDbUserGameToUserGame(dbUserGame db.UserGame) UserGame {
+	userGame := UserGame{
+		UserID:      dbUserGame.UserID,
+		GameID:      dbUserGame.GameID,
+		InGameName:  &dbUserGame.InGameName,
+		CurrentRank: dbUserGame.CurrentRank,
+		PeakRank:    dbUserGame.PeakRank,
+		ShowRank:    dbUserGame.ShowRank,
+		CreatedAt:   dbUserGame.CreatedAt,
+		UpdatedAt:   dbUserGame.UpdatedAt,
+	}
+
+	return userGame
 }

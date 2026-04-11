@@ -1,9 +1,8 @@
 package handler
 
 import (
-	"context"
-	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
@@ -16,16 +15,27 @@ import (
 func (h *Handler) UsersMeHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		log.Printf("UserID: %v, exists, %v", userID, exists)
+		slog.WarnContext(c.Request.Context(), "request reached GetSystemGamesHandler without userID in context")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
-	user, err := GetUserById(userID.(string), h.store, c.Request.Context())
+	userUUID, err := uuid.Parse(userID.(string))
 	if err != nil {
+		log.Printf("Error parsing user ID string (%s) into UUID: %v", userID, err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Could not parse user ID",
+		})
+		return
+	}
+
+	user, err := h.store.GetUserByUserID(c.Request.Context(), userUUID)
+	if err != nil {
+		log.Printf("Error fetching user (%s): %v", userUUID.String(), err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to fetch user",
 		})
 		return
 	}
@@ -33,59 +43,127 @@ func (h *Handler) UsersMeHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-func GetUserById(userId string, s store.Store, ctx context.Context) (model.User, error) {
-	userUUID, err := uuid.Parse(userId)
-	if err != nil {
-		log.Printf("Error parsing user ID string (%s) into UUID: %v", userId, err)
-		return model.User{}, errors.New("Could now parse user ID")
-	}
-
-	user, err := s.GetUserByUserID(ctx, userUUID)
-	if err != nil {
-		log.Printf("Error fetching user (%s): %v", userUUID.String(), err)
-		return model.User{}, errors.New("Failed to fetch user")
-	}
-	return user, nil
-}
-
-/*
 // PUT /users/me
 func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		slog.WarnContext(c.Request.Context(), "request reached GetSystemGamesHandler without userID in context")
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID.(string))
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "Failed to parse user ID into UUID", "user_id", userID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not parse user ID",
+		})
+		return
+	}
+
+	var body struct {
+		Pronouns     string           `json:"pronouns"`
+		ShowPronouns bool             `json:"show_pronouns"`
+		Region       string           `json:"region"`
+		Games        []model.UserGame `json:"games"`
+	}
+
+	err = c.ShouldBindJSON(&body)
+
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Improper json or json value types",
+		})
+		return
+	}
+
+	type result struct {
+		model.User
+		Games []model.UserGame `json:"games"`
+	}
+
+	var res result
+
+	err = h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
+		user, err := h.store.UpdateUser(c.Request.Context(), userUUID, &body.Pronouns, body.ShowPronouns, &body.Region)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"message": "Something went wrong",
+			})
+			return err
+		}
+
+		res.CreatedAt = user.CreatedAt
+		res.DiscordID = user.DiscordID
+		res.DiscordName = user.DiscordName
+		res.ID = user.ID
+		res.ImageUrl = user.ImageUrl
+		res.NewUser = user.NewUser
+		res.Pronouns = user.Pronouns
+		res.ShowPronouns = user.ShowPronouns
+		res.UpdatedAt = user.UpdatedAt
+
+		var games []model.UserGame
+		for _, ug := range body.Games {
+			userGame, result, err := h.store.UpsertGameForUser(c.Request.Context(), userUUID, ug)
+			if result == http.StatusBadRequest {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": err.Error(),
+				})
+				return err
+			} else if err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"status":  "error",
+					"message": "Something went wrong",
+				})
+				return err
+			}
+			games = append(games, userGame)
+		}
+
+		res.Games = games
+		return nil
+	})
+
+	if err != nil {
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
 }
-*/
 
 // GET /users/me/games
 func (h *Handler) UsersMeGamesHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		log.Printf("UserID: %v, exists, %v", userID, exists)
+		slog.WarnContext(c.Request.Context(), "request reached GetSystemGamesHandler without userID in context")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
-	userGames, err := GetUserGames(userID.(string), h.store, c.Request.Context())
+	userUUID, err := uuid.Parse(userID.(string))
 	if err != nil {
+		log.Printf("Error parsing user ID string (%s) into UUID: %v", userID, err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Could not parse user ID",
+		})
+		return
+	}
+
+	userGames, err := h.store.GetUserGamesForUser(c.Request.Context(), userUUID)
+	if err != nil {
+		log.Printf("Error fetching user (%s): %v", userUUID.String(), err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to fetch user",
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, userGames)
-}
-
-func GetUserGames(userId string, s store.Store, ctx context.Context) ([]model.UserGame, error) {
-	userUUID, err := uuid.Parse(userId)
-	if err != nil {
-		log.Printf("Error parsing user ID string (%s) into UUID: %v", userId, err)
-		return []model.UserGame{}, errors.New("Could now parse user ID")
-	}
-
-	userGames, err := s.GetUserGamesForUser(ctx, userUUID)
-	if err != nil {
-		log.Printf("Error fetching user (%s): %v", userUUID.String(), err)
-		return []model.UserGame{}, errors.New("Failed to fetch user")
-	}
-	return userGames, nil
 }

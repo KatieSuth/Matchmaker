@@ -11,6 +11,24 @@ import (
 	"github.com/google/uuid"
 )
 
+const getRankById = `-- name: GetRankById :one
+SELECT id, game_id, name, "order", created_at, updated_at FROM game_ranks WHERE id = $1
+`
+
+func (q *Queries) GetRankById(ctx context.Context, id uuid.UUID) (GameRank, error) {
+	row := q.db.QueryRow(ctx, getRankById, id)
+	var i GameRank
+	err := row.Scan(
+		&i.ID,
+		&i.GameID,
+		&i.Name,
+		&i.Order,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRanksForGame = `-- name: GetRanksForGame :many
 SELECT id, game_id, name, "order", created_at, updated_at FROM game_ranks WHERE game_id = $1
 `

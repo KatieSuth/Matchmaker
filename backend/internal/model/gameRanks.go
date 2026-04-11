@@ -17,7 +17,7 @@ type GameRank struct {
 }
 
 /*
- * Mapping function to enable json mappings (sqlc can do
+ * Mapping functions to enable json mappings (sqlc can do
  * this but handling it manually gives more flexibility)
  */
 func MapDbGameRanksToGameRanks(dbGameRanks []db.GameRank) []GameRank {
@@ -35,4 +35,17 @@ func MapDbGameRanksToGameRanks(dbGameRanks []db.GameRank) []GameRank {
 	}
 
 	return gameRanks
+}
+
+func MapDbGameRankToGameRank(dbGameRank db.GameRank) GameRank {
+	gameRank := GameRank{
+		ID:        dbGameRank.ID,
+		GameID:    dbGameRank.GameID,
+		Name:      dbGameRank.Name,
+		Order:     dbGameRank.Order,
+		CreatedAt: dbGameRank.CreatedAt,
+		UpdatedAt: dbGameRank.UpdatedAt,
+	}
+
+	return gameRank
 }

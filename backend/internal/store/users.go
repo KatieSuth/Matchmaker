@@ -56,3 +56,17 @@ func (s *PostgresStore) UpdateUserFromLogin(ctx context.Context, userId uuid.UUI
 	}
 	return model.MapDbUserToUser(dbUser), nil
 }
+
+func (s *PostgresStore) UpdateUser(ctx context.Context, userId uuid.UUID, pronouns *string, showPronous bool, region *string) (model.User, error) {
+	dbUser, err := s.q.UpdateUser(ctx, db.UpdateUserParams{
+		Pronouns:     pronouns,
+		ShowPronouns: showPronous,
+		Region:       region,
+		ID:           userId,
+	})
+
+	if err != nil {
+		return model.User{}, fmt.Errorf("updating user: %w", err)
+	}
+	return model.MapDbUserToUser(dbUser), nil
+}

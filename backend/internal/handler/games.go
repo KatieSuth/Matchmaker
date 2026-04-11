@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
@@ -16,13 +16,14 @@ import (
 func (h *Handler) GetSystemGamesHandler(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		log.Printf("UserID: %v, exists, %v", userID, exists)
+		slog.WarnContext(c.Request.Context(), "request reached GetSystemGamesHandler without userID in context")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
 	systemGames, err := GetSystemGames(h.store, c.Request.Context())
 	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to get system games", "user_id", userID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": err,
@@ -30,13 +31,14 @@ func (h *Handler) GetSystemGamesHandler(c *gin.Context) {
 		return
 	}
 
+	slog.DebugContext(c.Request.Context(), "system games fetched", "user_id", userID, "count", len(systemGames))
 	c.JSON(http.StatusOK, systemGames)
 }
 
 func GetSystemGames(s store.Store, ctx context.Context) ([]model.Game, error) {
 	games, err := s.GetSystemGames(ctx)
 	if err != nil {
-		log.Printf("Error fetching system games: %v", err)
+		slog.ErrorContext(ctx, "store error fetching system games", "error", err)
 		return []model.Game{}, errors.New("Failed to fetch user")
 	}
 	return games, nil
@@ -46,7 +48,7 @@ func GetSystemGames(s store.Store, ctx context.Context) ([]model.Game, error) {
 func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		log.Printf("UserID: %v, exists, %v", userID, exists)
+		slog.WarnContext(c.Request.Context(), "request reached GetGameRanksByGame without userID in context")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -54,6 +56,7 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 	gameId := c.Param("gameId")
 	gameUUID, err := uuid.Parse(gameId)
 	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid gameId param", "user_id", userID, "game_id", gameId, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "bad gameId",
@@ -62,6 +65,7 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 
 	gameRanks, err := GetGameRanksForGame(gameUUID, h.store, c.Request.Context())
 	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to get game ranks", "user_id", userID, "game_id", gameUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": err,
@@ -69,13 +73,14 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 		return
 	}
 
+	slog.DebugContext(c.Request.Context(), "game ranks fetched", "user_id", userID, "game_id", gameUUID, "count", len(gameRanks))
 	c.JSON(http.StatusOK, gameRanks)
 }
 
 func GetGameRanksForGame(gameId uuid.UUID, s store.Store, ctx context.Context) ([]model.GameRank, error) {
 	gameRanks, err := s.GetGameRanks(ctx, &gameId)
 	if err != nil {
-		log.Printf("Error fetching system games: %v", err)
+		slog.ErrorContext(ctx, "store error fetching game ranks", "game_id", gameId, "error", err)
 		return []model.GameRank{}, errors.New("Failed to fetch user")
 	}
 	return gameRanks, nil

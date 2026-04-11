@@ -22,12 +22,11 @@ SELECT * FROM users WHERE id = $1;
 -- name: UpdateUser :one
 UPDATE users
 SET updated_at = NOW(),
-    discord_id = $1,
-    discord_name = $2,
-    image_url = $3,
-    pronouns = $4,
-    show_pronouns = $5
-WHERE id = $6
+    pronouns = $1,
+    show_pronouns = $2,
+    region = $3,
+    new_user = false
+WHERE id = $4
 RETURNING *;
 
 -- name: UpdateUserFromLogin :one

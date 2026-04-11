@@ -7,7 +7,26 @@ package db
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
+
+const getGameById = `-- name: GetGameById :one
+SELECT id, name, owner_id, created_at, updated_at FROM games WHERE id = $1
+`
+
+func (q *Queries) GetGameById(ctx context.Context, id uuid.UUID) (Game, error) {
+	row := q.db.QueryRow(ctx, getGameById, id)
+	var i Game
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getSystemGames = `-- name: GetSystemGames :many
 SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL

@@ -117,31 +117,26 @@ func (q *Queries) GetUserByName(ctx context.Context, discordName *string) (User,
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET updated_at = NOW(),
-    discord_id = $1,
-    discord_name = $2,
-    image_url = $3,
-    pronouns = $4,
-    show_pronouns = $5
-WHERE id = $6
+    pronouns = $1,
+    show_pronouns = $2,
+    region = $3,
+    new_user = false
+WHERE id = $4
 RETURNING id, discord_id, discord_name, image_url, pronouns, show_pronouns, created_at, updated_at, region, new_user
 `
 
 type UpdateUserParams struct {
-	DiscordID    *string
-	DiscordName  *string
-	ImageUrl     *string
 	Pronouns     *string
 	ShowPronouns bool
+	Region       *string
 	ID           uuid.UUID
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUser,
-		arg.DiscordID,
-		arg.DiscordName,
-		arg.ImageUrl,
 		arg.Pronouns,
 		arg.ShowPronouns,
+		arg.Region,
 		arg.ID,
 	)
 	var i User

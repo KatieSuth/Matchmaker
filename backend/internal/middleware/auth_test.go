@@ -21,9 +21,9 @@ func TestValidateAuth(t *testing.T) {
 	}
 
 	//make sure it fails on empty
-	_, numStatus := middleware.ValidateAuth(jwtSecret, "")
+	_, numStatus, err := middleware.ValidateAuth(jwtSecret, "")
 	if numStatus != http.StatusUnauthorized {
-		t.Errorf("Token is empty; 401 expected if no Bearer token is provided")
+		t.Errorf("Token is empty; 401 expected if no Bearer token is provided: err (%v)", err)
 	}
 
 	testutil.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
@@ -49,23 +49,23 @@ func TestValidateAuth(t *testing.T) {
 		}
 
 		//try to use the token but without proper format
-		_, numStatus := middleware.ValidateAuth(jwtSecret, accessToken)
+		_, numStatus, err := middleware.ValidateAuth(jwtSecret, accessToken)
 		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token was provided incorrectly; 401 expected if not 'Bearer <token>'; got %d", numStatus)
+			t.Errorf("Token was provided incorrectly; 401 expected if not 'Bearer <token>'; got %d; err (%v)", numStatus, err)
 			return
 		}
 
 		//try to use the token with invalid secret
-		_, numStatus = middleware.ValidateAuth([]byte{}, fmt.Sprintf("Bearer %s", accessToken))
+		_, numStatus, err = middleware.ValidateAuth([]byte{}, fmt.Sprintf("Bearer %s", accessToken))
 		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token secret was incorrect, 401 expected; got %d", numStatus)
+			t.Errorf("Token secret was incorrect, 401 expected; got %d; err (%v)", numStatus, err)
 			return
 		}
 
 		//make sure user matches
-		userId, numStatus := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
+		userId, numStatus, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
 		if userId != dbUser.ID.String() || numStatus != 0 {
-			t.Errorf("User should have matched what was set in the token (%s); got %s with status %d", dbUser.ID.String(), userId, numStatus)
+			t.Errorf("User should have matched what was set in the token (%s); got %s with status %d; err (%v)", dbUser.ID.String(), userId, numStatus, err)
 			return
 		}
 
@@ -84,9 +84,9 @@ func TestValidateAuth(t *testing.T) {
 			return
 		}
 
-		_, numStatus = middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
+		_, numStatus, err = middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
 		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token is expired, 401 expected; got %d", numStatus)
+			t.Errorf("Token is expired, 401 expected; got %d; err (%v)", numStatus, err)
 			return
 		}
 	})

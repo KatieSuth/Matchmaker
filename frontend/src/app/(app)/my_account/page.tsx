@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,8 +20,8 @@ const REGIONS = ["NA", "EMEA", "APAC"] as const;
 const userGameSchema = z.object({
   game_id: z.string().uuid("Please select a game"),
   in_game_name: z.string().min(1, "In-game name is required"),
-  current_rank: z.string().nullable().optional(),
-  peak_rank: z.string().nullable().optional(),
+  current_rank: z.string().min(1, "Current rank is required"),
+  peak_rank: z.string().min(1, "Peak rank is required"),
   show_rank: z.boolean(),
   api_permission: z.boolean(),
 });
@@ -53,19 +54,27 @@ async function fetchUserGames(): Promise<UserGame[]> {
   return res.data;
 }
 
-async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
-  await api.put("/users/me", {
-    pronouns: data.pronouns || null,
-    show_pronouns: data.show_pronouns,
-    region: data.region ?? null,
-    games: data.games.map((g) => ({
-      game_id: g.game_id,
-      in_game_name: g.in_game_name,
-      current_rank: g.current_rank ?? null,
-      peak_rank: g.peak_rank ?? null,
-      show_rank: g.show_rank,
-    })),
-  });
+async function saveUserPreferences(data: PreferencesFormValues): Promise<User> {
+  try {
+    const res = await api.put<User>("/users/me", {
+      pronouns: data.pronouns || null,
+      show_pronouns: data.show_pronouns,
+      region: data.region ?? null,
+      games: data.games.map((g) => ({
+        game_id: g.game_id,
+        in_game_name: g.in_game_name,
+        current_rank: g.current_rank ?? null,
+        peak_rank: g.peak_rank ?? null,
+        show_rank: g.show_rank,
+      })),
+    });
+    return res.data;
+  } catch (err: unknown) {
+    // Extract the `message` field from the Gin error response body if present
+    const apiMessage =
+      (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    throw new Error(apiMessage ?? "Something went wrong. Please try again.");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +311,7 @@ function GameCard({
       {watchedGameId && !ranksLoading && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="In-game name" error={gameErrors?.in_game_name?.message}>
+            <Field label="In-game name *" error={gameErrors?.in_game_name?.message}>
               <input
                 {...register(`games.${index}.in_game_name`)}
                 placeholder="YourTag#1234"
@@ -314,7 +323,7 @@ function GameCard({
 
             {ranks.length > 0 && (
               <>
-                <Field label="Current rank">
+                <Field label="Current rank *" error={gameErrors?.current_rank?.message}>
                   <Controller
                     control={control}
                     name={`games.${index}.current_rank`}
@@ -322,14 +331,14 @@ function GameCard({
                       <Select
                         value={field.value ?? ""}
                         onChange={(v) => field.onChange(v || null)}
-                        placeholder="— Unranked —"
+                        placeholder="— Select rank —"
                         options={ranks.map((r) => ({ value: r.id, label: r.name }))}
                       />
                     )}
                   />
                 </Field>
 
-                <Field label="Peak rank">
+                <Field label="Peak rank *" error={gameErrors?.peak_rank?.message}>
                   <Controller
                     control={control}
                     name={`games.${index}.peak_rank`}
@@ -337,12 +346,16 @@ function GameCard({
                       <Select
                         value={field.value ?? ""}
                         onChange={(v) => field.onChange(v || null)}
-                        placeholder="— Unranked —"
+                        placeholder="— Select rank —"
                         options={ranks.map((r) => ({ value: r.id, label: r.name }))}
                       />
                     )}
                   />
                 </Field>
+
+                <p className="col-span-full text-xs text-[var(--color-text-muted)] leading-relaxed">
+                  If unranked, provide the most recent rank you had or one you believe you would be placed into if you were to play.
+                </p>
               </>
             )}
           </div>
@@ -374,6 +387,7 @@ function GameCard({
 
 export default function UserPreferencesForm() {
   const { user } = useAuth();
+  const router = useRouter();
 
   const [allGames, setAllGames] = useState<Game[] | null>(null);
   const [userGames, setUserGames] = useState<UserGame[] | null>(null);
@@ -421,9 +435,8 @@ export default function UserPreferencesForm() {
       games: userGames.map((ug) => ({
         game_id: ug.game_id,
         in_game_name: ug.in_game_name ?? "",
-        region: null,
-        current_rank: ug.current_rank ?? null,
-        peak_rank: ug.peak_rank ?? null,
+        current_rank: ug.current_rank ?? "",
+        peak_rank: ug.peak_rank ?? "",
         show_rank: ug.show_rank,
         api_permission: false,
       })),
@@ -433,13 +446,18 @@ export default function UserPreferencesForm() {
   const onSubmit = async (data: PreferencesFormValues) => {
     setStatus("saving");
     setErrorMsg("");
+    const wasNewUser = user?.new_user ?? false;
     try {
-      await saveUserPreferences(data);
+      const updatedUser = await saveUserPreferences(data);
       reset(data);
+      if (wasNewUser && !updatedUser.new_user) {
+        router.push("/events");
+        return;
+      }
       setStatus("success");
       setTimeout(() => setStatus("idle"), 3500);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setStatus("error");
     }
   };
@@ -448,16 +466,16 @@ export default function UserPreferencesForm() {
     append({
       game_id: "",
       in_game_name: "",
-      current_rank: null,
-      peak_rank: null,
+      current_rank: "",
+      peak_rank: "",
       show_rank: true,
       api_permission: false,
     });
 
   // When a game changes, clear stale rank selections for that card
   const handleGameChange = (index: number) => {
-    setValue(`games.${index}.current_rank`, null);
-    setValue(`games.${index}.peak_rank`, null);
+    setValue(`games.${index}.current_rank`, "");
+    setValue(`games.${index}.peak_rank`, "");
   };
 
   if (!user || allGames === null || userGames === null) {

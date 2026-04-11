@@ -7,19 +7,25 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 )
 
 type PostgresStore struct {
-	q *db.Queries
+	q    *db.Queries
+	pool *pgxpool.Pool // store the pool directly so we can begin transactions
 }
 
 type Store interface {
+	WithTx(ctx context.Context, fn func(Store) error) error
+
 	//users
 	GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error)
 	CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
 	UpdateUserFromLogin(ctx context.Context, userId uuid.UUID, discordUser model.DiscordUser) (model.User, error)
 	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
+	UpdateUser(ctx context.Context, userId uuid.UUID, pronouns *string, showPronous bool, region *string) (model.User, error)
 
 	//refresh tokens
 	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
@@ -32,6 +38,7 @@ type Store interface {
 
 	//user's games
 	GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
+	UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, int, error)
 
 	//games
 	GetSystemGames(ctx context.Context) ([]model.Game, error)
@@ -40,6 +47,35 @@ type Store interface {
 	GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
 }
 
-func NewPostgresStore(dbtx db.DBTX) *PostgresStore {
-	return &PostgresStore{q: db.New(dbtx)}
+func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
+	return &PostgresStore{
+		q:    db.New(pool),
+		pool: pool,
+	}
+}
+
+// For use in tests only — no pool, so WithTx will panic if called
+func NewPostgresStoreFromTx(tx pgx.Tx) *PostgresStore {
+	return &PostgresStore{
+		q: db.New(tx),
+	}
+}
+
+func (s *PostgresStore) WithTx(ctx context.Context, fn func(Store) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) // no-op if already committed
+
+	txStore := &PostgresStore{
+		q:    db.New(tx),
+		pool: s.pool,
+	}
+
+	if err := fn(txStore); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
