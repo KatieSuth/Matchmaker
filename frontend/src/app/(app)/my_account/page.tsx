@@ -54,9 +54,9 @@ async function fetchUserGames(): Promise<UserGame[]> {
   return res.data;
 }
 
-async function saveUserPreferences(data: PreferencesFormValues): Promise<User> {
+async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
   try {
-    const res = await api.put<User>("/users/me", {
+    await api.put("/users/me", {
       pronouns: data.pronouns || null,
       show_pronouns: data.show_pronouns,
       region: data.region ?? null,
@@ -68,7 +68,6 @@ async function saveUserPreferences(data: PreferencesFormValues): Promise<User> {
         show_rank: g.show_rank,
       })),
     });
-    return res.data;
   } catch (err: unknown) {
     // Extract the `message` field from the Gin error response body if present
     const apiMessage =
@@ -318,7 +317,7 @@ function GameCard({
                 className={inputCls}
               />
             </Field>
-            
+
             <br />
 
             {ranks.length > 0 && (
@@ -386,7 +385,7 @@ function GameCard({
 // ---------------------------------------------------------------------------
 
 export default function UserPreferencesForm() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const router = useRouter();
 
   const [allGames, setAllGames] = useState<Game[] | null>(null);
@@ -448,11 +447,15 @@ export default function UserPreferencesForm() {
     setErrorMsg("");
     const wasNewUser = user?.new_user ?? false;
     try {
-      const updatedUser = await saveUserPreferences(data);
+      await saveUserPreferences(data);
       reset(data);
-      if (wasNewUser && !updatedUser.new_user) {
-        router.push("/events");
-        return;
+      const res = await api.get<User>("/users/me");
+      if (res.data) {
+        setUser(res.data);
+        if (wasNewUser && !res.data.new_user) {
+          router.push("/events");
+          return;
+        }
       }
       setStatus("success");
       setTimeout(() => setStatus("idle"), 3500);
