@@ -26,6 +26,6 @@ func MapDbRefreshTokenToRefreshToken(dbRefresh db.RefreshToken) RefreshToken {
 		UserID:    dbRefresh.UserID,
 		ExpiresAt: dbRefresh.ExpiresAt,
 		CreatedAt: dbRefresh.CreatedAt,
-		UpdatedAt: dbRefresh.CreatedAt,
+		UpdatedAt: dbRefresh.UpdatedAt,
 	}
 }

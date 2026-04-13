@@ -1,11 +1,16 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 
 	"github.com/gin-gonic/gin"
 )
+
+type contextKey string
+
+const requestIDKey contextKey = "request_id"
 
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -15,8 +20,18 @@ func RequestID() gin.HandlerFunc {
 			rand.Read(b)
 			id = hex.EncodeToString(b)
 		}
+
 		c.Set("request_id", id)
 		c.Header("X-Request-ID", id)
+
+		// Also store on the Go context so slog can pick it up
+		ctx := context.WithValue(c.Request.Context(), requestIDKey, id)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
+}
+
+func RequestIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey).(string)
+	return id
 }

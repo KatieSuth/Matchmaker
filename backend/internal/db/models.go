@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ApiLink struct {
@@ -81,7 +80,7 @@ type Lobby struct {
 type OneTimeCode struct {
 	Code    string
 	UserID  uuid.UUID
-	Expires pgtype.Timestamptz
+	Expires time.Time
 }
 
 type Player struct {

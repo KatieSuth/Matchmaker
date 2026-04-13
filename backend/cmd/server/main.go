@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"log"
+	"log/slog"
 	"os"
 	"strconv"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
+	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-contrib/cors"
@@ -21,6 +23,7 @@ import (
 )
 
 func main() {
+	/*** ENVIRONMENT VARIABLES ***/
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -162,6 +165,10 @@ func main() {
 
 	// Request ID
 	r.Use(middleware.RequestID())
+
+	// logging
+	base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(logger.New(base)))
 
 	// ── Routes ─────────────────────────────────────────────────
 	r.GET("/health", h.Health)

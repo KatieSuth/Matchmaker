@@ -6,8 +6,8 @@ CREATE TABLE "users" (
   "image_url" TEXT,
   "pronouns" TEXT,
   "show_pronouns" BOOLEAN NOT NULL DEFAULT true,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "api_links" (
@@ -16,25 +16,25 @@ CREATE TABLE "api_links" (
   "name" text,
   "refresh_token" text,
   "refresh_token_iv" text,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "refresh_tokens" (
   "token" TEXT PRIMARY KEY,
   "user_id" UUID NOT NULL,
-  "expires_at" TIMESTAMP NOT NULL,
+  "expires_at" TIMESTAMPTZ NOT NULL,
   "revoked_at" timestamp,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "games" (
   "id" UUID PRIMARY KEY,
   "name" TEXT NOT NULL,
   "owner_id" UUID,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "game_modes" (
@@ -43,8 +43,8 @@ CREATE TABLE "game_modes" (
   "name" TEXT NOT NULL,
   "team_size" INT NOT NULL DEFAULT 1,
   "owner_id" UUID,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "game_ranks" (
@@ -52,8 +52,8 @@ CREATE TABLE "game_ranks" (
   "game_id" UUID,
   "name" TEXT NOT NULL,
   "order" INT NOT NULL,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "user_games" (
@@ -65,8 +65,8 @@ CREATE TABLE "user_games" (
   "show_rank" BOOLEAN NOT NULL DEFAULT false,
   "api_permission" BOOLEAN NOT NULL DEFAULT false,
   "api_links_id" UUID,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL,
   PRIMARY KEY ("user_id", "game_id")
 );
 
@@ -80,16 +80,16 @@ CREATE TABLE "event_groups" (
   "deprioritize_noshows" BOOLEAN NOT NULL DEFAULT false,
   "max_noshows" INT NOT NULL DEFAULT 0,
   "discord_guild" TEXT,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "events" (
   "id" UUID PRIMARY KEY,
   "group_id" UUID,
-  "start_time" TIMESTAMP,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "start_time" TIMESTAMPTZ,
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "registrations" (
@@ -98,8 +98,8 @@ CREATE TABLE "registrations" (
   "can_substitute" BOOLEAN NOT NULL DEFAULT false,
   "can_lobby_host" BOOLEAN NOT NULL DEFAULT false,
   "duo_request" text,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL,
   PRIMARY KEY ("event_id", "user_id")
 );
 
@@ -107,16 +107,16 @@ CREATE TABLE "lobbies" (
   "id" UUID PRIMARY KEY,
   "event_id" UUID,
   "host" UUID,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE "players" (
   "lobby_id" UUID,
   "user_id" UUID,
   "team_number" INT,
-  "created_at" TIMESTAMP NOT NULL,
-  "updated_at" TIMESTAMP NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL,
+  "updated_at" TIMESTAMPTZ NOT NULL,
   PRIMARY KEY ("lobby_id", "user_id")
 );
 
