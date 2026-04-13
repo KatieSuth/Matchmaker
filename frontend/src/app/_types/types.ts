@@ -1,4 +1,5 @@
 export interface User {
+    id: string;
     discord_id: string;
     discord_name: string | null;
     image_url: string | null;

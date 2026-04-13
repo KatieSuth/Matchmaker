@@ -6,9 +6,14 @@ import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import api from "@/app/_lib/axios";
-import { User, Game, GameRank, UserGame } from "@/app/_types/types"
+import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
+import { SectionDivider } from "@/app/_components/SectionDivider";
+import { Field } from "@/app/_components/Field";
+import { ToggleRow } from "@/app/_components/ToggleRow";
+import { inputCls } from "@/app/_lib/styles";
+import { fetchGames, extractApiError } from "@/app/_services/games";
 
 
 // ---------------------------------------------------------------------------
@@ -39,11 +44,6 @@ type PreferencesFormValues = z.infer<typeof preferencesSchema>;
 // API helpers
 // ---------------------------------------------------------------------------
 
-async function fetchGames(): Promise<Game[]> {
-  const res = await api.get<Game[]>("/games");
-  return res.data;
-}
-
 async function fetchRanksForGame(gameId: string): Promise<GameRank[]> {
   const res = await api.get<GameRank[]>(`/games/${gameId}/ranks`);
   return res.data.sort((a, b) => a.order - b.order);
@@ -69,10 +69,7 @@ async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
       })),
     });
   } catch (err: unknown) {
-    // Extract the `message` field from the Gin error response body if present
-    const apiMessage =
-      (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-    throw new Error(apiMessage ?? "Something went wrong. Please try again.");
+    throw new Error(extractApiError(err));
   }
 }
 
@@ -83,113 +80,6 @@ async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
 function discordAvatarUrl(discordId: string, hash: string | null): string {
   if (!hash) return "https://cdn.discordapp.com/embed/avatars/0.png";
   return `https://cdn.discordapp.com/avatars/${discordId}/${hash}.webp?size=80`;
-}
-
-// ---------------------------------------------------------------------------
-// Shared class strings
-// ---------------------------------------------------------------------------
-
-const inputCls =
-  "w-full px-3 py-2 rounded-lg text-sm " +
-  "bg-white/5 border border-white/10 " +
-  "text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] " +
-  "focus:outline-none focus:border-[var(--color-accent-blue)] " +
-  "focus:ring-1 focus:ring-[var(--color-accent-blue)]/30 " +
-  "transition-colors duration-150 appearance-none";
-
-
-// ---------------------------------------------------------------------------
-// SectionDivider
-// ---------------------------------------------------------------------------
-
-function SectionDivider({ title }: { title: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-1">
-      <span className="divider-gem w-1.5 h-1.5 rounded-full flex-shrink-0" />
-      <h2 className="text-xs font-semibold tracking-[0.14em] uppercase text-[var(--color-text-muted)]">
-        {title}
-      </h2>
-      <div className="flex-1 h-px bg-divider-blue opacity-60" />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Field wrapper
-// ---------------------------------------------------------------------------
-
-interface FieldProps {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}
-
-function Field({ label, error, hint, children }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-        {label}
-      </label>
-      {hint && (
-        <p className="text-xs text-[var(--color-text-muted)] -mt-0.5">{hint}</p>
-      )}
-      {children}
-      {error && (
-        <p className="text-xs text-[var(--color-text-danger)]">{error}</p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Toggle row
-// ---------------------------------------------------------------------------
-
-interface ToggleRowProps {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (val: boolean) => void;
-}
-
-function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
-  return (
-    <label className="flex items-center justify-between gap-4 cursor-pointer group">
-      <div>
-        <p className="text-sm text-[var(--color-text-soft)] group-hover:text-[var(--color-text)] transition-colors">
-          {label}
-        </p>
-        {description && (
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            {description}
-          </p>
-        )}
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={[
-          "flex-shrink-0 w-11 h-6 rounded-full border transition-all duration-200",
-          "flex items-center px-1",
-          checked
-            ? "bg-[var(--color-accent-blue)]/25 border-[var(--color-accent-blue)]/50"
-            : "bg-white/5 border-white/10",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "w-4 h-4 rounded-full transition-all duration-200 shadow-sm flex-shrink-0",
-            checked
-              ? "translate-x-[1.125rem] bg-[var(--color-accent-blue)]"
-              : "translate-x-0 bg-white/30",
-          ].join(" ")}
-        />
-      </button>
-    </label>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +112,6 @@ function GameCard({
   const [ranks, setRanks] = useState<GameRank[]>([]);
   const [ranksLoading, setRanksLoading] = useState(false);
 
-  // Fetch ranks whenever the selected game changes
   useEffect(() => {
     if (!watchedGameId) {
       setRanks([]);
@@ -366,13 +255,16 @@ function GameCard({
               render={({ field }) => (
                 <ToggleRow
                   label="Show rank publicly"
-                  description={field.value ? "Visible to everyone in games you register for" : "Visible only to the host of games you register for"}
+                  description={
+                    field.value
+                      ? "Visible to everyone in games you register for"
+                      : "Visible only to the host of games you register for"
+                  }
                   checked={field.value}
                   onChange={field.onChange}
                 />
               )}
             />
-
           </div>
         </>
       )}
@@ -475,7 +367,6 @@ export default function UserPreferencesForm() {
       api_permission: false,
     });
 
-  // When a game changes, clear stale rank selections for that card
   const handleGameChange = (index: number) => {
     setValue(`games.${index}.current_rank`, "");
     setValue(`games.${index}.peak_rank`, "");
@@ -560,7 +451,11 @@ export default function UserPreferencesForm() {
               render={({ field }) => (
                 <ToggleRow
                   label="Display pronouns publicly"
-                  description={field.value ? "Visible to everyone in games you register for" : "Visible only to the host of games you register for"}
+                  description={
+                    field.value
+                      ? "Visible to everyone in games you register for"
+                      : "Visible only to the host of games you register for"
+                  }
                   checked={field.value}
                   onChange={field.onChange}
                 />

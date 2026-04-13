@@ -15,10 +15,9 @@ interface SelectProps {
   disabled?: boolean;
 }
 
-// Matches the site's design tokens — dark surface, blue accent, drop-in animation.
-// react-select renders the menu in a portal by default (menuPortalTarget),
-// so it escapes any overflow:hidden containers cleanly.
-const buildStyles = (): StylesConfig<SelectOption, false, GroupBase<SelectOption>> => ({
+// Exported so pages that need raw ReactSelect (e.g. grouped options, isClearable)
+// can consume the same style object without rebuilding it.
+export const buildSelectStyles = (): StylesConfig<SelectOption, false, GroupBase<SelectOption>> => ({
   control: (base, state) => ({
     ...base,
     minHeight: "36px",
@@ -74,6 +73,13 @@ const buildStyles = (): StylesConfig<SelectOption, false, GroupBase<SelectOption
       color: "var(--color-text-soft)",
     },
   }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(180,200,235,0.45)",
+    padding: "0 6px",
+    cursor: "pointer",
+    "&:hover": { color: "var(--color-text-soft)" },
+  }),
   menu: (base) => ({
     ...base,
     background: "linear-gradient(160deg, rgba(14,20,38,0.98) 0%, rgba(8,11,20,0.99) 100%)",
@@ -92,6 +98,19 @@ const buildStyles = (): StylesConfig<SelectOption, false, GroupBase<SelectOption
   menuList: (base) => ({
     ...base,
     padding: "4px",
+  }),
+  group: (base) => ({
+    ...base,
+    padding: "4px 0 0",
+  }),
+  groupHeading: (base) => ({
+    ...base,
+    color: "rgba(180,200,235,0.4)",
+    fontSize: "0.65rem",
+    fontWeight: 600,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    padding: "4px 12px 2px",
   }),
   option: (base, state) => ({
     ...base,
@@ -119,7 +138,7 @@ const buildStyles = (): StylesConfig<SelectOption, false, GroupBase<SelectOption
   }),
 });
 
-const styles = buildStyles();
+export const selectStyles = buildSelectStyles();
 
 export function Select({
   value,
@@ -137,8 +156,7 @@ export function Select({
       options={options}
       placeholder={placeholder}
       isDisabled={disabled}
-      styles={styles}
-      // Render menu in document.body so it escapes overflow:hidden containers
+      styles={selectStyles}
       menuPortalTarget={typeof document !== "undefined" ? document.body : null}
       menuPosition="fixed"
       isSearchable={false}
