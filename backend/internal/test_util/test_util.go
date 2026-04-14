@@ -1,10 +1,13 @@
-package testutil
+package test_util
 
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,8 +15,11 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/require"
 )
 
 func LoadEnv(t *testing.T) {
@@ -62,4 +68,31 @@ func GetJWTSecret(t *testing.T) ([]byte, error) {
 	}
 
 	return jwtSecretBytes, nil
+}
+
+// NewGinContext creates a minimal Gin context backed by a ResponseRecorder.
+func NewGinContext(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(method, path, nil)
+	return c, w
+}
+
+// WithUserID stamps a userID into the Gin context, simulating a passing auth middleware.
+func WithUserID(c *gin.Context, id uuid.UUID) {
+	c.Set("userID", id)
+}
+
+// SetCookie plants a named cookie on the Gin test request.
+func SetCookie(c *gin.Context, name, value string) {
+	c.Request.AddCookie(&http.Cookie{Name: name, Value: value})
+}
+
+// decodeJSON is a small helper to unmarshal a response body in tests.
+func DecodeJSON[T any](t *testing.T, w *httptest.ResponseRecorder) T {
+	t.Helper()
+	var out T
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	return out
 }

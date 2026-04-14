@@ -302,7 +302,7 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 		slog.DebugContext(c.Request.Context(), "logout called with no refresh token cookie — already logged out")
 		//calling this anyway to make sure auth_session is deleted too
 		h.setAuthCookies(c, "", -1)
-		c.Status(http.StatusNoContent)
+		c.AbortWithStatus(http.StatusNoContent)
 		return
 	}
 
@@ -318,5 +318,5 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 	//TODO: consider looking up user before this point so who logged out successfully can be logged
 	slog.InfoContext(c.Request.Context(), "user logged out successfully")
 	h.setAuthCookies(c, "", -1)
-	c.Status(http.StatusNoContent)
+	c.AbortWithStatus(http.StatusNoContent)
 }

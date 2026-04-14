@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
-	"github.com/KatieSuth/MatchmakerAPI/internal/testutil"
+	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
 func TestGenerateTokens(t *testing.T) {
-	jwtSecret, err := testutil.GetJWTSecret(t)
+	jwtSecret, err := test_util.GetJWTSecret(t)
 	if err != nil {
 		t.Error(err)
 	}

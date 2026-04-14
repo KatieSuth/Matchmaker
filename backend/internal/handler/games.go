@@ -61,6 +61,7 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 			"status":  "error",
 			"message": "bad gameId",
 		})
+		return
 	}
 
 	gameRanks, err := GetGameRanksForGame(gameUUID, h.store, c.Request.Context())

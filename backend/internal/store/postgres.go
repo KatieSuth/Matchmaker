@@ -54,13 +54,6 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	}
 }
 
-// For use in tests only — no pool, so WithTx will panic if called
-func NewPostgresStoreFromTx(tx pgx.Tx) *PostgresStore {
-	return &PostgresStore{
-		q: db.New(tx),
-	}
-}
-
 func (s *PostgresStore) WithTx(ctx context.Context, fn func(Store) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -78,4 +71,11 @@ func (s *PostgresStore) WithTx(ctx context.Context, fn func(Store) error) error 
 	}
 
 	return tx.Commit(ctx)
+}
+
+// For use in tests only — no pool, so WithTx will panic if called
+func NewPostgresStoreFromTx(tx pgx.Tx) *PostgresStore {
+	return &PostgresStore{
+		q: db.New(tx),
+	}
 }
