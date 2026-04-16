@@ -13,14 +13,23 @@ import (
 type MockStore struct {
 	Store // embed to satisfy the interface; unset methods will panic
 
+	// transactions
+	WithTxFn func(ctx context.Context, fn func(Store) error) error
+
 	// games
 	GetSystemGamesFn func(ctx context.Context) ([]model.Game, error)
 	GetGameRanksFn   func(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
 
-	// users
+	// user
 	GetUserByDiscordIDFn  func(ctx context.Context, discordID string, errorOnNoRows bool) (model.User, error)
 	CreateNewUserFn       func(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
 	UpdateUserFromLoginFn func(ctx context.Context, userID uuid.UUID, discordUser model.DiscordUser) (model.User, error)
+	GetUserByUserIDFn     func(ctx context.Context, userID uuid.UUID) (model.User, error)
+	UpdateUserFn          func(ctx context.Context, userID uuid.UUID, pronouns *string, showPronouns bool, region *string) (model.User, error)
+
+	// user games
+	GetUserGamesForUserFn func(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
+	UpsertGameForUserFn   func(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, int, error)
 
 	// refresh tokens
 	CreateNewRefreshTokenFn func(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
@@ -32,6 +41,10 @@ type MockStore struct {
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
 }
 
+func (m *MockStore) WithTx(ctx context.Context, fn func(Store) error) error {
+	return m.WithTxFn(ctx, fn)
+}
+
 func (m *MockStore) GetSystemGames(ctx context.Context) ([]model.Game, error) {
 	return m.GetSystemGamesFn(ctx)
 }
@@ -40,12 +53,32 @@ func (m *MockStore) GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]mode
 	return m.GetGameRanksFn(ctx, gameID)
 }
 
+func (m *MockStore) GetUserByDiscordID(ctx context.Context, discordID string, errorOnNoRows bool) (model.User, error) {
+	return m.GetUserByDiscordIDFn(ctx, discordID, errorOnNoRows)
+}
+
 func (m *MockStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error) {
 	return m.CreateNewUserFn(ctx, discordUser)
 }
 
 func (m *MockStore) UpdateUserFromLogin(ctx context.Context, userID uuid.UUID, discordUser model.DiscordUser) (model.User, error) {
 	return m.UpdateUserFromLoginFn(ctx, userID, discordUser)
+}
+
+func (m *MockStore) GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error) {
+	return m.GetUserByUserIDFn(ctx, userID)
+}
+
+func (m *MockStore) UpdateUser(ctx context.Context, userID uuid.UUID, pronouns *string, showPronouns bool, region *string) (model.User, error) {
+	return m.UpdateUserFn(ctx, userID, pronouns, showPronouns, region)
+}
+
+func (m *MockStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error) {
+	return m.GetUserGamesForUserFn(ctx, userID)
+}
+
+func (m *MockStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
+	return m.UpsertGameForUserFn(ctx, userID, ug)
 }
 
 func (m *MockStore) CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error) {

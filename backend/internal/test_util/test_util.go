@@ -84,6 +84,12 @@ func WithUserID(c *gin.Context, id uuid.UUID) {
 	c.Set("userID", id)
 }
 
+// WithUserIDString stamps a userID into the Gin context as a string.
+// Use this for handlers that cast userID with userID.(string).
+func WithUserIDString(c *gin.Context, id uuid.UUID) {
+	c.Set("userID", id.String())
+}
+
 // SetCookie plants a named cookie on the Gin test request.
 func SetCookie(c *gin.Context, name, value string) {
 	c.Request.AddCookie(&http.Cookie{Name: name, Value: value})
