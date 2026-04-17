@@ -72,5 +72,14 @@ dev-clean:
 health:
 	@curl -sk https://matchmaker.localhost/api/health | python3 -m json.tool
 
+# Test the code
 test:
 	cd backend/internal && go test ./...
+
+# Test the code and output coverage percentage, excluding generated files (./backend/internal/db/*, ./backend/internal/test_util/*, and ./backend/internal/store/mock_store.go)
+test-coverage:
+	@cd backend/internal && \
+	PKGS=$$(go list ./... | grep -vE "db|test_util") && \
+	go test -coverprofile=coverage.out $$PKGS && \
+	sed -i.bak '/mock_store.go/d' coverage.out && rm coverage.out.bak && \
+	go tool cover -func=coverage.out

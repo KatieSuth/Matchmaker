@@ -5,6 +5,7 @@ frontend/.env*.local
 
 # Go
 backend/tmp/
+backend/internal/coverage.out
 
 # Docker
 .env
