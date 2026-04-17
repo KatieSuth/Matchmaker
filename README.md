@@ -1,6 +1,6 @@
 ### Project Status
 [![Backend](https://github.com/KatieSuth/Matchmaker/actions/workflows/backend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/c21c84f4fba3f91f41a5be25dd59326a/raw/matchmaker-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
+[![Backend Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/c21c84f4fba3f91f41a5be25dd59326a/raw/matchmaker-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
 [![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/frontend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
 
 # Matchmaker

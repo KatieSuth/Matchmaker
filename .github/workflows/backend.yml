@@ -74,7 +74,7 @@ jobs:
           auth: ${{ secrets.GIST_TOKEN }}
           gistID: c21c84f4fba3f91f41a5be25dd59326a
           filename: matchmaker-coverage.json
-          label: Coverage
+          label: Backend Coverage
           message: ${{ env.COVERAGE_PCT }}%
           valColorRange: ${{ env.COVERAGE_PCT }}
           maxColorRange: 100
