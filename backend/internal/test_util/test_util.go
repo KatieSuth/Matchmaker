@@ -48,10 +48,12 @@ func LoadEnv(t *testing.T) {
 	t.Helper()
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Join(filepath.Dir(filename), "../..") // goes to backend/
-	err := godotenv.Load(filepath.Join(dir, ".env"))
-	if err != nil {
-		t.Fatalf("failed to load .env: %v", err)
-	}
+	_ = godotenv.Load(filepath.Join(dir, ".env"))
+	/*
+		if err != nil {
+			t.Fatalf("failed to load .env: %v", err)
+		}
+	*/
 }
 
 func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
