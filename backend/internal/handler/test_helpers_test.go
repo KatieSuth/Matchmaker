@@ -7,7 +7,6 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
-	"github.com/gorilla/securecookie"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 )
@@ -17,9 +16,8 @@ import (
 func newTestHandler(t *testing.T, s store.Store, oauth2Cfg *oauth2.Config) *handler.Handler {
 	t.Helper()
 
-	hashKey := []byte("test-hash-key-32-bytes-padding!!")
-	blockKey := []byte("test-block-key-16")
-	sc := securecookie.New(hashKey, blockKey)
+	sc, err := test_util.GetSecureCookie(t)
+	require.NoError(t, err)
 
 	jwtSecret, err := test_util.GetJWTSecret(t)
 	require.NoError(t, err)

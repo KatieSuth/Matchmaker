@@ -6,88 +6,175 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
-	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestValidateAuth(t *testing.T) {
+// generateAccessToken creates a signed JWT for the given userID using the
+// provided secret, with a standard future expiry.
+func generateAccessToken(t *testing.T, userID string, secret []byte) string {
+	t.Helper()
+	accessToken, _, err := model.GenerateTokens(userID, secret)
+	require.NoError(t, err, "failed to generate token")
+	return accessToken
+}
+
+// generateExpiredToken creates a signed JWT that is already expired.
+func generateExpiredToken(t *testing.T, userID string, secret []byte) string {
+	t.Helper()
+	claims := model.Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-5 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-15 * time.Minute)),
+		},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
+	require.NoError(t, err, "failed to generate expired token")
+	return token
+}
+
+// ============================================================
+// ValidateAuth
+// ============================================================
+
+func TestValidateAuth_EmptyHeader(t *testing.T) {
 	jwtSecret, err := test_util.GetJWTSecret(t)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
-	//make sure it fails on empty
-	_, numStatus, err := middleware.ValidateAuth(jwtSecret, "")
-	if numStatus != http.StatusUnauthorized {
-		t.Errorf("Token is empty; 401 expected if no Bearer token is provided: err (%v)", err)
-	}
+	_, status, err := middleware.ValidateAuth(jwtSecret, "")
 
-	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
-		//create a user for the token
-		discordId := "discordID1234"
-		discordName := "discordName1234"
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
 
-		dbUser, err := q.CreateUser(t.Context(), db.CreateUserParams{
-			DiscordID:   &discordId,
-			DiscordName: &discordName,
-		})
+func TestValidateAuth_MissingBearerPrefix(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
 
-		if err != nil {
-			t.Errorf("Could not create user: %v", err)
-			return
-		}
+	userID := uuid.New().String()
+	token := generateAccessToken(t, userID, jwtSecret)
 
-		//create a token
-		accessToken, _, err := model.GenerateTokens(dbUser.ID.String(), jwtSecret)
-		if err != nil {
-			t.Errorf("Could not create tokens: %v", err)
-			return
-		}
+	// Token provided without "Bearer " prefix.
+	_, status, err := middleware.ValidateAuth(jwtSecret, token)
 
-		//try to use the token but without proper format
-		_, numStatus, err := middleware.ValidateAuth(jwtSecret, accessToken)
-		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token was provided incorrectly; 401 expected if not 'Bearer <token>'; got %d; err (%v)", numStatus, err)
-			return
-		}
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
 
-		//try to use the token with invalid secret
-		_, numStatus, err = middleware.ValidateAuth([]byte{}, fmt.Sprintf("Bearer %s", accessToken))
-		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token secret was incorrect, 401 expected; got %d; err (%v)", numStatus, err)
-			return
-		}
+func TestValidateAuth_WrongPrefix(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
 
-		//make sure user matches
-		userId, numStatus, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
-		if userId != dbUser.ID.String() || numStatus != 0 {
-			t.Errorf("User should have matched what was set in the token (%s); got %s with status %d; err (%v)", dbUser.ID.String(), userId, numStatus, err)
-			return
-		}
+	userID := uuid.New().String()
+	token := generateAccessToken(t, userID, jwtSecret)
 
-		//create expired token
-		accessClaims := model.Claims{
-			UserID: dbUser.ID.String(),
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(time.Now().Add(-15 * time.Minute)),
-			},
-		}
+	_, status, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Token %s", token))
 
-		accessToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(jwtSecret)
-		if err != nil {
-			t.Errorf("could not create token with expired claims")
-			return
-		}
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
 
-		_, numStatus, err = middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", accessToken))
-		if numStatus != http.StatusUnauthorized {
-			t.Errorf("Token is expired, 401 expected; got %d; err (%v)", numStatus, err)
-			return
-		}
-	})
+func TestValidateAuth_InvalidSecret(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	userID := uuid.New().String()
+	token := generateAccessToken(t, userID, jwtSecret)
+
+	_, status, err := middleware.ValidateAuth([]byte("wrong-secret"), fmt.Sprintf("Bearer %s", token))
+
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
+
+func TestValidateAuth_ExpiredToken(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	userID := uuid.New().String()
+	token := generateExpiredToken(t, userID, jwtSecret)
+
+	_, status, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", token))
+
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
+
+func TestValidateAuth_MalformedToken(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	_, status, err := middleware.ValidateAuth(jwtSecret, "Bearer this.is.notavalidjwt")
+
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
+
+func TestValidateAuth_Success(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	userID := uuid.New().String()
+	token := generateAccessToken(t, userID, jwtSecret)
+
+	gotUserID, status, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", token))
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, status)
+	assert.Equal(t, userID, gotUserID)
+}
+
+// ============================================================
+// Auth middleware handler
+// ============================================================
+
+func TestAuth_MissingHeader(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	c, w := newGinContext(http.MethodGet, "/")
+	middleware.Auth(jwtSecret)(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	_, exists := c.Get("userID")
+	assert.False(t, exists, "userID should not be set on failed auth")
+}
+
+func TestAuth_InvalidToken(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	c, w := newGinContext(http.MethodGet, "/")
+	c.Request.Header.Set("Authorization", "Bearer invalid.token.here")
+	middleware.Auth(jwtSecret)(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	_, exists := c.Get("userID")
+	assert.False(t, exists, "userID should not be set on failed auth")
+}
+
+func TestAuth_Success(t *testing.T) {
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	userID := uuid.New().String()
+	token := generateAccessToken(t, userID, jwtSecret)
+
+	c, w := newGinContext(http.MethodGet, "/")
+	c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	middleware.Auth(jwtSecret)(c)
+
+	// Auth middleware does not abort on success, so the recorder
+	// will show 200 (default) rather than an explicit status.
+	assert.NotEqual(t, http.StatusUnauthorized, w.Code)
+
+	gotUserID, exists := c.Get("userID")
+	require.True(t, exists, "userID should be set in context after successful auth")
+	assert.Equal(t, userID, gotUserID)
 }

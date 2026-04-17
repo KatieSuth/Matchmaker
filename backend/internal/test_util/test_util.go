@@ -17,6 +17,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/gorilla/securecookie"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
@@ -68,6 +69,38 @@ func GetJWTSecret(t *testing.T) ([]byte, error) {
 	}
 
 	return jwtSecretBytes, nil
+}
+
+func GetSecureCookie(t *testing.T) (*securecookie.SecureCookie, error) {
+	LoadEnv(t)
+
+	var sc *securecookie.SecureCookie
+
+	cookieHashKey := os.Getenv("COOKIE_HASH_KEY")
+	cookieEncryptKey := os.Getenv("COOKIE_ENCRYPT_KEY")
+
+	if cookieHashKey == "" {
+		return sc, errors.New("COOKIE_HASH_KEY is required from .env")
+	}
+	hashKeyBytes, err := hex.DecodeString(cookieHashKey)
+	if err != nil {
+		return sc, errors.New("invalid COOKIE_HASH_KEY from .env")
+	}
+
+	if cookieEncryptKey == "" {
+		return sc, errors.New("COOKIE_ENCRYPT_KEY is required from .env")
+	}
+	encryptKeyBytes, err := hex.DecodeString(cookieEncryptKey)
+	if err != nil {
+		return sc, errors.New("invalid COOKIE_ENCRYPT_KEY from .env")
+	}
+
+	sc = securecookie.New(
+		[]byte(hashKeyBytes),
+		[]byte(encryptKeyBytes),
+	)
+
+	return sc, nil
 }
 
 // NewGinContext creates a minimal Gin context backed by a ResponseRecorder.

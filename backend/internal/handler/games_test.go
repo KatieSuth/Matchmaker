@@ -48,7 +48,7 @@ func TestGetSystemGamesHandler_StoreError(t *testing.T) {
 func TestGetSystemGamesHandler_Success(t *testing.T) {
 	want := []model.Game{
 		{ID: uuid.New(), Name: "Valorant"},
-		{ID: uuid.New(), Name: "Apex Legends"},
+		{ID: uuid.New(), Name: "League of Legends"},
 	}
 
 	c, w := test_util.NewGinContext(http.MethodGet, "/games")
