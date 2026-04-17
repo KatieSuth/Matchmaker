@@ -1,6 +1,6 @@
 ### Project Status
-[![Backend](https://github.com/KatieSuth/Matchmaker/actions/workflows/test.yml/badge.svg?job=backend-test)](https://github.com/KatieSuth/Matchmaker/actions)
-[![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/test.yml/badge.svg?job=frontend-check)](https://github.com/KatieSuth/Matchmaker/actions)
+[![Backend](https://github.com/KatieSuth/Matchmaker/actions/workflows/test.yml/badge.svg?job=backend-test?label=Backend)](https://github.com/KatieSuth/Matchmaker/actions)
+[![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/test.yml/badge.svg?job=frontend-check?label=Frontend)](https://github.com/KatieSuth/Matchmaker/actions)
 
 # Matchmaker
 
