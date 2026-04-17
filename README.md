@@ -1,3 +1,7 @@
+### Project Status
+[![Backend](https://github.com/KatieSuth/MatchmakerAPI/actions/workflows/ci.yml/badge.svg?job=backend-test)](https://github.com/KatieSuth/MatchmakerAPI/actions)
+[![Frontend](https://github.com/KatieSuth/MatchmakerAPI/actions/workflows/ci.yml/badge.svg?job=frontend-check)](https://github.com/KatieSuth/MatchmakerAPI/actions)
+
 # Matchmaker
 
 Matchmaker is a free, open-source web application for organizing custom competitive games over Discord. It does this by allowing a game organizer to configure events that players can sign up to join, and it will ask players to provide their competitive rank (to be seen by the organizer but by default hidden to other players for privacy--can be configured in preferences). Once the organizer is ready, they can click a button to create 2 teams of the configured player count and sort players into those teams or a substitute pool as fairly as possibly based on their provided competitive ranks. It will also allow the organizer to make manual edits to the teams as needed.
