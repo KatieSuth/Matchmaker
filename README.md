@@ -179,6 +179,7 @@ make dev-ps        # Show running development containers
 
 make health        # Quick API health check
 make test          # Run Go tests
+make test-coverage # Run Go tests with coverage percentage output, filtering for test-supporting files
 ```
 
 ---
