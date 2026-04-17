@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -31,11 +32,9 @@ func TestRequestID_GeneratesIDWhenHeaderAbsent(t *testing.T) {
 	c, w := newGinContext(http.MethodGet, "/")
 	applyRequestID(c)
 
-	// Response header should be set.
 	id := w.Header().Get("X-Request-ID")
 	assert.NotEmpty(t, id)
-
-	// Should be a 16-char hex string (8 random bytes).
+	// 8 random bytes encoded as hex = 16 characters.
 	assert.Len(t, id, 16)
 }
 
@@ -66,8 +65,7 @@ func TestRequestID_SetsGoContextValue(t *testing.T) {
 	assert.Equal(t, "go-ctx-id", id)
 }
 
-func TestRequestID_GeneratedIDConsistentAcrossContexts(t *testing.T) {
-	// The same ID should be in the Gin context, Go context, and response header.
+func TestRequestID_IDConsistentAcrossGinGoContextAndHeader(t *testing.T) {
 	c, w := newGinContext(http.MethodGet, "/")
 	applyRequestID(c)
 
@@ -91,10 +89,25 @@ func TestRequestID_EachRequestGetsUniqueID(t *testing.T) {
 }
 
 // ============================================================
+// ContextWithRequestID
+// ============================================================
+
+func TestContextWithRequestID_StoresAndRetrieves(t *testing.T) {
+	ctx := middleware.ContextWithRequestID(context.Background(), "stored-id")
+	assert.Equal(t, "stored-id", middleware.RequestIDFromContext(ctx))
+}
+
+func TestContextWithRequestID_DoesNotMutateParent(t *testing.T) {
+	parent := context.Background()
+	middleware.ContextWithRequestID(parent, "child-id")
+	// Parent context should be unaffected.
+	assert.Empty(t, middleware.RequestIDFromContext(parent))
+}
+
+// ============================================================
 // RequestIDFromContext
 // ============================================================
 
 func TestRequestIDFromContext_ReturnsEmptyWhenNotSet(t *testing.T) {
-	id := middleware.RequestIDFromContext(t.Context())
-	assert.Empty(t, id)
+	assert.Empty(t, middleware.RequestIDFromContext(context.Background()))
 }

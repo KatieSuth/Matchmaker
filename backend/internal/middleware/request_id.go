@@ -35,3 +35,9 @@ func RequestIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDKey).(string)
 	return id
 }
+
+// ContextWithRequestID stores a request ID in a context. Useful for
+// seeding request IDs outside of the Gin middleware chain, such as in tests.
+func ContextWithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
