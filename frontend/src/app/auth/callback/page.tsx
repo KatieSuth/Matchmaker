@@ -49,7 +49,7 @@ export default function CallbackPage() {
                 router.replace(isNewUser ? "/my_account" : "/events");
             })
         })
-    }, []);
+    }, [router, setUser, setIsAuthenticated]);
 
     return (
         <div>Redirecting...</div>

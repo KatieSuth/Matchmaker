@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -26,6 +26,8 @@
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.4",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"

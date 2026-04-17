@@ -488,7 +488,6 @@ export default function MyEventsPage() {
         }));
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [appliedFrom, appliedTo, appliedGame, filterKey]
   );
 
@@ -586,7 +585,7 @@ export default function MyEventsPage() {
             My Events
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Events you're hosting or registered in.
+            {"Events you're hosting or registered in."}
           </p>
         </div>
 
@@ -731,7 +730,7 @@ export default function MyEventsPage() {
           {/* Validation */}
           {!dateRangeValid && (
             <p className="text-xs text-[var(--color-text-danger)] -mt-1">
-              "From" date must be on or before "To" date.
+              {"\"From\" date must be on or before \"To\" date."}
             </p>
           )}
 

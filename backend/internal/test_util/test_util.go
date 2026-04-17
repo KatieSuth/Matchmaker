@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
@@ -19,9 +20,29 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/securecookie"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
+	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 )
+
+var migrationOnce sync.Once
+
+func runMigrations(pool *pgxpool.Pool) {
+	migrationOnce.Do(func() {
+		sqlDB := stdlib.OpenDBFromPool(pool)
+		// Don't defer sqlDB.Close() here because it would close the underlying pool that the tests need.
+
+		if err := goose.SetDialect("postgres"); err != nil {
+			log.Fatalf("goose dialect: %v", err)
+		}
+
+		_, filename, _, _ := runtime.Caller(0)
+		if err := goose.Up(sqlDB, filepath.Join(filepath.Dir(filename), "../../sql/migrations")); err != nil {
+			log.Fatalf("migrations up: %v", err)
+		}
+	})
+}
 
 func LoadEnv(t *testing.T) {
 	t.Helper()
@@ -45,6 +66,9 @@ func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
 		log.Fatalf("db connect: %v", err)
 	}
 	defer pool.Close()
+
+	// Run migrations once per suite execution
+	runMigrations(pool)
 
 	t.Helper()
 	tx, err := pool.Begin(t.Context())

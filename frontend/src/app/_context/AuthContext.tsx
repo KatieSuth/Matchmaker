@@ -18,14 +18,19 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
     const [user, setUser] = useState<User | null>(null);
+    
+    const [isLoading, setIsLoading] = useState(() => {
+        if (typeof window !== "undefined") {
+            return window.location.pathname !== "/auth/callback";
+        }
+        return true;
+    })
 
     // On mount, try a silent refresh to restore session after page reload
     // The refresh_token HttpOnly cookie will be sent automatically if it exists
     useEffect(() => {
         if (window.location.pathname === "/auth/callback") {
-            setIsLoading(false);
             return;
         }
 

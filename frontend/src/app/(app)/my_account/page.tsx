@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import Image from 'next/image';
+import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import api from "@/app/_lib/axios";
@@ -92,7 +93,6 @@ interface GameCardProps {
   control: ReturnType<typeof useForm<PreferencesFormValues>>["control"];
   register: ReturnType<typeof useForm<PreferencesFormValues>>["register"];
   errors: ReturnType<typeof useForm<PreferencesFormValues>>["formState"]["errors"];
-  watchedGameId: string;
   takenGameIds: string[];
   onRemove: () => void;
   onGameChange: (gameId: string) => void;
@@ -104,24 +104,43 @@ function GameCard({
   control,
   register,
   errors,
-  watchedGameId,
   takenGameIds,
   onRemove,
   onGameChange,
 }: GameCardProps) {
   const [ranks, setRanks] = useState<GameRank[]>([]);
   const [ranksLoading, setRanksLoading] = useState(false);
+  
+  const watchedGameId = useWatch({
+    control,
+    name: `games.${index}.game_id`,
+  })
 
   useEffect(() => {
-    if (!watchedGameId) {
-      setRanks([]);
-      return;
+    let ignore = false;
+
+    const startSync = async() => {
+      if (!watchedGameId) {
+        setRanks(() => []);
+        return;
+      }
+
+      setRanksLoading(true);
+      try {
+        const data = await fetchRanksForGame(watchedGameId);
+        if (!ignore) setRanks(data);
+      } catch {
+        if (!ignore) setRanks([]);
+      } finally {
+        if (!ignore) setRanksLoading(false);
+      }
     }
-    setRanksLoading(true);
-    fetchRanksForGame(watchedGameId)
-      .then(setRanks)
-      .catch(() => setRanks([]))
-      .finally(() => setRanksLoading(false));
+    
+    startSync();
+
+    return () => {
+      ignore = true;
+    }
   }, [watchedGameId]);
 
   const gameErrors = errors.games?.[index];
@@ -299,7 +318,14 @@ export default function UserPreferencesForm() {
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "games" });
-  const watchedGames = watch("games");
+  const watchedGames = useWatch({
+    control,
+    name: "games",
+  })
+  
+  const takenGameIds = useMemo(() => 
+    watchedGames?.map((g: any) => g.game_id).filter(Boolean) ?? [], 
+  [watchedGames]);
 
   // Fetch game list and user's games in parallel once user is ready
   useEffect(() => {
@@ -407,7 +433,7 @@ export default function UserPreferencesForm() {
           {/* ── Discord identity ─────────────────────────────── */}
           <div className="card rounded-xl p-4 flex items-center gap-4 relative overflow-hidden">
             <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
-            <img
+            <Image
               src={avatarUrl}
               alt={user.discord_name ?? "Discord avatar"}
               width={52}
@@ -484,7 +510,7 @@ export default function UserPreferencesForm() {
 
             {fields.length === 0 && (
               <div className="text-center py-8 rounded-xl border border-dashed border-white/10 text-sm text-[var(--color-text-muted)]">
-                No games added yet. Click "Add game" to get started.
+                {"No games added yet. Click \"Add game\" to get started."}
               </div>
             )}
 
@@ -496,8 +522,7 @@ export default function UserPreferencesForm() {
                 control={control}
                 register={register}
                 errors={errors}
-                watchedGameId={watchedGames?.[index]?.game_id ?? ""}
-                takenGameIds={watchedGames?.map((g) => g.game_id).filter(Boolean) ?? []}
+                takenGameIds={takenGameIds}
                 onRemove={() => remove(index)}
                 onGameChange={() => handleGameChange(index)}
               />
