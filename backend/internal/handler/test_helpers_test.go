@@ -13,7 +13,7 @@ import (
 
 // newTestHandler constructs a real *Handler with controlled dependencies.
 // oauth2Cfg can be nil for tests that don't exercise OAuth code paths.
-func newTestHandler(t *testing.T, s store.Store, oauth2Cfg *oauth2.Config) *handler.Handler {
+func newTestHandler(t *testing.T, s store.Store, oauth2Cfg *oauth2.Config, discordApiUrl string) *handler.Handler {
 	t.Helper()
 
 	sc, err := test_util.GetSecureCookie(t)
@@ -22,5 +22,5 @@ func newTestHandler(t *testing.T, s store.Store, oauth2Cfg *oauth2.Config) *hand
 	jwtSecret, err := test_util.GetJWTSecret(t)
 	require.NoError(t, err)
 
-	return handler.New("test", s, sc, oauth2Cfg, "", "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second))
+	return handler.New("test", s, sc, oauth2Cfg, "", "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl)
 }

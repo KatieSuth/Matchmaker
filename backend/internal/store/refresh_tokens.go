@@ -36,7 +36,7 @@ func (s *PostgresStore) GetRefreshToken(ctx context.Context, refreshTokenHash st
 
 func (s *PostgresStore) DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error {
 	err := s.q.RevokeToken(ctx, refreshTokenHash)
-	if err != nil || errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		return fmt.Errorf("deleting refresh token: %w", err)
 	}
 

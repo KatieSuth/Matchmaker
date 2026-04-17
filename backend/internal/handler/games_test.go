@@ -24,7 +24,7 @@ import (
 func TestGetSystemGamesHandler_Unauthorized(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodGet, "/games")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.GetSystemGamesHandler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -39,7 +39,7 @@ func TestGetSystemGamesHandler_StoreError(t *testing.T) {
 			return nil, errors.New("db exploded")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.GetSystemGamesHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -59,7 +59,7 @@ func TestGetSystemGamesHandler_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.GetSystemGamesHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -78,7 +78,7 @@ func TestGetSystemGamesHandler_EmptyList(t *testing.T) {
 			return []model.Game{}, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.GetSystemGamesHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -93,7 +93,7 @@ func TestGetSystemGamesHandler_EmptyList(t *testing.T) {
 func TestGetGameRanksByGame_Unauthorized(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodGet, "/games/abc/ranks")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.GetGameRanksByGame(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -104,7 +104,7 @@ func TestGetGameRanksByGame_InvalidGameID(t *testing.T) {
 	test_util.WithUserID(c, uuid.New())
 	c.Params = gin.Params{{Key: "gameId", Value: "not-a-uuid"}}
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.GetGameRanksByGame(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -121,7 +121,7 @@ func TestGetGameRanksByGame_StoreError(t *testing.T) {
 			return nil, errors.New("db exploded")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.GetGameRanksByGame(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -145,7 +145,7 @@ func TestGetGameRanksByGame_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.GetGameRanksByGame(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

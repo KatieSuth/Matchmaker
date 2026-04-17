@@ -49,11 +49,39 @@ func LoadEnv(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Join(filepath.Dir(filename), "../..") // goes to backend/
 	_ = godotenv.Load(filepath.Join(dir, ".env"))
-	/*
-		if err != nil {
-			t.Fatalf("failed to load .env: %v", err)
-		}
-	*/
+}
+
+// GetTestPool initializes the environment, runs migrations, and returns a live pool.
+// The caller is responsible for calling pool.Close().
+func GetTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	LoadEnv(t)
+	dsn := os.Getenv("DATABASE_URL_TESTS")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL_TESTS is required")
+	}
+
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("db connect: %v", err)
+	}
+
+	// Run migrations once per suite execution
+	runMigrations(pool)
+
+	return pool
+}
+
+// WithTestPool is a wrapper that provides a PostgresStore backed by a real pool.
+// Use this for testing transaction lifecycle methods like WithTx.
+func WithTestPool(t *testing.T, fn func(s *store.PostgresStore)) {
+	t.Helper()
+	pool := GetTestPool(t)
+	defer pool.Close()
+
+	// Create a store with the full pool (not a transaction)
+	s := store.NewPostgresStore(pool)
+	fn(s)
 }
 
 func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
@@ -95,6 +123,17 @@ func GetJWTSecret(t *testing.T) ([]byte, error) {
 	}
 
 	return jwtSecretBytes, nil
+}
+
+func GetDiscordURL(t *testing.T) (string, error) {
+	LoadEnv(t)
+	discordApiUrl := os.Getenv("DISCORD_API_URL")
+
+	if discordApiUrl == "" {
+		return "", errors.New("DISCORD_API_URL is required from .env")
+	}
+
+	return discordApiUrl, nil
 }
 
 func GetSecureCookie(t *testing.T) (*securecookie.SecureCookie, error) {

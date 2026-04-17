@@ -148,6 +148,7 @@ NODE_ENV=development
 | `DISCORD_CLIENT_ID`      | required, no default                                     | Client ID provided by Discord developer portal app                   |
 | `DISCORD_CLIENT_SECRET`  | required, no default                                     | Client Secret provided by Discord developer portal app               |
 | `DISCORD_REDIRECT_URI`   | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
+| `DISCORD_API_URL`        | `https://discord.com/api`                                | Discord API URL (for test flexibility)                               |
 | `FRONTEND_URL`           | `https://matchmaker.localhost`                           | CORS allowed origin                                                  |
 | `GIN_MODE`               | `release`                                                | `debug` or `release`                                                 |
 | `JWT_SECRET`             | required, no default                                     | A key for signing the JWT access tokens                              |

@@ -20,9 +20,10 @@ type Handler struct {
 	frontendURL       string
 	jwtSecret         []byte
 	refreshExpiration int
+	discordApiUrl     string
 }
 
-func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int) *Handler {
+func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string) *Handler {
 	return &Handler{
 		ginMode:           gm,
 		store:             s,
@@ -32,6 +33,7 @@ func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Co
 		frontendURL:       fURL,
 		jwtSecret:         jwt,
 		refreshExpiration: refExp,
+		discordApiUrl:     dApi,
 	}
 }
 

@@ -92,6 +92,7 @@ func main() {
 	discordClientID := os.Getenv("DISCORD_CLIENT_ID")
 	discordClientSecret := os.Getenv("DISCORD_CLIENT_SECRET")
 	discordRedirectURI := os.Getenv("DISCORD_REDIRECT_URI")
+	discordAPIURL := os.Getenv("DISCORD_API_URL")
 
 	if discordClientID == "" {
 		log.Fatal("DISCORD_CLIENT_ID is required")
@@ -103,6 +104,10 @@ func main() {
 
 	if discordRedirectURI == "" {
 		discordRedirectURI = "https://matchmaker.localhost/api/auth/discord_redirect"
+	}
+
+	if discordAPIURL == "" {
+		discordAPIURL = "https://discord.com/api"
 	}
 
 	var discordOauth = &oauth2.Config{
@@ -148,7 +153,7 @@ func main() {
 	}
 
 	// Handlers
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL)
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())

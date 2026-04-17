@@ -24,7 +24,7 @@ import (
 func TestUsersMeHandler_Unauthorized(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodGet, "/users/me")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UsersMeHandler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -35,7 +35,7 @@ func TestUsersMeHandler_InvalidUserID(t *testing.T) {
 	// Set userID as a non-UUID string to trigger the parse error.
 	c.Set("userID", "not-a-uuid")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UsersMeHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -52,7 +52,7 @@ func TestUsersMeHandler_StoreError(t *testing.T) {
 			return model.User{}, errors.New("db error")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UsersMeHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -76,7 +76,7 @@ func TestUsersMeHandler_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UsersMeHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -92,7 +92,7 @@ func TestUsersMeHandler_Success(t *testing.T) {
 func TestUsersMeGamesHandler_Unauthorized(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/games")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UsersMeGamesHandler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -102,7 +102,7 @@ func TestUsersMeGamesHandler_InvalidUserID(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/games")
 	c.Set("userID", "not-a-uuid")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UsersMeGamesHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -119,7 +119,7 @@ func TestUsersMeGamesHandler_StoreError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UsersMeGamesHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -142,7 +142,7 @@ func TestUsersMeGamesHandler_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UsersMeGamesHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -162,7 +162,7 @@ func TestUsersMeGamesHandler_EmptyList(t *testing.T) {
 			return []model.UserGame{}, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UsersMeGamesHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -180,7 +180,7 @@ const validUpdateBody = `{"pronouns":"they/them","show_pronouns":true,"region":"
 func TestUpdateUsersMeHandler_Unauthorized(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -190,7 +190,7 @@ func TestUpdateUsersMeHandler_InvalidUserID(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
 	c.Set("userID", "not-a-uuid")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -203,7 +203,7 @@ func TestUpdateUsersMeHandler_InvalidBody(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`not json`))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	h := newTestHandler(t, &store.MockStore{}, nil)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -225,7 +225,7 @@ func TestUpdateUsersMeHandler_UpdateUserFails(t *testing.T) {
 			return model.User{}, errors.New("db error")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -253,7 +253,7 @@ func TestUpdateUsersMeHandler_UpsertGameBadRequest(t *testing.T) {
 			return model.UserGame{}, http.StatusBadRequest, errors.New("invalid game data")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -281,7 +281,7 @@ func TestUpdateUsersMeHandler_UpsertGameServerError(t *testing.T) {
 			return model.UserGame{}, http.StatusInternalServerError, errors.New("db error")
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -306,7 +306,7 @@ func TestUpdateUsersMeHandler_Success_NoGames(t *testing.T) {
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -342,7 +342,7 @@ func TestUpdateUsersMeHandler_Success_WithGames(t *testing.T) {
 			return model.UserGame{GameID: ug.GameID, UserID: userID}, http.StatusOK, nil
 		},
 	}
-	h := newTestHandler(t, ms, nil)
+	h := newTestHandler(t, ms, nil, "")
 	h.UpdateUsersMeHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

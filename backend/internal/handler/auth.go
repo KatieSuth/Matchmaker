@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func generateState() (string, error) {
+func GenerateState() (string, error) {
 	state := make([]byte, 16)
 	_, err := rand.Read(state)
 	return hex.EncodeToString(state), err
@@ -33,7 +33,7 @@ func (h *Handler) setAuthCookies(c *gin.Context, refreshToken string, maxAge int
 // GET /auth/login
 func (h *Handler) LoginHandler(c *gin.Context) {
 	//generate state for the Discord
-	state, err := generateState()
+	state, err := GenerateState()
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to generate OAuth state", "error", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -89,7 +89,7 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 
 	//use the token to fetch the user from Discord
 	client := h.oauth2Config.Client(c.Request.Context(), token)
-	resp, err := client.Get("https://discord.com/api/users/@me")
+	resp, err := client.Get(h.discordApiUrl + "/users/@me")
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to reach Discord API", "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
