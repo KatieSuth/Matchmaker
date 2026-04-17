@@ -52,10 +52,8 @@ func TestLoginHandler_Success(t *testing.T) {
 		},
 	}
 
-	discordURL, err := test_util.GetDiscordURL(t)
-	require.NoError(t, err)
 	//Initialize handler with MockStore, dummy config, and secure cookie
-	h := newTestHandler(t, &store.MockStore{}, dummyOauth, discordURL)
+	h := newTestHandler(t, &store.MockStore{}, dummyOauth, "")
 
 	c, w := test_util.NewGinContext(http.MethodGet, "/auth/login")
 	h.LoginHandler(c)
