@@ -439,7 +439,7 @@ export default function MyEventsPage() {
       const endpoint = "/users/me/events";
 
       const params: Record<string, string | undefined> = {};
-      if (activeTab === "hosting") params.hosting = "true";
+      if (tab === "hosting") params.hosting = "true";
       if (appliedFrom || appliedTo) {
         if (appliedFrom) params.from = appliedFrom.toISOString().split("T")[0];
         if (appliedTo) params.to = appliedTo.toISOString().split("T")[0];
