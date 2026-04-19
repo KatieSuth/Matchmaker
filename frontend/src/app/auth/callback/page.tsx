@@ -41,12 +41,12 @@ export default function CallbackPage() {
             
             return api.get<User>("/users/me").then((res) => {
                 if (!res.data) {
-                    router.replace(isNewUser ? "/my_account" : "/events");
+                    router.replace(isNewUser ? "/my_account" : "/my_events");
                     return;
                 }
                 setUser(res.data);
                 setIsAuthenticated(true);
-                router.replace(isNewUser ? "/my_account" : "/events");
+                router.replace(isNewUser ? "/my_account" : "/my_events");
             })
         })
     }, [router, setUser, setIsAuthenticated]);

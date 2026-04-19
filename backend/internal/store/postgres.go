@@ -45,6 +45,9 @@ type Store interface {
 
 	//game ranks
 	GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
+
+	//events
+	GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor string) ([]model.DashboardEvent, bool, string, error)
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {

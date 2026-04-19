@@ -17,7 +17,7 @@ export  function proxy(request: NextRequest) {
 
     // If refresh token exists and they hit "/", send to "/events"
     if (isAuthenticated && pathname === "/") {
-        return NextResponse.redirect(new URL("/events", request.url));
+        return NextResponse.redirect(new URL("/my_events", request.url));
     }
 
     return NextResponse.next();

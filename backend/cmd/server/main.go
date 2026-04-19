@@ -197,6 +197,7 @@ func main() {
 			users.GET("/me", h.UsersMeHandler)
 			users.PUT("/me", h.UpdateUsersMeHandler)
 			users.GET("/me/games", h.UsersMeGamesHandler)
+			users.GET("/me/events", h.UsersMeEventsHandler)
 		}
 
 		games := protected.Group("/games")

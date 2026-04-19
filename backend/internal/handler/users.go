@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
@@ -170,4 +171,97 @@ func (h *Handler) UsersMeGamesHandler(c *gin.Context) {
 
 	slog.DebugContext(c.Request.Context(), "user games fetched successfully", "user_id", userUUID, "count", len(userGames))
 	c.JSON(http.StatusOK, userGames)
+}
+
+// GET /users/me/events
+func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
+	type QueryParams struct {
+		Hosting bool   `form:"hosting"`
+		Past    bool   `form:"past"`
+		From    string `form:"from"`
+		To      string `form:"to"`
+		GameId  string `form:"game_id"`
+		Cursor  string `form:"cursor"`
+	}
+
+	type Response struct {
+		Events     []model.DashboardEvent `json:"events"`
+		NextCursor string                 `json:"next_cursor"`
+		HasMore    bool                   `json:"has_more"`
+	}
+
+	var params QueryParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid query parameters in UsersMeEventsHandler")
+
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		slog.WarnContext(c.Request.Context(), "request reached UsersMeEventsHandler without userID in context")
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID.(string))
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not parse user ID",
+		})
+		return
+	}
+
+	hosting := params.Hosting
+	past := params.Past
+	from := params.From
+	to := params.To
+	gameId := params.GameId
+	cursor := params.Cursor
+
+	var dateFrom *time.Time
+	var dateTo *time.Time
+	if from != "" {
+		if t, err := time.Parse("2026-01-31", from); err == nil {
+			dateFrom = &t
+		} else {
+			slog.WarnContext(c.Request.Context(), "invalid 'from' format", "user_id", userID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "invalid 'from' format",
+			})
+		}
+	}
+
+	if to != "" {
+		if t, err := time.Parse("2026-01-31", to); err == nil {
+			dateTo = &t
+		} else {
+			slog.WarnContext(c.Request.Context(), "invalid 'to' format", "user_id", userID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "invalid 'to' format",
+			})
+		}
+	}
+
+	events, hasMore, nextCursor, err := h.store.GetEventsForUser(c.Request.Context(), userUUID, hosting, past, dateFrom, dateTo, gameId, cursor)
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to fetch user's events", "user_id", userUUID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to fetch events",
+		})
+		return
+	}
+
+	response := Response{
+		Events:     events,
+		HasMore:    hasMore,
+		NextCursor: nextCursor,
+	}
+
+	slog.DebugContext(c.Request.Context(), "user events fetched successfully", "user_id", userUUID, "count", len(events))
+	c.JSON(http.StatusOK, response)
 }
