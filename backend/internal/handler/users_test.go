@@ -171,6 +171,106 @@ func TestUsersMeGamesHandler_EmptyList(t *testing.T) {
 }
 
 // ============================================================
+// UsersMeEventsHandler — GET /users/me/events
+// ============================================================
+
+func TestUsersMeEventsHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUsersMeEventsHandler_MissingTimezone(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events")
+	test_util.WithUserIDString(c, userID)
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_InvalidFromDate(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC&from=2026/01/01")
+	test_util.WithUserIDString(c, userID)
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_StoreValidationError(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC")
+	test_util.WithUserIDString(c, userID)
+
+	ms := &store.MockStore{
+		GetEventsForUserFn: func(_ context.Context, _ uuid.UUID, _ bool, _ bool, _ *time.Time, _ *time.Time, _ string, _ string, _ string) ([]model.DashboardEvent, bool, string, error) {
+			return nil, false, "", store.ErrInvalidCursor
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_Success(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.NewString()
+	cursor := "opaque_cursor"
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC&hosting=true&past=true&from=2026-04-20&to=2026-04-21&game_id="+gameID+"&cursor="+cursor)
+	test_util.WithUserIDString(c, userID)
+
+	event := model.DashboardEvent{
+		ID:               uuid.New(),
+		GameName:         "Valorant",
+		GameMode:         "5v5",
+		EventDate:        time.Now().UTC(),
+		HostID:           userID,
+		HostName:         "host",
+		RegisteredCount:  10,
+		RegistrationOpen: true,
+	}
+
+	ms := &store.MockStore{
+		GetEventsForUserFn: func(_ context.Context, gotUserID uuid.UUID, hosting, past bool, from, to *time.Time, gotGameID, gotCursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
+			assert.Equal(t, userID, gotUserID)
+			assert.True(t, hosting)
+			assert.True(t, past)
+			require.NotNil(t, from)
+			require.NotNil(t, to)
+			assert.Equal(t, "2026-04-20", from.Format("2006-01-02"))
+			assert.Equal(t, "2026-04-21", to.Format("2006-01-02"))
+			assert.Equal(t, gameID, gotGameID)
+			assert.Equal(t, cursor, gotCursor)
+			assert.Equal(t, "UTC", timezone)
+			return []model.DashboardEvent{event}, true, "next_cursor", nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	type response struct {
+		EventGroups []model.DashboardEvent `json:"event_groups"`
+		NextCursor  string                 `json:"next_cursor"`
+		HasMore     bool                   `json:"has_more"`
+	}
+	got := test_util.DecodeJSON[response](t, w)
+	require.Len(t, got.EventGroups, 1)
+	assert.Equal(t, event.ID, got.EventGroups[0].ID)
+	assert.Equal(t, "next_cursor", got.NextCursor)
+	assert.True(t, got.HasMore)
+}
+
+// ============================================================
 // UpdateUsersMeHandler — PUT /users/me
 // ============================================================
 

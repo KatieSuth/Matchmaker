@@ -27,12 +27,11 @@ export interface Event {
   host_name: string;
   host_id: string;
   registered_count: number;
-  max_players: number | null;
   registration_open: boolean;
 }
 
 interface EventsPage {
-  events: Event[];
+  event_groups: Event[];
   next_cursor: string | null;
   has_more: boolean;
 }
@@ -277,11 +276,7 @@ function EventCard({ event, currentUserId, isHostingList, hostingIds }: EventCar
               </svg>
             }
             label="Players"
-            value={
-              event.max_players != null
-                ? `${event.registered_count} / ${event.max_players}`
-                : `${event.registered_count}`
-            }
+            value={`${event.registered_count}`}
           />
         </div>
 
@@ -442,6 +437,7 @@ export default function MyEventsPage() {
       const endpoint = "/users/me/events";
 
       const params: Record<string, string | undefined> = {};
+      params.tz = USER_TZ;
       if (tab === "hosting") params.hosting = "true";
       if (appliedFrom || appliedTo) {
         if (appliedFrom) params.from = appliedFrom.toISOString().split("T")[0];
@@ -462,7 +458,7 @@ export default function MyEventsPage() {
         setBuckets((prev) => ({
           ...prev,
           [key]: {
-            events: cursor ? [...prev[key].events, ...page.events] : page.events,
+            events: cursor ? [...prev[key].events, ...page.event_groups] : page.event_groups,
             nextCursor: page.next_cursor,
             hasMore: page.has_more,
             isLoadingMore: false,

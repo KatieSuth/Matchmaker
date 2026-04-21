@@ -81,3 +81,172 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 	)
 	return i, err
 }
+
+const getEventGroupById = `-- name: GetEventGroupById :one
+SELECT id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at FROM event_groups WHERE id = $1
+`
+
+func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGroup, error) {
+	row := q.db.QueryRow(ctx, getEventGroupById, id)
+	var i EventGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.GameModeID,
+		&i.SubMin,
+		&i.RegistrationOpen,
+		&i.IsPublic,
+		&i.DeprioritizeNoshows,
+		&i.MaxNoshows,
+		&i.DiscordGuild,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getEventsByGroupId = `-- name: GetEventsByGroupId :many
+SELECT id, group_id, start_time, created_at, updated_at FROM events WHERE group_id = $1 ORDER BY start_time ASC
+`
+
+func (q *Queries) GetEventsByGroupId(ctx context.Context, groupID *uuid.UUID) ([]Event, error) {
+	rows, err := q.db.Query(ctx, getEventsByGroupId, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.GroupID,
+			&i.StartTime,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getEventsForUser = `-- name: GetEventsForUser :many
+WITH grouped AS (
+    SELECT
+        EG.id AS id,
+        G.name AS game_name,
+        GM.name AS game_mode,
+        MIN(E.start_time)::TIMESTAMPTZ AS event_date,
+        H.id AS host_id,
+        COALESCE(H.discord_name, '') AS host_name,
+        COUNT(DISTINCT RA.user_id)::INT AS registered_count,
+        EG.registration_open
+    FROM events AS E
+    JOIN event_groups AS EG ON EG.id = E.group_id
+    JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+    JOIN games AS G ON G.id = GM.game_id
+    JOIN users AS H ON H.id = EG.owner_id
+    LEFT JOIN registrations AS RA ON RA.event_id = E.id
+    WHERE
+        (
+            ($5::BOOL = TRUE AND EG.owner_id = $6)
+            OR
+            ($5::BOOL = FALSE AND EXISTS (
+                SELECT 1
+                FROM events AS ER
+                JOIN registrations AS RM ON RM.event_id = ER.id
+                WHERE ER.group_id = EG.id AND RM.user_id = $6
+            ))
+        )
+        AND (NOT $7::BOOL OR (CASE WHEN $8::BOOL THEN E.start_time < $9::TIMESTAMPTZ ELSE E.start_time >= $9::TIMESTAMPTZ END))
+        AND (NOT $10::BOOL OR E.start_time >= $11::TIMESTAMPTZ)
+        AND (NOT $12::BOOL OR E.start_time < $13::TIMESTAMPTZ)
+        AND (NOT $14::BOOL OR G.id = $15::UUID)
+    GROUP BY EG.id, G.name, GM.name, H.id, H.discord_name, EG.registration_open
+)
+SELECT id, game_name, game_mode, event_date, host_id, host_name, registered_count, registration_open
+FROM grouped
+WHERE (NOT $1::BOOL OR (event_date, id) > ($2::TIMESTAMPTZ, $3::UUID))
+ORDER BY event_date ASC, id ASC
+LIMIT $4::INT
+`
+
+type GetEventsForUserParams struct {
+	HasCursor       bool
+	CursorTime      time.Time
+	CursorID        uuid.UUID
+	LimitCount      int32
+	Hosting         bool
+	UserID          uuid.UUID
+	ApplyPastFilter bool
+	Past            bool
+	BoundaryTime    time.Time
+	HasFrom         bool
+	FromTime        time.Time
+	HasTo           bool
+	ToTime          time.Time
+	HasGameID       bool
+	GameID          uuid.UUID
+}
+
+type GetEventsForUserRow struct {
+	ID               uuid.UUID
+	GameName         string
+	GameMode         string
+	EventDate        time.Time
+	HostID           uuid.UUID
+	HostName         string
+	RegisteredCount  int32
+	RegistrationOpen bool
+}
+
+func (q *Queries) GetEventsForUser(ctx context.Context, arg GetEventsForUserParams) ([]GetEventsForUserRow, error) {
+	rows, err := q.db.Query(ctx, getEventsForUser,
+		arg.HasCursor,
+		arg.CursorTime,
+		arg.CursorID,
+		arg.LimitCount,
+		arg.Hosting,
+		arg.UserID,
+		arg.ApplyPastFilter,
+		arg.Past,
+		arg.BoundaryTime,
+		arg.HasFrom,
+		arg.FromTime,
+		arg.HasTo,
+		arg.ToTime,
+		arg.HasGameID,
+		arg.GameID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetEventsForUserRow
+	for rows.Next() {
+		var i GetEventsForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GameName,
+			&i.GameMode,
+			&i.EventDate,
+			&i.HostID,
+			&i.HostName,
+			&i.RegisteredCount,
+			&i.RegistrationOpen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

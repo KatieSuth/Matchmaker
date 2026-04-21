@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -182,18 +183,23 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 		To      string `form:"to"`
 		GameId  string `form:"game_id"`
 		Cursor  string `form:"cursor"`
+		Tz      string `form:"tz"`
 	}
 
 	type Response struct {
-		Events     []model.DashboardEvent `json:"events"`
-		NextCursor string                 `json:"next_cursor"`
-		HasMore    bool                   `json:"has_more"`
+		EventGroups []model.DashboardEvent `json:"event_groups"`
+		NextCursor  string                 `json:"next_cursor"`
+		HasMore     bool                   `json:"has_more"`
 	}
 
 	var params QueryParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		slog.WarnContext(c.Request.Context(), "invalid query parameters in UsersMeEventsHandler")
-
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Invalid query parameters",
+		})
+		return
 	}
 
 	userID, exists := c.Get("userID")
@@ -219,11 +225,31 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	to := params.To
 	gameId := params.GameId
 	cursor := params.Cursor
+	timezone := params.Tz
+
+	if timezone == "" {
+		slog.WarnContext(c.Request.Context(), "missing timezone query parameter", "user_id", userID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "tz is required",
+		})
+		return
+	}
+
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid timezone", "user_id", userID, "tz", timezone, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "invalid timezone",
+		})
+		return
+	}
 
 	var dateFrom *time.Time
 	var dateTo *time.Time
 	if from != "" {
-		if t, err := time.Parse("2026-01-31", from); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", from, location); err == nil {
 			dateFrom = &t
 		} else {
 			slog.WarnContext(c.Request.Context(), "invalid 'from' format", "user_id", userID, "error", err)
@@ -231,11 +257,12 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 				"status":  "error",
 				"message": "invalid 'from' format",
 			})
+			return
 		}
 	}
 
 	if to != "" {
-		if t, err := time.Parse("2026-01-31", to); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", to, location); err == nil {
 			dateTo = &t
 		} else {
 			slog.WarnContext(c.Request.Context(), "invalid 'to' format", "user_id", userID, "error", err)
@@ -243,11 +270,28 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 				"status":  "error",
 				"message": "invalid 'to' format",
 			})
+			return
 		}
 	}
 
-	events, hasMore, nextCursor, err := h.store.GetEventsForUser(c.Request.Context(), userUUID, hosting, past, dateFrom, dateTo, gameId, cursor)
+	if dateFrom != nil && dateTo != nil && dateFrom.After(*dateTo) {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "'from' must be before or equal to 'to'",
+		})
+		return
+	}
+
+	eventGroups, hasMore, nextCursor, err := h.store.GetEventsForUser(c.Request.Context(), userUUID, hosting, past, dateFrom, dateTo, gameId, cursor, timezone)
 	if err != nil {
+		if errors.Is(err, store.ErrInvalidGameID) || errors.Is(err, store.ErrInvalidCursor) || errors.Is(err, store.ErrInvalidTimezone) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": err.Error(),
+			})
+			return
+		}
+
 		slog.ErrorContext(c.Request.Context(), "failed to fetch user's events", "user_id", userUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
@@ -257,11 +301,11 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	}
 
 	response := Response{
-		Events:     events,
-		HasMore:    hasMore,
-		NextCursor: nextCursor,
+		EventGroups: eventGroups,
+		HasMore:     hasMore,
+		NextCursor:  nextCursor,
 	}
 
-	slog.DebugContext(c.Request.Context(), "user events fetched successfully", "user_id", userUUID, "count", len(events))
+	slog.DebugContext(c.Request.Context(), "user event groups fetched successfully", "user_id", userUUID, "count", len(eventGroups))
 	c.JSON(http.StatusOK, response)
 }
