@@ -27,11 +27,11 @@ sql:
           # Override for nullable Timestamp columns to use a pointer
           - db_type: "pg_catalog.timestamp"
             nullable: true
-            go_type: "*time.Time"
+            go_type: "time.Time"
           # Override for non-nullable Timestamptz columns
           - db_type: "timestamptz"
             go_type: "time.Time"
           # Override for nullable Timestamptz columns to use a pointer
           - db_type: "timestamptz"
             nullable: true
-            go_type: "*time.Time"
+            go_type: "time.Time"

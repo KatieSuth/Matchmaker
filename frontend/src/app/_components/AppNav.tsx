@@ -49,7 +49,7 @@ export default function AppNav() {
       <nav className="relative flex items-center h-[60px] px-6 max-sm:px-4 max-sm:gap-4">
 
         {/* Logo */}
-        <Link href="/events" className="flex-shrink-0 flex items-center no-underline mr-2">
+        <Link href="/my_events" className="flex-shrink-0 flex items-center no-underline mr-2">
           <div className="logo-glow-sm relative w-[120px] h-[42px] max-sm:w-[90px] max-sm:h-[34px]">
             <Image
               src="/logo-small.png"

@@ -10,8 +10,10 @@ import { Game } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { SelectOption, selectStyles } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
+import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { fetchGames } from "@/app/_services/games";
 import { inputCls, datepickerStyles } from "@/app/_lib/styles";
+import { EventForm } from "@/app/_components/forms/EventForm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -369,6 +371,7 @@ function LoadingSpinner() {
 
 export default function MyEventsPage() {
   const { user } = useAuth();
+  const [isEventSheetOpen, setIsEventSheetOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("hosting");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
@@ -577,8 +580,9 @@ export default function MyEventsPage() {
         
         {/* Create event CTA */}
         <div className="flex justify-center" style={{ animation: "var(--animate-rise-1)" }}>
-          <Link
-            href="/events/new"
+          <button
+            type="button"
+            onClick={() => setIsEventSheetOpen(true)}
             className="relative overflow-hidden flex items-center gap-2 px-5 py-2.5 rounded-lg
                        text-sm font-medium border border-white/10 bg-white/[0.04]
                        text-[var(--color-text)] hover:bg-white/[0.09]
@@ -590,7 +594,7 @@ export default function MyEventsPage() {
             <span className="absolute top-0 left-0 right-0 h-px bg-top-edge opacity-30 rounded-full" />
             <span className="text-[var(--color-accent-blue)] text-base leading-none">+</span>
             Host an event
-          </Link>
+          </button>
         </div>
 
         {/* Tabs */}
@@ -656,6 +660,7 @@ export default function MyEventsPage() {
             {/* Game select */}
             <div className="flex-1 min-w-0">
               <ReactSelect<SelectOption, false, GroupBase<SelectOption>>
+                instanceId="my-events-filter-game"
                 value={pendingGame}
                 onChange={(opt) => setPendingGame(opt)}
                 options={gameSelectOptions}
@@ -831,6 +836,14 @@ export default function MyEventsPage() {
           )}
         </div>
       </div>
+
+      <ResponsiveSheet
+        isOpen={isEventSheetOpen}
+        onClose={() => setIsEventSheetOpen(false)}
+        title="Host an event"
+      >
+        <EventForm mode="create" onCancel={() => setIsEventSheetOpen(false)} />
+      </ResponsiveSheet>
 
       <style>{datepickerStyles}</style>
     </div>

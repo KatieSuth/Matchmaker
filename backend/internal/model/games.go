@@ -16,21 +16,23 @@ type Game struct {
 }
 
 /*
- * Mapping function to enable json mappings (sqlc can do
+ * Mapping functions to enable json mappings (sqlc can do
  * this but handling it manually gives more flexibility)
  */
-func MapDbGameToGame(dbGames []db.Game) []Game {
-	games := []Game{}
-
-	for _, dbGame := range dbGames {
-		games = append(games, Game{
-			ID:        dbGame.ID,
-			Name:      dbGame.Name,
-			OwnerID:   dbGame.OwnerID,
-			CreatedAt: dbGame.CreatedAt,
-			UpdatedAt: dbGame.UpdatedAt,
-		})
+func MapDbGameToGame(dbGame db.Game) Game {
+	return Game{
+		ID:        dbGame.ID,
+		Name:      dbGame.Name,
+		OwnerID:   dbGame.OwnerID,
+		CreatedAt: dbGame.CreatedAt,
+		UpdatedAt: dbGame.UpdatedAt,
 	}
+}
 
+func MapDbGamesToGames(dbGames []db.Game) []Game {
+	games := make([]Game, 0, len(dbGames))
+	for _, dbGame := range dbGames {
+		games = append(games, MapDbGameToGame(dbGame))
+	}
 	return games
 }

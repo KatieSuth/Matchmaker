@@ -8,8 +8,8 @@ BEGIN
     VALUES (gen_random_uuid(), 'Valorant', NOW(), NOW())
     RETURNING id INTO v_game_id;
 
-    INSERT INTO game_modes (id, game_id, "name", team_size, created_at, updated_at)
-    VALUES (gen_random_uuid(), v_game_id, '5v5', 5, NOW(), NOW());
+    INSERT INTO game_modes (id, game_id, "name", team_size, created_at, updated_at, duration)
+    VALUES (gen_random_uuid(), v_game_id, '5v5', 5, NOW(), NOW(), 60);
 
     INSERT INTO game_ranks (id, game_id, "name", "order", created_at, updated_at)
     VALUES
