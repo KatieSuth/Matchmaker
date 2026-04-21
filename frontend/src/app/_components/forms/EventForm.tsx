@@ -112,7 +112,7 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
   const [gameModeId, setGameModeId] = useState("");
   const [region, setRegion] = useState<(typeof REGIONS)[number] | "">("");
   const [startTimeLocal, setStartTimeLocal] = useState(() => getInitialStartTimeLocal(mode));
-  const [minSubsPerLobby, setMinSubsPerLobby] = useState(1);
+  const [minSubsPerLobby, setMinSubsPerLobby] = useState(0);
   const [registrationOpen, setRegistrationOpen] = useState(true);
   const [gamesToRun, setGamesToRun] = useState(1);
 
