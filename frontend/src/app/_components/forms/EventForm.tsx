@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
+import { REGIONS } from "@/app/_lib/constants";
 import { inputCls } from "@/app/_lib/styles";
 import { createEvent } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
@@ -15,7 +19,40 @@ interface EventFormProps {
   onCancel: () => void;
 }
 
-const REGIONS = ["NA", "EMEA", "APAC"] as const;
+const eventFormSchema = z.object({
+  game_id: z.string().min(1, "Game is required."),
+  game_mode_id: z.string().min(1, "Game mode is required."),
+  region: z
+    .string()
+    .min(1, "Region is required.")
+    .refine((s) => (REGIONS as readonly string[]).includes(s), {
+      message: "Please select a valid region.",
+    }),
+  start_time_local: z
+    .string()
+    .min(1, "Start time is required.")
+    .refine((s) => !Number.isNaN(new Date(s).getTime()), {
+      message: "Start time is invalid.",
+    })
+    .refine((s) => {
+      const t = new Date(s).getTime();
+      if (Number.isNaN(t)) return true;
+      return t >= Date.now();
+    }, {
+      message: "Start time cannot be in the past.",
+    }),
+  sub_min: z
+    .number()
+    .int()
+    .min(0, "Minimum subs per lobby cannot be below 0."),
+  games_to_run: z
+    .number()
+    .int()
+    .min(1, "Number of games must be greater than 0."),
+  registration_open: z.boolean(),
+});
+
+type EventFormValues = z.infer<typeof eventFormSchema>;
 
 function toDateTimeLocalValue(date: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -100,6 +137,33 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
   const userTz =
     typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
+  const defaultValues = useMemo(
+    (): EventFormValues => ({
+      game_id: "",
+      game_mode_id: "",
+      region: "",
+      start_time_local: getInitialStartTimeLocal(mode),
+      sub_min: 0,
+      games_to_run: 1,
+      registration_open: true,
+    }),
+    [mode]
+  );
+
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    getValues,
+    formState: { errors },
+  } = useForm<EventFormValues>({
+    resolver: zodResolver(eventFormSchema),
+    defaultValues,
+  });
+
+  const watchedGameId = useWatch({ control, name: "game_id" });
+
   const [games, setGames] = useState<Game[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState<string | null>(null);
@@ -108,15 +172,6 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
   const [modesLoading, setModesLoading] = useState(false);
   const [modesError, setModesError] = useState<string | null>(null);
 
-  const [gameId, setGameId] = useState("");
-  const [gameModeId, setGameModeId] = useState("");
-  const [region, setRegion] = useState<(typeof REGIONS)[number] | "">("");
-  const [startTimeLocal, setStartTimeLocal] = useState(() => getInitialStartTimeLocal(mode));
-  const [minSubsPerLobby, setMinSubsPerLobby] = useState(0);
-  const [registrationOpen, setRegistrationOpen] = useState(true);
-  const [gamesToRun, setGamesToRun] = useState(1);
-
-  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -148,29 +203,23 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
     };
   }, [user?.id]);
 
-  const handleGameChange = (nextGameId: string) => {
-    setGameId(nextGameId);
-    setGameModeId("");
-    setModes([]);
-    setModesError(null);
-  };
-
   useEffect(() => {
-    if (!gameId) return;
+    if (!watchedGameId) return;
 
     let ignore = false;
     const loadModes = async () => {
       setModesLoading(true);
       setModesError(null);
       try {
-        const data = await fetchGameModes(gameId);
+        const data = await fetchGameModes(watchedGameId);
         if (ignore) return;
         setModes(data);
-        setGameModeId((prev) => (data.some((m) => m.id === prev) ? prev : ""));
+        const prevModeId = getValues("game_mode_id");
+        setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
       } catch {
         if (ignore) return;
         setModes([]);
-        setGameModeId("");
+        setValue("game_mode_id", "");
         setModesError("Could not load game modes.");
       } finally {
         if (ignore) return;
@@ -183,44 +232,27 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
     return () => {
       ignore = true;
     };
-  }, [gameId]);
+  }, [watchedGameId, getValues, setValue]);
 
-  const hasGame = gameId.length > 0;
-  const hasMode = gameModeId.length > 0;
-  const hasRegion = region.length > 0;
-  const hasStartTime =
-    startTimeLocal.length > 0 && !Number.isNaN(new Date(startTimeLocal).getTime());
-  const hasValidSubMin = minSubsPerLobby > 0;
-  const hasValidGamesToRun = gamesToRun > 0;
-
-  const isValid = hasGame && hasMode && hasRegion && hasStartTime && hasValidSubMin && hasValidGamesToRun;
-
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitAttempted(true);
+  const onValidSubmit = async (data: EventFormValues) => {
     setSubmitError(null);
-    if (!isValid) return;
     if (!user?.id) {
       setSubmitError("You must be signed in to create an event.");
       return;
     }
     if (mode !== "create") return;
 
-    const startDate = new Date(startTimeLocal);
-    if (Number.isNaN(startDate.getTime())) {
-      setSubmitError("Start time is invalid.");
-      return;
-    }
+    const startDate = new Date(data.start_time_local);
 
     try {
       setIsSubmitting(true);
       const result = await createEvent({
-        game_mode_id: gameModeId,
-        region,
+        game_mode_id: data.game_mode_id,
+        region: data.region,
         start_time: startDate.toISOString(),
-        sub_min: minSubsPerLobby,
-        games_to_run: gamesToRun,
-        registration_open: registrationOpen,
+        sub_min: data.sub_min,
+        games_to_run: data.games_to_run,
+        registration_open: data.registration_open,
       });
       onCancel();
       router.push(`/event/${result.group_id}`);
@@ -233,148 +265,193 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
 
   return (
     <>
-      <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
-      <p className="text-xs text-[var(--color-text-muted)]">
-        Times are entered in your local timezone: <span className="text-[var(--color-text-soft)]">{userTz}</span>
-      </p>
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit(onValidSubmit)} noValidate>
+        <p className="text-xs text-[var(--color-text-muted)]">
+          Times are entered in your local timezone:{" "}
+          <span className="text-[var(--color-text-soft)]">{userTz}</span>
+        </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-            Game *
-          </label>
-          <Select
-            value={gameId}
-            onChange={handleGameChange}
-            disabled={mode === "edit" || gamesLoading || !user?.id || !!gamesError}
-            placeholder={gamesLoading ? "Loading games..." : "Select game"}
-            options={games.map((game) => ({ value: game.id, label: game.name }))}
-          />
-          {!user?.id ? (
-            <p className="text-xs text-[var(--color-text-danger)]">
-              Unable to load games without a signed-in user.
-            </p>
-          ) : (
-            gamesError && <p className="text-xs text-[var(--color-text-danger)]">{gamesError}</p>
-          )}
-          {mode === "edit" && (
-            <p className="text-xs text-[var(--color-text-faint)]">Game cannot be changed while editing.</p>
-          )}
-          {submitAttempted && !hasGame && (
-            <p className="text-xs text-[var(--color-text-danger)]">Game is required.</p>
-          )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              Game *
+            </label>
+            <Controller
+              name="game_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onChange={(nextId) => {
+                    field.onChange(nextId);
+                    setValue("game_mode_id", "");
+                    setModes([]);
+                    setModesError(null);
+                  }}
+                  disabled={mode === "edit" || gamesLoading || !user?.id || !!gamesError}
+                  placeholder={gamesLoading ? "Loading games..." : "Select game"}
+                  options={games.map((game) => ({ value: game.id, label: game.name }))}
+                />
+              )}
+            />
+            {!user?.id ? (
+              <p className="text-xs text-[var(--color-text-danger)]">
+                Unable to load games without a signed-in user.
+              </p>
+            ) : (
+              gamesError && <p className="text-xs text-[var(--color-text-danger)]">{gamesError}</p>
+            )}
+            {mode === "edit" && (
+              <p className="text-xs text-[var(--color-text-faint)]">Game cannot be changed while editing.</p>
+            )}
+            {errors.game_id && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.game_id.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              Game mode *
+            </label>
+            <Controller
+              name="game_mode_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={!watchedGameId || modesLoading || !!modesError}
+                  placeholder={
+                    !watchedGameId
+                      ? "Select game first"
+                      : modesLoading
+                        ? "Loading game modes..."
+                        : "Select game mode"
+                  }
+                  options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
+                />
+              )}
+            />
+            {modesError && <p className="text-xs text-[var(--color-text-danger)]">{modesError}</p>}
+            {errors.game_mode_id && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.game_mode_id.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              Region *
+            </label>
+            <Controller
+              name="region"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select region"
+                  options={REGIONS.map((r) => ({ value: r, label: r }))}
+                />
+              )}
+            />
+            {errors.region && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.region.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              First game start time *
+            </label>
+            <input
+              type="datetime-local"
+              step={900}
+              className={inputCls}
+              {...register("start_time_local")}
+            />
+            {errors.start_time_local && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-            Game mode *
-          </label>
-          <Select
-            value={gameModeId}
-            onChange={setGameModeId}
-            disabled={!gameId || modesLoading || !!modesError}
-            placeholder={
-              !gameId ? "Select game first" : modesLoading ? "Loading game modes..." : "Select game mode"
-            }
-            options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
-          />
-          {modesError && <p className="text-xs text-[var(--color-text-danger)]">{modesError}</p>}
-          {submitAttempted && !hasMode && (
-            <p className="text-xs text-[var(--color-text-danger)]">Game mode is required.</p>
-          )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Controller
+              name="sub_min"
+              control={control}
+              render={({ field }) => (
+                <NumberStepper
+                  label="Minimum subs per lobby"
+                  value={field.value}
+                  min={0}
+                  onChange={field.onChange}
+                  hint="Additional lobbies are created only after this many subs are available per lobby."
+                />
+              )}
+            />
+            {errors.sub_min && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.sub_min.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Controller
+              name="games_to_run"
+              control={control}
+              render={({ field }) => (
+                <NumberStepper
+                  label="Number of games in event"
+                  value={field.value}
+                  min={1}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+            {errors.games_to_run && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.games_to_run.message}</p>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-            Region *
-          </label>
-          <Select
-            value={region}
-            onChange={(value) => setRegion(value as (typeof REGIONS)[number] | "")}
-            placeholder="Select region"
-            options={REGIONS.map((r) => ({ value: r, label: r }))}
+        <div className="pt-1 border-t border-white/[0.06]">
+          <Controller
+            name="registration_open"
+            control={control}
+            render={({ field }) => (
+              <ToggleRow
+                label="Registration is open"
+                description={
+                  field.value
+                    ? "Players can register for this event."
+                    : "Registration is currently closed."
+                }
+                checked={field.value}
+                onChange={field.onChange}
+              />
+            )}
           />
-          {submitAttempted && !hasRegion && (
-            <p className="text-xs text-[var(--color-text-danger)]">Region is required.</p>
-          )}
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-            First game start time *
-          </label>
-          <input
-            type="datetime-local"
-            value={startTimeLocal}
-            onChange={(event) => setStartTimeLocal(event.target.value)}
-            step={900}
-            className={inputCls}
-          />
-          {submitAttempted && !hasStartTime && (
-            <p className="text-xs text-[var(--color-text-danger)]">Start time is required.</p>
-          )}
+        {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}
+
+        <div className="mt-1 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
+          >
+            {isSubmitting ? "Creating..." : mode === "create" ? "Create Event" : "Save Settings"}
+          </button>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <NumberStepper
-          label="Minimum subs per lobby"
-          value={minSubsPerLobby}
-          min={1}
-          onChange={setMinSubsPerLobby}
-          hint="Additional lobbies are created only after this many subs are available per lobby."
-        />
-        {submitAttempted && !hasValidSubMin && (
-          <p className="text-xs text-[var(--color-text-danger)]">
-            Minimum subs per lobby must be greater than 0.
-          </p>
-        )}
-
-        <NumberStepper
-          label="Number of games in event"
-          value={gamesToRun}
-          min={1}
-          onChange={setGamesToRun}
-        />
-        {submitAttempted && !hasValidGamesToRun && (
-          <p className="text-xs text-[var(--color-text-danger)]">
-            Number of games must be greater than 0.
-          </p>
-        )}
-      </div>
-
-      <div className="pt-1 border-t border-white/[0.06]">
-        <ToggleRow
-          label="Registration is open"
-          description={
-            registrationOpen
-              ? "Players can register for this event."
-              : "Registration is currently closed."
-          }
-          checked={registrationOpen}
-          onChange={setRegistrationOpen}
-        />
-      </div>
-
-      {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}
-
-      <div className="mt-1 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
-        >
-          {isSubmitting ? "Creating..." : mode === "create" ? "Create Event" : "Save Settings"}
-        </button>
-      </div>
       </form>
       <style jsx global>{`
         .no-native-spinner {

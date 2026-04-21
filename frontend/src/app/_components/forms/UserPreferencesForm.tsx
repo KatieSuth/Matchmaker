@@ -7,6 +7,7 @@ import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import api from "@/app/_lib/axios";
+import { REGIONS, type Region } from "@/app/_lib/constants";
 import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
@@ -20,8 +21,6 @@ import { fetchGames, extractApiError } from "@/app/_services/games";
 // ---------------------------------------------------------------------------
 // Zod schema
 // ---------------------------------------------------------------------------
-
-const REGIONS = ["NA", "EMEA", "APAC"] as const;
 
 const userGameSchema = z.object({
   game_id: z.string().uuid("Please select a game"),
@@ -348,7 +347,7 @@ export default function UserPreferencesForm() {
     reset({
       pronouns: user.pronouns ?? "",
       show_pronouns: user.show_pronouns,
-      region: (user.region as (typeof REGIONS)[number]) ?? null,
+      region: (user.region as Region) ?? null,
       games: userGames.map((ug) => ({
         game_id: ug.game_id,
         in_game_name: ug.in_game_name ?? "",

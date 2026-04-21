@@ -76,10 +76,18 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		return
 	}
 
-	if body.SubMin <= 0 {
+	if startTime.Before(time.Now()) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
-			"message": "sub_min must be greater than 0",
+			"message": "start_time cannot be in the past",
+		})
+		return
+	}
+
+	if body.SubMin < 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "sub_min cannot be negative",
 		})
 		return
 	}
