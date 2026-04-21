@@ -10,8 +10,10 @@ import { Game } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { SelectOption, selectStyles } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
+import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { fetchGames } from "@/app/_services/games";
 import { inputCls, datepickerStyles } from "@/app/_lib/styles";
+import { EventForm } from "@/app/_components/forms/EventForm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,12 +27,11 @@ export interface Event {
   host_name: string;
   host_id: string;
   registered_count: number;
-  max_players: number | null;
   registration_open: boolean;
 }
 
 interface EventsPage {
-  events: Event[];
+  event_groups: Event[];
   next_cursor: string | null;
   has_more: boolean;
 }
@@ -98,7 +99,7 @@ interface DateInputProps {
 
 function DateInput({ value, onClick, placeholder, isClearable, onClear }: DateInputProps) {
   return (
-    <div className="relative flex items-center">
+    <div className="relative flex items-center w-full">
       <button
         type="button"
         onClick={onClick}
@@ -275,11 +276,7 @@ function EventCard({ event, currentUserId, isHostingList, hostingIds }: EventCar
               </svg>
             }
             label="Players"
-            value={
-              event.max_players != null
-                ? `${event.registered_count} / ${event.max_players}`
-                : `${event.registered_count}`
-            }
+            value={`${event.registered_count}`}
           />
         </div>
 
@@ -345,22 +342,7 @@ function EmptyState({
             ? "You're not hosting any upcoming events"
             : "You're not registered for any upcoming events"}
         </p>
-        {!hasFilters && time === "upcoming" && (
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {tab === "hosting"
-              ? "Create an event to get started."
-              : "Browse events to register."}
-          </p>
-        )}
       </div>
-      {!hasFilters && time === "upcoming" && (
-        <Link
-          href={tab === "hosting" ? "/events/new" : "/events"}
-          className="mt-1 px-4 py-2 rounded-lg text-xs font-medium border border-white/10 bg-white/[0.04] text-[var(--color-text-soft)] hover:bg-white/[0.08] hover:text-[var(--color-text)] transition-all duration-150"
-        >
-          {tab === "hosting" ? "Create event" : "Browse events"}
-        </Link>
-      )}
     </div>
   );
 }
@@ -384,6 +366,7 @@ function LoadingSpinner() {
 
 export default function MyEventsPage() {
   const { user } = useAuth();
+  const [isEventSheetOpen, setIsEventSheetOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("hosting");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
@@ -451,9 +434,11 @@ export default function MyEventsPage() {
   const loadBucket = useCallback(
     async (tab: Tab, time: TimeFilter, cursor?: string) => {
       const key: BucketKey = `${tab}:${time}`;
-      const endpoint = tab === "hosting" ? "/users/me/hosting" : "/users/me/events";
+      const endpoint = "/users/me/events";
 
       const params: Record<string, string | undefined> = {};
+      params.tz = USER_TZ;
+      if (tab === "hosting") params.hosting = "true";
       if (appliedFrom || appliedTo) {
         if (appliedFrom) params.from = appliedFrom.toISOString().split("T")[0];
         if (appliedTo) params.to = appliedTo.toISOString().split("T")[0];
@@ -473,7 +458,7 @@ export default function MyEventsPage() {
         setBuckets((prev) => ({
           ...prev,
           [key]: {
-            events: cursor ? [...prev[key].events, ...page.events] : page.events,
+            events: cursor ? [...prev[key].events, ...page.event_groups] : page.event_groups,
             nextCursor: page.next_cursor,
             hasMore: page.has_more,
             isLoadingMore: false,
@@ -588,6 +573,25 @@ export default function MyEventsPage() {
             {"Events you're hosting or registered in."}
           </p>
         </div>
+        
+        {/* Create event CTA */}
+        <div className="flex justify-center" style={{ animation: "var(--animate-rise-1)" }}>
+          <button
+            type="button"
+            onClick={() => setIsEventSheetOpen(true)}
+            className="relative overflow-hidden flex items-center gap-2 px-5 py-2.5 rounded-lg
+                       text-sm font-medium border border-white/10 bg-white/[0.04]
+                       text-[var(--color-text)] hover:bg-white/[0.09]
+                       hover:border-[var(--color-accent-blue)]/40
+                       focus-visible:outline-none focus-visible:ring-2
+                       focus-visible:ring-[var(--color-accent-blue)]/40
+                       transition-all duration-150"
+          >
+            <span className="absolute top-0 left-0 right-0 h-px bg-top-edge opacity-30 rounded-full" />
+            <span className="text-[var(--color-accent-blue)] text-base leading-none">+</span>
+            Host an event
+          </button>
+        </div>
 
         {/* Tabs */}
         <div
@@ -652,6 +656,7 @@ export default function MyEventsPage() {
             {/* Game select */}
             <div className="flex-1 min-w-0">
               <ReactSelect<SelectOption, false, GroupBase<SelectOption>>
+                instanceId="my-events-filter-game"
                 value={pendingGame}
                 onChange={(opt) => setPendingGame(opt)}
                 options={gameSelectOptions}
@@ -671,9 +676,11 @@ export default function MyEventsPage() {
           </div>
 
           {/* Date range row */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <div className="flex-1 flex flex-col gap-1.5">
+              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">From</label>
               <DatePicker
+                wrapperClassName="w-full"
                 selected={pendingFrom}
                 onChange={(d: Date | null) => setPendingFrom(d)}
                 selectsStart
@@ -681,7 +688,10 @@ export default function MyEventsPage() {
                 endDate={pendingTo}
                 maxDate={pendingTo ?? undefined}
                 dateFormat="MMM d, yyyy"
-                popperPlacement="bottom-start"
+                popperPlacement="bottom-end"
+                popperProps={{
+                  strategy: "fixed"
+                }}
                 customInput={
                   <DateInput
                     placeholder="From"
@@ -691,8 +701,10 @@ export default function MyEventsPage() {
                 }
               />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 flex flex-col gap-1.5">
+              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">To</label>
               <DatePicker
+                wrapperClassName="w-full"
                 selected={pendingTo}
                 onChange={(d: Date | null) => setPendingTo(d)}
                 selectsEnd
@@ -700,7 +712,10 @@ export default function MyEventsPage() {
                 endDate={pendingTo}
                 minDate={pendingFrom ?? undefined}
                 dateFormat="MMM d, yyyy"
-                popperPlacement="bottom-start"
+                popperPlacement="bottom-end"
+                popperProps={{
+                  strategy: "fixed"
+                }}
                 customInput={
                   <DateInput
                     placeholder="To"
@@ -817,6 +832,14 @@ export default function MyEventsPage() {
           )}
         </div>
       </div>
+
+      <ResponsiveSheet
+        isOpen={isEventSheetOpen}
+        onClose={() => setIsEventSheetOpen(false)}
+        title="Host an event"
+      >
+        <EventForm mode="create" onCancel={() => setIsEventSheetOpen(false)} />
+      </ResponsiveSheet>
 
       <style>{datepickerStyles}</style>
     </div>

@@ -78,6 +78,34 @@
   }
 }
 
+/*
+ * ResponsiveSheet panel: keep height rules in raw CSS. Tailwind v4 arbitrary
+ * utilities with multiple commas inside min() often fail to compile, so the
+ * sheet silently stayed content-height (looked unchanged in RDM).
+ */
+@media (max-width: 1023px) {
+  .responsive-sheet-panel {
+    height: min(
+      90dvh,
+      90vh,
+      calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)
+    );
+    max-height: min(
+      90dvh,
+      90vh,
+      calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)
+    );
+    flex-shrink: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-sheet-panel {
+    height: auto;
+    max-height: min(90dvh, 40rem);
+  }
+}
+
 /* ─── Utilities ──────────────────────────────────────────── */
 
 /* Page backgrounds */

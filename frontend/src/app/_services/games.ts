@@ -1,8 +1,18 @@
 import api from "@/app/_lib/axios";
-import { Game } from "@/app/_types/types";
+import { Game, GameMode } from "@/app/_types/types";
 
 export async function fetchGames(): Promise<Game[]> {
   const res = await api.get<Game[]>("/games");
+  return res.data;
+}
+
+export async function fetchGamesForUser(ownerId: string): Promise<Game[]> {
+  const res = await api.get<Game[]>(`/games/users/${ownerId}`);
+  return res.data;
+}
+
+export async function fetchGameModes(gameId: string): Promise<GameMode[]> {
+  const res = await api.get<GameMode[]>(`/games/${gameId}/modes`);
   return res.data;
 }
 

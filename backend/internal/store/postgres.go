@@ -42,9 +42,16 @@ type Store interface {
 
 	//games
 	GetSystemGames(ctx context.Context) ([]model.Game, error)
+	GetUserGames(ctx context.Context, ownerID *uuid.UUID) ([]model.Game, error)
+	GetGameModes(ctx context.Context, gameID uuid.UUID) ([]model.GameMode, error)
+	GetGameModeByID(ctx context.Context, gameModeID uuid.UUID) (model.GameMode, error)
 
 	//game ranks
 	GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
+
+	//events
+	GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
+	CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
@@ -55,6 +62,12 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 }
 
 func (s *PostgresStore) WithTx(ctx context.Context, fn func(Store) error) error {
+	// If this store is already transaction-backed (tests commonly construct it via
+	// NewPostgresStoreFromTx), execute inline so outer transaction controls commit/rollback.
+	if s.pool == nil {
+		return fn(s)
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -73,7 +86,7 @@ func (s *PostgresStore) WithTx(ctx context.Context, fn func(Store) error) error 
 	return tx.Commit(ctx)
 }
 
-// For use in tests only — no pool, so WithTx will panic if called
+// For use in tests only — no pool, so WithTx executes inline against this transaction.
 func NewPostgresStoreFromTx(tx pgx.Tx) *PostgresStore {
 	return &PostgresStore{
 		q: db.New(tx),

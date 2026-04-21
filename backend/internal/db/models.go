@@ -23,7 +23,7 @@ type ApiLink struct {
 type Event struct {
 	ID        uuid.UUID
 	GroupID   *uuid.UUID
-	StartTime **time.Time
+	StartTime time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -38,6 +38,7 @@ type EventGroup struct {
 	DeprioritizeNoshows bool
 	MaxNoshows          int32
 	DiscordGuild        *string
+	Region              string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -56,6 +57,7 @@ type GameMode struct {
 	Name      string
 	TeamSize  int32
 	OwnerID   *uuid.UUID
+	Duration  int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

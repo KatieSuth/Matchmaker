@@ -25,25 +25,27 @@ type UserGame struct {
  * Mapping functions to enable json mappings (sqlc can do
  * this but handling it manually gives more flexibility)
  */
-func MapDbUserGamesToUserGames(dbUserGames []db.GetGamesForUserRow) []UserGame {
-	userGames := []UserGame{}
-
-	for _, dbUserGame := range dbUserGames {
-		userGames = append(userGames, UserGame{
-			UserID:          dbUserGame.UserID,
-			GameID:          dbUserGame.GameID,
-			GameName:        dbUserGame.GameName,
-			InGameName:      &dbUserGame.InGameName,
-			CurrentRank:     dbUserGame.CurrentRank,
-			CurrentRankName: dbUserGame.CurrentRankName,
-			PeakRank:        dbUserGame.PeakRank,
-			PeakRankName:    dbUserGame.PeakRankName,
-			ShowRank:        dbUserGame.ShowRank,
-			CreatedAt:       dbUserGame.CreatedAt,
-			UpdatedAt:       dbUserGame.UpdatedAt,
-		})
+func MapDbGetGamesForUserRowToUserGame(row db.GetGamesForUserRow) UserGame {
+	return UserGame{
+		UserID:          row.UserID,
+		GameID:          row.GameID,
+		GameName:        row.GameName,
+		InGameName:      &row.InGameName,
+		CurrentRank:     row.CurrentRank,
+		CurrentRankName: row.CurrentRankName,
+		PeakRank:        row.PeakRank,
+		PeakRankName:    row.PeakRankName,
+		ShowRank:        row.ShowRank,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
 	}
+}
 
+func MapDbUserGamesToUserGames(dbUserGames []db.GetGamesForUserRow) []UserGame {
+	userGames := make([]UserGame, 0, len(dbUserGames))
+	for _, row := range dbUserGames {
+		userGames = append(userGames, MapDbGetGamesForUserRowToUserGame(row))
+	}
 	return userGames
 }
 

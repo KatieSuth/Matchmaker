@@ -197,12 +197,20 @@ func main() {
 			users.GET("/me", h.UsersMeHandler)
 			users.PUT("/me", h.UpdateUsersMeHandler)
 			users.GET("/me/games", h.UsersMeGamesHandler)
+			users.GET("/me/events", h.UsersMeEventsHandler)
 		}
 
 		games := protected.Group("/games")
 		{
 			games.GET("", h.GetSystemGamesHandler)
+			games.GET("/users/:ownerId", h.GetUserGamesHandler)
+			games.GET("/:gameId/modes", h.GetGameModesByGame)
 			games.GET("/:gameId/ranks", h.GetGameRanksByGame)
+		}
+
+		events := protected.Group("/events")
+		{
+			events.POST("", h.CreateEventHandler)
 		}
 	}
 

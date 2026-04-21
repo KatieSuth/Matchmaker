@@ -17,6 +17,17 @@ export interface Game {
   updated_at: string;
 }
 
+export interface GameMode {
+  id: string;
+  game_id: string;
+  name: string;
+  team_size: number;
+  owner_id: string | null;
+  duration: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface GameRank {
   id: string;
   game_id: string | null;

@@ -28,12 +28,95 @@ func (q *Queries) GetGameById(ctx context.Context, id uuid.UUID) (Game, error) {
 	return i, err
 }
 
+const getGameModeById = `-- name: GetGameModeById :one
+SELECT id, game_id, name, team_size, owner_id, duration, created_at, updated_at FROM game_modes WHERE id = $1
+`
+
+func (q *Queries) GetGameModeById(ctx context.Context, id uuid.UUID) (GameMode, error) {
+	row := q.db.QueryRow(ctx, getGameModeById, id)
+	var i GameMode
+	err := row.Scan(
+		&i.ID,
+		&i.GameID,
+		&i.Name,
+		&i.TeamSize,
+		&i.OwnerID,
+		&i.Duration,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGameModes = `-- name: GetGameModes :many
+SELECT id, game_id, name, team_size, owner_id, duration, created_at, updated_at FROM game_modes WHERE game_id = $1
+`
+
+func (q *Queries) GetGameModes(ctx context.Context, gameID uuid.UUID) ([]GameMode, error) {
+	rows, err := q.db.Query(ctx, getGameModes, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GameMode
+	for rows.Next() {
+		var i GameMode
+		if err := rows.Scan(
+			&i.ID,
+			&i.GameID,
+			&i.Name,
+			&i.TeamSize,
+			&i.OwnerID,
+			&i.Duration,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSystemGames = `-- name: GetSystemGames :many
 SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL
 `
 
 func (q *Queries) GetSystemGames(ctx context.Context) ([]Game, error) {
 	rows, err := q.db.Query(ctx, getSystemGames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Game
+	for rows.Next() {
+		var i Game
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserGames = `-- name: GetUserGames :many
+SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL OR owner_id = $1
+`
+
+func (q *Queries) GetUserGames(ctx context.Context, ownerID *uuid.UUID) ([]Game, error) {
+	rows, err := q.db.Query(ctx, getUserGames, ownerID)
 	if err != nil {
 		return nil, err
 	}

@@ -17,8 +17,11 @@ type MockStore struct {
 	WithTxFn func(ctx context.Context, fn func(Store) error) error
 
 	// games
-	GetSystemGamesFn func(ctx context.Context) ([]model.Game, error)
-	GetGameRanksFn   func(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
+	GetSystemGamesFn  func(ctx context.Context) ([]model.Game, error)
+	GetGameRanksFn    func(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error)
+	GetUserGamesFn    func(ctx context.Context, ownerID *uuid.UUID) ([]model.Game, error)
+	GetGameModesFn    func(ctx context.Context, gameID uuid.UUID) ([]model.GameMode, error)
+	GetGameModeByIDFn func(ctx context.Context, gameModeID uuid.UUID) (model.GameMode, error)
 
 	// user
 	GetUserByDiscordIDFn  func(ctx context.Context, discordID string, errorOnNoRows bool) (model.User, error)
@@ -39,6 +42,10 @@ type MockStore struct {
 	// one-time codes
 	CreateOneTimeCodeFn  func(ctx context.Context, code string, userID uuid.UUID) error
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
+
+	// events
+	GetEventsForUserFn           func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
+	CreateEventGroupWithEventsFn func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
 }
 
 func (m *MockStore) WithTx(ctx context.Context, fn func(Store) error) error {
@@ -51,6 +58,18 @@ func (m *MockStore) GetSystemGames(ctx context.Context) ([]model.Game, error) {
 
 func (m *MockStore) GetGameRanks(ctx context.Context, gameID *uuid.UUID) ([]model.GameRank, error) {
 	return m.GetGameRanksFn(ctx, gameID)
+}
+
+func (m *MockStore) GetUserGames(ctx context.Context, ownerID *uuid.UUID) ([]model.Game, error) {
+	return m.GetUserGamesFn(ctx, ownerID)
+}
+
+func (m *MockStore) GetGameModes(ctx context.Context, gameID uuid.UUID) ([]model.GameMode, error) {
+	return m.GetGameModesFn(ctx, gameID)
+}
+
+func (m *MockStore) GetGameModeByID(ctx context.Context, gameModeID uuid.UUID) (model.GameMode, error) {
+	return m.GetGameModeByIDFn(ctx, gameModeID)
 }
 
 func (m *MockStore) GetUserByDiscordID(ctx context.Context, discordID string, errorOnNoRows bool) (model.User, error) {
@@ -99,4 +118,12 @@ func (m *MockStore) CreateOneTimeCode(ctx context.Context, code string, userID u
 
 func (m *MockStore) ConsumeOneTimeCode(ctx context.Context, code string) (uuid.UUID, error) {
 	return m.ConsumeOneTimeCodeFn(ctx, code)
+}
+
+func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, startTime, gamesToRun)
+}
+
+func (m *MockStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
+	return m.GetEventsForUserFn(ctx, userID, hosting, past, from, to, gameId, cursor, timezone)
 }

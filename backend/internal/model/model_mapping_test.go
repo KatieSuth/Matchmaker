@@ -12,15 +12,15 @@ import (
 )
 
 // ============================================================
-// MapDbGameToGame
+// MapDbGamesToGames / MapDbGameToGame
 // ============================================================
 
-func TestMapDbGameToGame_Empty(t *testing.T) {
-	result := model.MapDbGameToGame([]db.Game{})
+func TestMapDbGamesToGames_Empty(t *testing.T) {
+	result := model.MapDbGamesToGames([]db.Game{})
 	assert.Empty(t, result)
 }
 
-func TestMapDbGameToGame_MapsAllFields(t *testing.T) {
+func TestMapDbGamesToGames_MapsAllFields(t *testing.T) {
 	ownerID := uuid.New()
 	now := time.Now().Truncate(time.Millisecond)
 	input := []db.Game{
@@ -33,9 +33,10 @@ func TestMapDbGameToGame_MapsAllFields(t *testing.T) {
 		},
 	}
 
-	result := model.MapDbGameToGame(input)
+	result := model.MapDbGamesToGames(input)
 
 	require.Len(t, result, 1)
+	assert.Equal(t, model.MapDbGameToGame(input[0]), result[0])
 	assert.Equal(t, input[0].ID, result[0].ID)
 	assert.Equal(t, input[0].Name, result[0].Name)
 	assert.Equal(t, input[0].OwnerID, result[0].OwnerID)
@@ -43,31 +44,136 @@ func TestMapDbGameToGame_MapsAllFields(t *testing.T) {
 	assert.Equal(t, input[0].UpdatedAt, result[0].UpdatedAt)
 }
 
-func TestMapDbGameToGame_NilOwnerID(t *testing.T) {
+func TestMapDbGamesToGames_NilOwnerID(t *testing.T) {
 	input := []db.Game{
 		{ID: uuid.New(), Name: "System Game", OwnerID: nil},
 	}
 
-	result := model.MapDbGameToGame(input)
+	result := model.MapDbGamesToGames(input)
 
 	require.Len(t, result, 1)
 	assert.Nil(t, result[0].OwnerID)
 }
 
-func TestMapDbGameToGame_MultipleGames(t *testing.T) {
+func TestMapDbGamesToGames_MultipleGames(t *testing.T) {
 	input := []db.Game{
 		{ID: uuid.New(), Name: "Game A"},
 		{ID: uuid.New(), Name: "Game B"},
 		{ID: uuid.New(), Name: "Game C"},
 	}
 
-	result := model.MapDbGameToGame(input)
+	result := model.MapDbGamesToGames(input)
 
 	require.Len(t, result, len(input))
 	for i, g := range result {
 		assert.Equal(t, input[i].ID, g.ID)
 		assert.Equal(t, input[i].Name, g.Name)
 	}
+}
+
+// ============================================================
+// MapDbGameModesToGameModes / MapDbGameModeToGameMode
+// ============================================================
+
+func TestMapDbGameModesToGameModes_Empty(t *testing.T) {
+	result := model.MapDbGameModesToGameModes([]db.GameMode{})
+	assert.Empty(t, result)
+}
+
+func TestMapDbGameModesToGameModes_MapsAllFields(t *testing.T) {
+	gameID := uuid.New()
+	ownerID := uuid.New()
+	now := time.Now().Truncate(time.Millisecond)
+	input := []db.GameMode{
+		{
+			ID:        uuid.New(),
+			GameID:    gameID,
+			Name:      "5v5",
+			TeamSize:  5,
+			OwnerID:   &ownerID,
+			Duration:  45,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	result := model.MapDbGameModesToGameModes(input)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, model.MapDbGameModeToGameMode(input[0]), result[0])
+	assert.Equal(t, input[0].ID, result[0].ID)
+	assert.Equal(t, input[0].GameID, result[0].GameID)
+	assert.Equal(t, input[0].Name, result[0].Name)
+	assert.Equal(t, input[0].TeamSize, result[0].TeamSize)
+	assert.Equal(t, input[0].OwnerID, result[0].OwnerID)
+	assert.Equal(t, input[0].Duration, result[0].Duration)
+	assert.Equal(t, input[0].CreatedAt, result[0].CreatedAt)
+	assert.Equal(t, input[0].UpdatedAt, result[0].UpdatedAt)
+}
+
+func TestMapDbGameModesToGameModes_NilOwnerID(t *testing.T) {
+	gameID := uuid.New()
+	input := []db.GameMode{
+		{
+			ID:       uuid.New(),
+			GameID:   gameID,
+			Name:     "Standard",
+			TeamSize: 1,
+			OwnerID:  nil,
+			Duration: 30,
+		},
+	}
+
+	result := model.MapDbGameModesToGameModes(input)
+
+	require.Len(t, result, 1)
+	assert.Nil(t, result[0].OwnerID)
+}
+
+func TestMapDbGameModesToGameModes_PreservesOrder(t *testing.T) {
+	gameID := uuid.New()
+	input := []db.GameMode{
+		{ID: uuid.New(), GameID: gameID, Name: "Solo", TeamSize: 1, Duration: 20},
+		{ID: uuid.New(), GameID: gameID, Name: "Duo", TeamSize: 2, Duration: 25},
+		{ID: uuid.New(), GameID: gameID, Name: "Squad", TeamSize: 4, Duration: 30},
+	}
+
+	result := model.MapDbGameModesToGameModes(input)
+
+	require.Len(t, result, 3)
+	for i, m := range result {
+		assert.Equal(t, input[i].ID, m.ID)
+		assert.Equal(t, input[i].Name, m.Name)
+		assert.Equal(t, input[i].TeamSize, m.TeamSize)
+		assert.Equal(t, input[i].Duration, m.Duration)
+	}
+}
+
+func TestMapDbGameModeToGameMode_MapsAllFields(t *testing.T) {
+	gameID := uuid.New()
+	ownerID := uuid.New()
+	now := time.Now().Truncate(time.Millisecond)
+	input := db.GameMode{
+		ID:        uuid.New(),
+		GameID:    gameID,
+		Name:      "Competitive",
+		TeamSize:  5,
+		OwnerID:   &ownerID,
+		Duration:  60,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	result := model.MapDbGameModeToGameMode(input)
+
+	assert.Equal(t, input.ID, result.ID)
+	assert.Equal(t, input.GameID, result.GameID)
+	assert.Equal(t, input.Name, result.Name)
+	assert.Equal(t, input.TeamSize, result.TeamSize)
+	assert.Equal(t, input.OwnerID, result.OwnerID)
+	assert.Equal(t, input.Duration, result.Duration)
+	assert.Equal(t, input.CreatedAt, result.CreatedAt)
+	assert.Equal(t, input.UpdatedAt, result.UpdatedAt)
 }
 
 // ============================================================
