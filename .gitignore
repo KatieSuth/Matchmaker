@@ -2,6 +2,7 @@
 node_modules/
 .next/
 frontend/.env*.local
+frontend/tsconfig.tsbuildinfo
 
 # Go
 backend/tmp/

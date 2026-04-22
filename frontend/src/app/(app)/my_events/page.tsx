@@ -365,7 +365,7 @@ function LoadingSpinner() {
 // ---------------------------------------------------------------------------
 
 export default function MyEventsPage() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [isEventSheetOpen, setIsEventSheetOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("hosting");
@@ -384,6 +384,9 @@ export default function MyEventsPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
   const [gamesError, setGamesError] = useState(false);
+  // gamesLoading is only meaningful once we know the user is authenticated; until then,
+  // we derive a loading state from auth bootstrap without extra setState calls in effects.
+  const gamesSelectLoading = isAuthenticated ? authLoading || gamesLoading : authLoading;
 
   // Four event buckets keyed by "tab:time"
   type BucketKey = `${Tab}:${TimeFilter}`;
@@ -481,6 +484,10 @@ export default function MyEventsPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated) {
+      return;
+    }
+
     const key = activeBucketKey;
     const needsReset = bucketFilters.current[key] !== filterKey;
     if (!activeBucket.loaded || needsReset) {
@@ -488,18 +495,25 @@ export default function MyEventsPage() {
       loadBucket(activeTab, timeFilter);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, timeFilter, filterKey]);
+  }, [activeTab, timeFilter, filterKey, authLoading, isAuthenticated]);
 
   // ---------------------------------------------------------------------------
   // Load games
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!isAuthenticated) {
+      return;
+    }
+
     fetchGames()
       .then(setGames)
       .catch(() => setGamesError(true))
       .finally(() => setGamesLoading(false));
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   // ---------------------------------------------------------------------------
   // Game select options (grouped)
@@ -661,7 +675,7 @@ export default function MyEventsPage() {
                 onChange={(opt) => setPendingGame(opt)}
                 options={gameSelectOptions}
                 placeholder="Filter by game…"
-                isLoading={gamesLoading}
+                isLoading={gamesSelectLoading}
                 isDisabled={gamesError}
                 isClearable
                 isSearchable
