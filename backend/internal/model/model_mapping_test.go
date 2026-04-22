@@ -442,3 +442,130 @@ func TestMapDbUserGameToUserGame_MapsAllFields(t *testing.T) {
 	assert.Equal(t, input.CreatedAt, result.CreatedAt)
 	assert.Equal(t, input.UpdatedAt, result.UpdatedAt)
 }
+
+// ============================================================
+// Event group / registration mappings (event.go)
+// ============================================================
+
+func TestMapDbGetEventsForUserRowToDashboardEvent_MapsAllFields(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	eid := uuid.New()
+	hid := uuid.New()
+	input := db.GetEventsForUserRow{
+		ID:               eid,
+		GameName:         "Game",
+		GameMode:         "5v5",
+		EventDate:        now,
+		HostID:           hid,
+		HostName:         "host",
+		RegisteredCount:  3,
+		RegistrationOpen: true,
+	}
+	result := model.MapDbGetEventsForUserRowToDashboardEvent(input)
+	assert.Equal(t, eid, result.ID)
+	assert.Equal(t, "Game", result.GameName)
+	assert.Equal(t, "5v5", result.GameMode)
+	assert.Equal(t, now, result.EventDate)
+	assert.Equal(t, hid, result.HostID)
+	assert.Equal(t, "host", result.HostName)
+	assert.Equal(t, 3, result.RegisteredCount)
+	assert.True(t, result.RegistrationOpen)
+}
+
+func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_DiscordNamePointer(t *testing.T) {
+	uid := uuid.New()
+	eid := uuid.New()
+	now := time.Now().Truncate(time.Millisecond)
+	dn := "disco#1"
+	input := db.GetRegistrationDataByEventIdRow{
+		EventID:         eid,
+		UserID:          uid,
+		CanSubstitute:   true,
+		CanLobbyHost:    false,
+		DuoRequest:      nil,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		DiscordName:     &dn,
+		Pronouns:        "they/them",
+		CurrentRankName: "Gold",
+	}
+	result := model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(input)
+	assert.Equal(t, dn, result.DiscordName)
+	assert.Equal(t, "they/them", result.Pronouns)
+	assert.Equal(t, "Gold", result.CurrentRankName)
+}
+
+func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_NilDiscordName(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	input := db.GetRegistrationDataByEventIdRow{
+		EventID:     uuid.New(),
+		UserID:      uuid.New(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		DiscordName: nil,
+	}
+	result := model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(input)
+	assert.Equal(t, "", result.DiscordName)
+}
+
+func TestMapDbGetRegistrationDataByEventIdRowsToEventRegistrations_Empty(t *testing.T) {
+	assert.Empty(t, model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations(nil))
+}
+
+func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testing.T) {
+	eid := uuid.New()
+	now := time.Now().Truncate(time.Millisecond)
+	summary := db.GetGroupEventsSummaryRow{
+		ID:               eid,
+		StartTime:        now,
+		RegisteredCount:  2,
+		LobbiesCount:     0,
+		PlayerRegistered: true,
+	}
+	regs := []model.EventRegistration{{UserID: uuid.New()}}
+	result := model.MapDbGetGroupEventsSummaryRowToEventGroupEvent(summary, regs)
+	assert.Equal(t, eid, result.ID)
+	assert.Equal(t, now, result.StartTime)
+	assert.Equal(t, 2, result.RegisteredCount)
+	assert.Equal(t, 0, result.LobbiesCount)
+	assert.True(t, result.PlayerRegistered)
+	assert.Equal(t, regs, result.Registrations)
+}
+
+func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	oid := uuid.New()
+	gmid := uuid.New()
+	gid := uuid.New()
+	row := db.GetEventGroupDetailByIdRow{
+		ID:               uuid.New(),
+		OwnerID:          oid,
+		OwnerName:        "owner",
+		GameModeID:       gmid,
+		GameModeName:     "Mode",
+		GameID:           gid,
+		GameName:         "Valorant",
+		TeamSize:         5,
+		SubMin:           1,
+		RegistrationOpen: false,
+		Region:           "NA",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	events := []model.EventGroupEvent{{ID: uuid.New()}}
+	result := model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row, events)
+	assert.Equal(t, row.ID, result.ID)
+	assert.Equal(t, oid, result.OwnerID)
+	assert.Equal(t, "owner", result.OwnerName)
+	assert.Equal(t, gmid, result.GameModeID)
+	assert.Equal(t, "Mode", result.GameModeName)
+	assert.Equal(t, gid, result.GameID)
+	assert.Equal(t, "Valorant", result.GameName)
+	assert.Equal(t, 5, result.TeamSize)
+	assert.Equal(t, 1, result.SubMin)
+	assert.False(t, result.RegistrationOpen)
+	assert.Equal(t, "NA", result.Region)
+	assert.Equal(t, now, result.CreatedAt)
+	assert.Equal(t, now, result.UpdatedAt)
+	assert.Equal(t, events, result.Events)
+}

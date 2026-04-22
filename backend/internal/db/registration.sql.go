@@ -12,23 +12,108 @@ import (
 	"github.com/google/uuid"
 )
 
+const createRegistration = `-- name: CreateRegistration :one
+INSERT INTO registrations (event_id, user_id, can_substitute, can_lobby_host, duo_request, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+RETURNING event_id, user_id, can_substitute, can_lobby_host, duo_request, created_at, updated_at
+`
+
+type CreateRegistrationParams struct {
+	EventID       uuid.UUID
+	UserID        uuid.UUID
+	CanSubstitute bool
+	CanLobbyHost  bool
+	DuoRequest    *string
+}
+
+func (q *Queries) CreateRegistration(ctx context.Context, arg CreateRegistrationParams) (Registration, error) {
+	row := q.db.QueryRow(ctx, createRegistration,
+		arg.EventID,
+		arg.UserID,
+		arg.CanSubstitute,
+		arg.CanLobbyHost,
+		arg.DuoRequest,
+	)
+	var i Registration
+	err := row.Scan(
+		&i.EventID,
+		&i.UserID,
+		&i.CanSubstitute,
+		&i.CanLobbyHost,
+		&i.DuoRequest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteRegistration = `-- name: DeleteRegistration :exec
+DELETE FROM registrations
+WHERE event_id = $1 AND user_id = $2
+`
+
+type DeleteRegistrationParams struct {
+	EventID uuid.UUID
+	UserID  uuid.UUID
+}
+
+func (q *Queries) DeleteRegistration(ctx context.Context, arg DeleteRegistrationParams) error {
+	_, err := q.db.Exec(ctx, deleteRegistration, arg.EventID, arg.UserID)
+	return err
+}
+
+const getRegistrationByEventAndUser = `-- name: GetRegistrationByEventAndUser :one
+SELECT event_id, user_id, can_substitute, can_lobby_host, duo_request, created_at, updated_at
+FROM registrations
+WHERE event_id = $1 AND user_id = $2
+`
+
+type GetRegistrationByEventAndUserParams struct {
+	EventID uuid.UUID
+	UserID  uuid.UUID
+}
+
+func (q *Queries) GetRegistrationByEventAndUser(ctx context.Context, arg GetRegistrationByEventAndUserParams) (Registration, error) {
+	row := q.db.QueryRow(ctx, getRegistrationByEventAndUser, arg.EventID, arg.UserID)
+	var i Registration
+	err := row.Scan(
+		&i.EventID,
+		&i.UserID,
+		&i.CanSubstitute,
+		&i.CanLobbyHost,
+		&i.DuoRequest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRegistrationDataByEventId = `-- name: GetRegistrationDataByEventId :many
 SELECT r.event_id, r.user_id, r.can_substitute, r.can_lobby_host, r.duo_request, r.created_at, r.updated_at, 
     U.discord_name, 
     CASE 
-		WHEN U.show_pronouns = true THEN pronouns 
+		WHEN $2::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
 		ELSE ''
-	END AS pronouns, 
-    GR.name AS current_rank_name 
+	END AS pronouns,
+    CASE
+        WHEN $2::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
+        ELSE ''
+    END AS current_rank_name
 FROM registrations AS R 
 JOIN users AS U ON R.user_id = U.id 
 JOIN events AS E ON R.event_id = E.id
 JOIN event_groups AS EG ON E.group_id = EG.id
-JOIN user_games AS UG ON R.user_id = UG.user_id AND EG.game_mode_id = UG.game_id
-JOIN game_ranks AS GR ON UG.current_rank = GR.id
+JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+LEFT JOIN user_games AS UG ON R.user_id = UG.user_id AND UG.game_id = GM.game_id
+LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
 WHERE event_id = $1
 ORDER BY U.discord_name ASC
 `
+
+type GetRegistrationDataByEventIdParams struct {
+	EventID      uuid.UUID
+	ViewerIsHost bool
+}
 
 type GetRegistrationDataByEventIdRow struct {
 	EventID         uuid.UUID
@@ -43,8 +128,8 @@ type GetRegistrationDataByEventIdRow struct {
 	CurrentRankName string
 }
 
-func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, eventID uuid.UUID) ([]GetRegistrationDataByEventIdRow, error) {
-	rows, err := q.db.Query(ctx, getRegistrationDataByEventId, eventID)
+func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, arg GetRegistrationDataByEventIdParams) ([]GetRegistrationDataByEventIdRow, error) {
+	rows, err := q.db.Query(ctx, getRegistrationDataByEventId, arg.EventID, arg.ViewerIsHost)
 	if err != nil {
 		return nil, err
 	}
@@ -72,4 +157,73 @@ func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, eventID uuid
 		return nil, err
 	}
 	return items, nil
+}
+
+const getRegistrationsForEvent = `-- name: GetRegistrationsForEvent :many
+SELECT user_id, can_lobby_host, created_at
+FROM registrations
+WHERE event_id = $1
+ORDER BY created_at ASC
+`
+
+type GetRegistrationsForEventRow struct {
+	UserID       uuid.UUID
+	CanLobbyHost bool
+	CreatedAt    time.Time
+}
+
+func (q *Queries) GetRegistrationsForEvent(ctx context.Context, eventID uuid.UUID) ([]GetRegistrationsForEventRow, error) {
+	rows, err := q.db.Query(ctx, getRegistrationsForEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRegistrationsForEventRow
+	for rows.Next() {
+		var i GetRegistrationsForEventRow
+		if err := rows.Scan(&i.UserID, &i.CanLobbyHost, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateRegistration = `-- name: UpdateRegistration :one
+UPDATE registrations
+SET can_substitute = $3, can_lobby_host = $4, duo_request = $5, updated_at = NOW()
+WHERE event_id = $1 AND user_id = $2
+RETURNING event_id, user_id, can_substitute, can_lobby_host, duo_request, created_at, updated_at
+`
+
+type UpdateRegistrationParams struct {
+	EventID       uuid.UUID
+	UserID        uuid.UUID
+	CanSubstitute bool
+	CanLobbyHost  bool
+	DuoRequest    *string
+}
+
+func (q *Queries) UpdateRegistration(ctx context.Context, arg UpdateRegistrationParams) (Registration, error) {
+	row := q.db.QueryRow(ctx, updateRegistration,
+		arg.EventID,
+		arg.UserID,
+		arg.CanSubstitute,
+		arg.CanLobbyHost,
+		arg.DuoRequest,
+	)
+	var i Registration
+	err := row.Scan(
+		&i.EventID,
+		&i.UserID,
+		&i.CanSubstitute,
+		&i.CanLobbyHost,
+		&i.DuoRequest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

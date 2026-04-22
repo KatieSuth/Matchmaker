@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/jackc/pgx/v5"
 )
 
 const validCreateEventBody = `{
@@ -201,4 +203,466 @@ func TestCreateEventHandler_Success(t *testing.T) {
 
 func sprintf(format string, args ...interface{}) string {
 	return strings.TrimSpace(fmt.Sprintf(format, args...))
+}
+
+func TestGetEventGroupHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/events/x")
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.GetEventGroupHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGetEventGroupHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/events/bad")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "not-uuid"}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.GetEventGroupHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetEventGroupHandler_NotFound(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/events/x")
+	gid := uuid.New()
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	h := newTestHandler(t, &store.MockStore{
+		GetEventGroupDetailFn: func(_ context.Context, inGroup, _ uuid.UUID) (model.EventGroupDetail, error) {
+			assert.Equal(t, gid, inGroup)
+			return model.EventGroupDetail{}, pgx.ErrNoRows
+		},
+	}, nil, "")
+	h.GetEventGroupHandler(c)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGetEventGroupHandler_StoreError(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/events/x")
+	gid := uuid.New()
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	h := newTestHandler(t, &store.MockStore{
+		GetEventGroupDetailFn: func(_ context.Context, _, _ uuid.UUID) (model.EventGroupDetail, error) {
+			return model.EventGroupDetail{}, errors.New("db error")
+		},
+	}, nil, "")
+	h.GetEventGroupHandler(c)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestGetEventGroupHandler_Success(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodGet, "/events/x")
+	gid := uuid.New()
+	viewer := uuid.New()
+	test_util.WithUserIDString(c, viewer)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	detail := model.EventGroupDetail{ID: gid, Region: "NA"}
+	h := newTestHandler(t, &store.MockStore{
+		GetEventGroupDetailFn: func(_ context.Context, inGroup, inViewer uuid.UUID) (model.EventGroupDetail, error) {
+			assert.Equal(t, gid, inGroup)
+			assert.Equal(t, viewer, inViewer)
+			return detail, nil
+		},
+	}, nil, "")
+	h.GetEventGroupHandler(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	got := test_util.DecodeJSON[model.EventGroupDetail](t, w)
+	assert.Equal(t, gid, got.ID)
+	assert.Equal(t, "NA", got.Region)
+}
+
+func TestUpdateEventGroupSettingsHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"NA","sub_min":0}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_BadJSON(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	body := `{"region":"NA","sub_min":1}`
+
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid", store.ErrInvalidSubMin, http.StatusBadRequest},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32) error {
+					assert.Equal(t, gid, inG)
+					assert.Equal(t, uid, inO)
+					return tc.err
+				},
+			}, nil, "")
+			h.UpdateEventGroupSettingsHandler(c)
+			assert.Equal(t, tc.status, w.Code, tc.name)
+		})
+	}
+}
+
+func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32) error {
+			assert.Equal(t, "EU", region)
+			assert.Equal(t, int32(2), sub)
+			return nil
+		},
+	}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestDeleteEventGroupHandler_StoreErrors(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodDelete, "/events/x")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+			h := newTestHandler(t, &store.MockStore{
+				DeleteEventGroupFn: func(_ context.Context, inG, inO uuid.UUID) error {
+					return tc.err
+				},
+			}, nil, "")
+			h.DeleteEventGroupHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestDeleteEventGroupHandler_Success(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	c, _ := test_util.NewGinContext(http.MethodDelete, "/events/x")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	h := newTestHandler(t, &store.MockStore{
+		DeleteEventGroupFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
+	}, nil, "")
+	h.DeleteEventGroupHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpdateEventGroupRegistrationStatusHandler_StoreErrors(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"teams", store.ErrOpenRegistrationTeams, http.StatusBadRequest},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPatch, "/events/x/registration")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(`{"registration_open":true}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				SetEventGroupRegistrationOpenFn: func(_ context.Context, inG, inO uuid.UUID, open bool) error {
+					assert.True(t, open)
+					return tc.err
+				},
+			}, nil, "")
+			h.UpdateEventGroupRegistrationStatusHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestUpdateEventGroupRegistrationStatusHandler_Success(t *testing.T) {
+	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x/registration")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"registration_open":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		SetEventGroupRegistrationOpenFn: func(_ context.Context, _, _ uuid.UUID, open bool) error {
+			assert.False(t, open)
+			return nil
+		},
+	}, nil, "")
+	h.UpdateEventGroupRegistrationStatusHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"already", store.ErrTeamsAlreadyCreated, http.StatusBadRequest},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+			h := newTestHandler(t, &store.MockStore{
+				CreateTeamsForGroupFn: func(_ context.Context, inG, inO uuid.UUID) error { return tc.err },
+			}, nil, "")
+			h.CreateTeamsHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestCreateTeamsHandler_Success(t *testing.T) {
+	c, _ := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{
+		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
+	}, nil, "")
+	h.CreateTeamsHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestDeleteTeamsAndOpenRegistrationHandler_StoreErrors(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodDelete, "/events/x/teams")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+			h := newTestHandler(t, &store.MockStore{
+				DeleteTeamsAndOpenRegistrationFn: func(_ context.Context, _, _ uuid.UUID) error { return tc.err },
+			}, nil, "")
+			h.DeleteTeamsAndOpenRegistrationHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestDeleteTeamsAndOpenRegistrationHandler_Success(t *testing.T) {
+	c, _ := test_util.NewGinContext(http.MethodDelete, "/events/x/teams")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{
+		DeleteTeamsAndOpenRegistrationFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
+	}, nil, "")
+	h.DeleteTeamsAndOpenRegistrationHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpsertMyRegistrationHandler_Validation(t *testing.T) {
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/bad/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"can_substitute":true,"can_lobby_host":false,"duo_request":""}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyRegistrationHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/x/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`x`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyRegistrationHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestUpsertMyRegistrationHandler_StoreErrors(t *testing.T) {
+	eid := uuid.New()
+	uid := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPut, "/registrations/x/me")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "eventId", Value: eid.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(`{"can_substitute":false,"can_lobby_host":true,"duo_request":"x"}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				UpsertRegistrationForEventFn: func(_ context.Context, inE, inU uuid.UUID, sub, host bool, duo *string) error {
+					assert.Equal(t, eid, inE)
+					assert.Equal(t, uid, inU)
+					assert.False(t, sub)
+					assert.True(t, host)
+					require.NotNil(t, duo)
+					assert.Equal(t, "x", *duo)
+					return tc.err
+				},
+			}, nil, "")
+			h.UpsertMyRegistrationHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestUpsertMyRegistrationHandler_SuccessTrimsDuo(t *testing.T) {
+	eid := uuid.New()
+	uid := uuid.New()
+	c, _ := test_util.NewGinContext(http.MethodPut, "/registrations/x/me")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "eventId", Value: eid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"can_substitute":true,"can_lobby_host":false,"duo_request":"  "}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		UpsertRegistrationForEventFn: func(_ context.Context, _, _ uuid.UUID, _, _ bool, duo *string) error {
+			assert.Nil(t, duo)
+			return nil
+		},
+	}, nil, "")
+	h.UpsertMyRegistrationHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestDeleteRegistrationHandler_Validation(t *testing.T) {
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodDelete, "/registrations/bad/x")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "bad"}, {Key: "userId", Value: uuid.NewString()}}
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.DeleteRegistrationHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+	t.Run("invalid user id param", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodDelete, "/registrations/x/baduser")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}, {Key: "userId", Value: "nope"}}
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.DeleteRegistrationHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestDeleteRegistrationHandler_StoreErrors(t *testing.T) {
+	eid := uuid.New()
+	actor := uuid.New()
+	target := uuid.New()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"reg missing", store.ErrRegistrationNotFound, http.StatusNotFound},
+		{"event missing", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodDelete, "/registrations/x/y")
+			test_util.WithUserIDString(c, actor)
+			c.Params = gin.Params{{Key: "eventId", Value: eid.String()}, {Key: "userId", Value: target.String()}}
+			h := newTestHandler(t, &store.MockStore{
+				DeleteRegistrationForEventFn: func(_ context.Context, inE, inT, inA uuid.UUID) error {
+					assert.Equal(t, eid, inE)
+					assert.Equal(t, target, inT)
+					assert.Equal(t, actor, inA)
+					return tc.err
+				},
+			}, nil, "")
+			h.DeleteRegistrationHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestDeleteRegistrationHandler_SelfWithNoUserIDParam(t *testing.T) {
+	eid := uuid.New()
+	uid := uuid.New()
+	c, _ := test_util.NewGinContext(http.MethodDelete, "/registrations/x/me")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "eventId", Value: eid.String()}}
+	h := newTestHandler(t, &store.MockStore{
+		DeleteRegistrationForEventFn: func(_ context.Context, inE, inT, inA uuid.UUID) error {
+			assert.Equal(t, uid, inT)
+			return nil
+		},
+	}, nil, "")
+	h.DeleteRegistrationHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }

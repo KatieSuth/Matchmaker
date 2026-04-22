@@ -44,8 +44,16 @@ type MockStore struct {
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
 
 	// events
-	GetEventsForUserFn           func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
-	CreateEventGroupWithEventsFn func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
+	GetEventsForUserFn               func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
+	CreateEventGroupWithEventsFn     func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
+	GetEventGroupDetailFn            func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
+	UpdateEventGroupSettingsFn       func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32) error
+	DeleteEventGroupFn               func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	SetEventGroupRegistrationOpenFn  func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
+	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	DeleteTeamsAndOpenRegistrationFn func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
+	DeleteRegistrationForEventFn     func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
 }
 
 func (m *MockStore) WithTx(ctx context.Context, fn func(Store) error) error {
@@ -126,4 +134,36 @@ func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, game
 
 func (m *MockStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
 	return m.GetEventsForUserFn(ctx, userID, hosting, past, from, to, gameId, cursor, timezone)
+}
+
+func (m *MockStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
+	return m.GetEventGroupDetailFn(ctx, groupID, viewerID)
+}
+
+func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32) error {
+	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin)
+}
+
+func (m *MockStore) DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	return m.DeleteEventGroupFn(ctx, groupID, ownerID)
+}
+
+func (m *MockStore) SetEventGroupRegistrationOpen(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error {
+	return m.SetEventGroupRegistrationOpenFn(ctx, groupID, ownerID, open)
+}
+
+func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	return m.CreateTeamsForGroupFn(ctx, groupID, ownerID)
+}
+
+func (m *MockStore) DeleteTeamsAndOpenRegistration(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	return m.DeleteTeamsAndOpenRegistrationFn(ctx, groupID, ownerID)
+}
+
+func (m *MockStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {
+	return m.UpsertRegistrationForEventFn(ctx, eventID, userID, canSubstitute, canLobbyHost, duoRequest)
+}
+
+func (m *MockStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {
+	return m.DeleteRegistrationForEventFn(ctx, eventID, targetUserID, actorUserID)
 }

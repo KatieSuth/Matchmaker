@@ -12,6 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const countLobbiesByGroupId = `-- name: CountLobbiesByGroupId :one
+SELECT COUNT(*)::INT
+FROM lobbies AS L
+JOIN events AS E ON E.id = L.event_id
+WHERE E.group_id = $1
+`
+
+func (q *Queries) CountLobbiesByGroupId(ctx context.Context, groupID *uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countLobbiesByGroupId, groupID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createEvent = `-- name: CreateEvent :exec
 INSERT INTO events (id, group_id, start_time, created_at, updated_at)
 VALUES (
@@ -82,6 +96,88 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 	return i, err
 }
 
+const createLobby = `-- name: CreateLobby :one
+INSERT INTO lobbies (id, event_id, host, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
+RETURNING id, event_id, host, created_at, updated_at
+`
+
+type CreateLobbyParams struct {
+	EventID *uuid.UUID
+	Host    *uuid.UUID
+}
+
+func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby, error) {
+	row := q.db.QueryRow(ctx, createLobby, arg.EventID, arg.Host)
+	var i Lobby
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.Host,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createPlayer = `-- name: CreatePlayer :exec
+INSERT INTO players (lobby_id, user_id, team_number, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
+`
+
+type CreatePlayerParams struct {
+	LobbyID    uuid.UUID
+	UserID     uuid.UUID
+	TeamNumber *int32
+}
+
+func (q *Queries) CreatePlayer(ctx context.Context, arg CreatePlayerParams) error {
+	_, err := q.db.Exec(ctx, createPlayer, arg.LobbyID, arg.UserID, arg.TeamNumber)
+	return err
+}
+
+const deleteEventGroupById = `-- name: DeleteEventGroupById :execrows
+DELETE FROM event_groups
+WHERE id = $1
+`
+
+func (q *Queries) DeleteEventGroupById(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEventGroupById, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteLobbiesByGroupId = `-- name: DeleteLobbiesByGroupId :exec
+DELETE FROM lobbies
+WHERE event_id IN (
+    SELECT id
+    FROM events
+    WHERE group_id = $1
+)
+`
+
+func (q *Queries) DeleteLobbiesByGroupId(ctx context.Context, groupID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLobbiesByGroupId, groupID)
+	return err
+}
+
+const deletePlayersByGroupId = `-- name: DeletePlayersByGroupId :exec
+DELETE FROM players
+WHERE lobby_id IN (
+    SELECT L.id
+    FROM lobbies AS L
+    JOIN events AS E ON E.id = L.event_id
+    WHERE E.group_id = $1
+)
+`
+
+func (q *Queries) DeletePlayersByGroupId(ctx context.Context, groupID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePlayersByGroupId, groupID)
+	return err
+}
+
 const getEventGroupById = `-- name: GetEventGroupById :one
 SELECT id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at FROM event_groups WHERE id = $1
 `
@@ -102,6 +198,95 @@ func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGro
 		&i.Region,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getEventGroupDetailById = `-- name: GetEventGroupDetailById :one
+SELECT
+    EG.id,
+    EG.owner_id,
+    COALESCE(U.discord_name, '') AS owner_name,
+    EG.game_mode_id,
+    GM.name AS game_mode_name,
+    G.id AS game_id,
+    G.name AS game_name,
+    GM.team_size,
+    EG.sub_min,
+    EG.registration_open,
+    EG.region,
+    EG.created_at,
+    EG.updated_at
+FROM event_groups AS EG
+JOIN users AS U ON U.id = EG.owner_id
+JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
+WHERE EG.id = $1
+`
+
+type GetEventGroupDetailByIdRow struct {
+	ID               uuid.UUID
+	OwnerID          uuid.UUID
+	OwnerName        string
+	GameModeID       uuid.UUID
+	GameModeName     string
+	GameID           uuid.UUID
+	GameName         string
+	TeamSize         int32
+	SubMin           int32
+	RegistrationOpen bool
+	Region           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (GetEventGroupDetailByIdRow, error) {
+	row := q.db.QueryRow(ctx, getEventGroupDetailById, id)
+	var i GetEventGroupDetailByIdRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.OwnerName,
+		&i.GameModeID,
+		&i.GameModeName,
+		&i.GameID,
+		&i.GameName,
+		&i.TeamSize,
+		&i.SubMin,
+		&i.RegistrationOpen,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getEventWithGroupById = `-- name: GetEventWithGroupById :one
+SELECT
+    E.id,
+    E.group_id,
+    EG.owner_id,
+    EG.registration_open
+FROM events AS E
+JOIN event_groups AS EG ON EG.id = E.group_id
+WHERE E.id = $1
+`
+
+type GetEventWithGroupByIdRow struct {
+	ID               uuid.UUID
+	GroupID          *uuid.UUID
+	OwnerID          uuid.UUID
+	RegistrationOpen bool
+}
+
+func (q *Queries) GetEventWithGroupById(ctx context.Context, id uuid.UUID) (GetEventWithGroupByIdRow, error) {
+	row := q.db.QueryRow(ctx, getEventWithGroupById, id)
+	var i GetEventWithGroupByIdRow
+	err := row.Scan(
+		&i.ID,
+		&i.GroupID,
+		&i.OwnerID,
+		&i.RegistrationOpen,
 	)
 	return i, err
 }
@@ -249,4 +434,123 @@ func (q *Queries) GetEventsForUser(ctx context.Context, arg GetEventsForUserPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const getGroupEventsSummary = `-- name: GetGroupEventsSummary :many
+SELECT
+    E.id,
+    E.start_time,
+    COUNT(DISTINCT R.user_id)::INT AS registered_count,
+    COUNT(DISTINCT L.id)::INT AS lobbies_count,
+    COALESCE(BOOL_OR(R.user_id = $2), FALSE)::BOOL AS player_registered
+FROM events AS E
+LEFT JOIN registrations AS R ON R.event_id = E.id
+LEFT JOIN lobbies AS L ON L.event_id = E.id
+WHERE E.group_id = $1
+GROUP BY E.id
+ORDER BY E.start_time ASC
+`
+
+type GetGroupEventsSummaryParams struct {
+	GroupID  *uuid.UUID
+	ViewerID uuid.UUID
+}
+
+type GetGroupEventsSummaryRow struct {
+	ID               uuid.UUID
+	StartTime        time.Time
+	RegisteredCount  int32
+	LobbiesCount     int32
+	PlayerRegistered bool
+}
+
+func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsSummaryParams) ([]GetGroupEventsSummaryRow, error) {
+	rows, err := q.db.Query(ctx, getGroupEventsSummary, arg.GroupID, arg.ViewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetGroupEventsSummaryRow
+	for rows.Next() {
+		var i GetGroupEventsSummaryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StartTime,
+			&i.RegisteredCount,
+			&i.LobbiesCount,
+			&i.PlayerRegistered,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setEventGroupRegistrationOpen = `-- name: SetEventGroupRegistrationOpen :one
+UPDATE event_groups
+SET registration_open = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at
+`
+
+type SetEventGroupRegistrationOpenParams struct {
+	ID               uuid.UUID
+	RegistrationOpen bool
+}
+
+func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEventGroupRegistrationOpenParams) (EventGroup, error) {
+	row := q.db.QueryRow(ctx, setEventGroupRegistrationOpen, arg.ID, arg.RegistrationOpen)
+	var i EventGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.GameModeID,
+		&i.SubMin,
+		&i.RegistrationOpen,
+		&i.IsPublic,
+		&i.DeprioritizeNoshows,
+		&i.MaxNoshows,
+		&i.DiscordGuild,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateEventGroupSettings = `-- name: UpdateEventGroupSettings :one
+UPDATE event_groups
+SET region = $2, sub_min = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at
+`
+
+type UpdateEventGroupSettingsParams struct {
+	ID     uuid.UUID
+	Region string
+	SubMin int32
+}
+
+func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventGroupSettingsParams) (EventGroup, error) {
+	row := q.db.QueryRow(ctx, updateEventGroupSettings, arg.ID, arg.Region, arg.SubMin)
+	var i EventGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.GameModeID,
+		&i.SubMin,
+		&i.RegistrationOpen,
+		&i.IsPublic,
+		&i.DeprioritizeNoshows,
+		&i.MaxNoshows,
+		&i.DiscordGuild,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

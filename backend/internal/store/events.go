@@ -6,19 +6,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const dashboardEventsPageSize = 20
 
 var (
-	ErrInvalidGameID   = errors.New("invalid game_id")
-	ErrInvalidCursor   = errors.New("invalid cursor")
-	ErrInvalidTimezone = errors.New("invalid timezone")
+	ErrInvalidGameID         = errors.New("invalid game_id")
+	ErrInvalidCursor         = errors.New("invalid cursor")
+	ErrInvalidTimezone       = errors.New("invalid timezone")
+	ErrForbidden             = errors.New("forbidden")
+	ErrRegistrationClosed    = errors.New("registration is closed")
+	ErrTeamsAlreadyCreated   = errors.New("teams already created")
+	ErrTeamsNotCreated       = errors.New("teams not created")
+	ErrRegistrationNotFound  = errors.New("registration not found")
+	ErrInvalidSubMin         = errors.New("invalid sub_min")
+	ErrOpenRegistrationTeams = errors.New("cannot open registration while teams exist")
 )
 
 type dashboardCursor struct {
@@ -100,16 +109,7 @@ func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, 
 
 	events := make([]model.DashboardEvent, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, model.DashboardEvent{
-			ID:               row.ID,
-			GameName:         row.GameName,
-			GameMode:         row.GameMode,
-			EventDate:        row.EventDate,
-			HostID:           row.HostID,
-			HostName:         row.HostName,
-			RegisteredCount:  int(row.RegisteredCount),
-			RegistrationOpen: row.RegistrationOpen,
-		})
+		events = append(events, model.MapDbGetEventsForUserRowToDashboardEvent(row))
 	}
 
 	if !hasMore || len(events) == 0 {
@@ -201,4 +201,300 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 	}
 
 	return groupID, nil
+}
+
+func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
+	groupRow, err := s.q.GetEventGroupDetailById(ctx, groupID)
+	if err != nil {
+		return model.EventGroupDetail{}, fmt.Errorf("get event group detail: %w", err)
+	}
+
+	summaries, err := s.q.GetGroupEventsSummary(ctx, db.GetGroupEventsSummaryParams{
+		GroupID:  &groupID,
+		ViewerID: viewerID,
+	})
+	if err != nil {
+		return model.EventGroupDetail{}, fmt.Errorf("get group events summary: %w", err)
+	}
+
+	viewerIsHost := groupRow.OwnerID == viewerID
+	events := make([]model.EventGroupEvent, 0, len(summaries))
+	for _, summary := range summaries {
+		regRows, err := s.q.GetRegistrationDataByEventId(ctx, db.GetRegistrationDataByEventIdParams{
+			EventID:      summary.ID,
+			ViewerIsHost: viewerIsHost,
+		})
+		if err != nil {
+			return model.EventGroupDetail{}, fmt.Errorf("get registration data for event %s: %w", summary.ID.String(), err)
+		}
+
+		registrations := model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations(regRows)
+
+		events = append(events, model.MapDbGetGroupEventsSummaryRowToEventGroupEvent(summary, registrations))
+	}
+
+	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
+}
+
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32) error {
+	group, err := s.q.GetEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get event group: %w", err)
+	}
+	if group.OwnerID != ownerID {
+		return ErrForbidden
+	}
+	if strings.TrimSpace(region) == "" || subMin < 0 {
+		return ErrInvalidSubMin
+	}
+
+	_, err = s.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
+		ID:     groupID,
+		Region: strings.TrimSpace(region),
+		SubMin: subMin,
+	})
+	if err != nil {
+		return fmt.Errorf("update event group settings: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	group, err := s.q.GetEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get event group: %w", err)
+	}
+	if group.OwnerID != ownerID {
+		return ErrForbidden
+	}
+
+	rowsDeleted, err := s.q.DeleteEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("delete event group: %w", err)
+	}
+	if rowsDeleted == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error {
+	group, err := s.q.GetEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get event group: %w", err)
+	}
+	if group.OwnerID != ownerID {
+		return ErrForbidden
+	}
+	if open {
+		lobbyCount, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
+		if err != nil {
+			return fmt.Errorf("count lobbies by group: %w", err)
+		}
+		if lobbyCount > 0 {
+			return ErrOpenRegistrationTeams
+		}
+	}
+
+	_, err = s.q.SetEventGroupRegistrationOpen(ctx, db.SetEventGroupRegistrationOpenParams{
+		ID:               groupID,
+		RegistrationOpen: open,
+	})
+	if err != nil {
+		return fmt.Errorf("set registration_open: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	group, err := s.q.GetEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get event group: %w", err)
+	}
+	if group.OwnerID != ownerID {
+		return ErrForbidden
+	}
+
+	existingLobbies, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
+	if err != nil {
+		return fmt.Errorf("count lobbies by group: %w", err)
+	}
+	if existingLobbies > 0 {
+		return ErrTeamsAlreadyCreated
+	}
+
+	return s.WithTx(ctx, func(tx Store) error {
+		txStore, ok := tx.(*PostgresStore)
+		if !ok {
+			return fmt.Errorf("unexpected tx store type %T", tx)
+		}
+
+		_, err := txStore.q.SetEventGroupRegistrationOpen(ctx, db.SetEventGroupRegistrationOpenParams{
+			ID:               groupID,
+			RegistrationOpen: false,
+		})
+		if err != nil {
+			return fmt.Errorf("close registration for group: %w", err)
+		}
+
+		events, err := txStore.q.GetEventsByGroupId(ctx, &groupID)
+		if err != nil {
+			return fmt.Errorf("get events by group: %w", err)
+		}
+
+		for _, eventRow := range events {
+			regs, err := txStore.q.GetRegistrationsForEvent(ctx, eventRow.ID)
+			if err != nil {
+				return fmt.Errorf("get registrations for event %s: %w", eventRow.ID.String(), err)
+			}
+			if len(regs) == 0 {
+				continue
+			}
+
+			var lobbyHost *uuid.UUID
+			for _, reg := range regs {
+				if reg.CanLobbyHost {
+					hostID := reg.UserID
+					lobbyHost = &hostID
+					break
+				}
+			}
+
+			lobby, err := txStore.q.CreateLobby(ctx, db.CreateLobbyParams{
+				EventID: &eventRow.ID,
+				Host:    lobbyHost,
+			})
+			if err != nil {
+				return fmt.Errorf("create lobby for event %s: %w", eventRow.ID.String(), err)
+			}
+
+			for _, reg := range regs {
+				err = txStore.q.CreatePlayer(ctx, db.CreatePlayerParams{
+					LobbyID: lobby.ID,
+					UserID:  reg.UserID,
+				})
+				if err != nil {
+					return fmt.Errorf("create player for event %s: %w", eventRow.ID.String(), err)
+				}
+			}
+		}
+
+		return nil
+	})
+}
+
+func (s *PostgresStore) DeleteTeamsAndOpenRegistration(ctx context.Context, groupID, ownerID uuid.UUID) error {
+	group, err := s.q.GetEventGroupById(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get event group: %w", err)
+	}
+	if group.OwnerID != ownerID {
+		return ErrForbidden
+	}
+
+	existingLobbies, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
+	if err != nil {
+		return fmt.Errorf("count lobbies by group: %w", err)
+	}
+	if existingLobbies == 0 {
+		return ErrTeamsNotCreated
+	}
+
+	return s.WithTx(ctx, func(tx Store) error {
+		txStore, ok := tx.(*PostgresStore)
+		if !ok {
+			return fmt.Errorf("unexpected tx store type %T", tx)
+		}
+
+		if err := txStore.q.DeletePlayersByGroupId(ctx, &groupID); err != nil {
+			return fmt.Errorf("delete players by group: %w", err)
+		}
+		if err := txStore.q.DeleteLobbiesByGroupId(ctx, &groupID); err != nil {
+			return fmt.Errorf("delete lobbies by group: %w", err)
+		}
+		if _, err := txStore.q.SetEventGroupRegistrationOpen(ctx, db.SetEventGroupRegistrationOpenParams{
+			ID:               groupID,
+			RegistrationOpen: true,
+		}); err != nil {
+			return fmt.Errorf("open registration for group: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *PostgresStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {
+	eventRow, err := s.q.GetEventWithGroupById(ctx, eventID)
+	if err != nil {
+		return fmt.Errorf("get event with group: %w", err)
+	}
+	if !eventRow.RegistrationOpen {
+		return ErrRegistrationClosed
+	}
+
+	_, err = s.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
+		EventID: eventID,
+		UserID:  userID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			_, err = s.q.CreateRegistration(ctx, db.CreateRegistrationParams{
+				EventID:       eventID,
+				UserID:        userID,
+				CanSubstitute: canSubstitute,
+				CanLobbyHost:  canLobbyHost,
+				DuoRequest:    duoRequest,
+			})
+			if err != nil {
+				return fmt.Errorf("create registration: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("get registration: %w", err)
+	}
+
+	_, err = s.q.UpdateRegistration(ctx, db.UpdateRegistrationParams{
+		EventID:       eventID,
+		UserID:        userID,
+		CanSubstitute: canSubstitute,
+		CanLobbyHost:  canLobbyHost,
+		DuoRequest:    duoRequest,
+	})
+	if err != nil {
+		return fmt.Errorf("update registration: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {
+	eventRow, err := s.q.GetEventWithGroupById(ctx, eventID)
+	if err != nil {
+		return fmt.Errorf("get event with group: %w", err)
+	}
+	isHost := eventRow.OwnerID == actorUserID
+	isSelf := targetUserID == actorUserID
+	if !isHost && !isSelf {
+		return ErrForbidden
+	}
+	if !isHost && !eventRow.RegistrationOpen {
+		return ErrRegistrationClosed
+	}
+
+	_, err = s.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
+		EventID: eventID,
+		UserID:  targetUserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRegistrationNotFound
+		}
+		return fmt.Errorf("get registration before delete: %w", err)
+	}
+
+	if err := s.q.DeleteRegistration(ctx, db.DeleteRegistrationParams{
+		EventID: eventID,
+		UserID:  targetUserID,
+	}); err != nil {
+		return fmt.Errorf("delete registration: %w", err)
+	}
+	return nil
 }

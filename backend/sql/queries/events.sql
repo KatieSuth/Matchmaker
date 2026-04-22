@@ -28,6 +28,99 @@ SELECT * FROM event_groups WHERE id = $1;
 -- name: GetEventsByGroupId :many
 SELECT * FROM events WHERE group_id = $1 ORDER BY start_time ASC;
 
+-- name: GetEventGroupDetailById :one
+SELECT
+    EG.id,
+    EG.owner_id,
+    COALESCE(U.discord_name, '') AS owner_name,
+    EG.game_mode_id,
+    GM.name AS game_mode_name,
+    G.id AS game_id,
+    G.name AS game_name,
+    GM.team_size,
+    EG.sub_min,
+    EG.registration_open,
+    EG.region,
+    EG.created_at,
+    EG.updated_at
+FROM event_groups AS EG
+JOIN users AS U ON U.id = EG.owner_id
+JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
+WHERE EG.id = $1;
+
+-- name: GetGroupEventsSummary :many
+SELECT
+    E.id,
+    E.start_time,
+    COUNT(DISTINCT R.user_id)::INT AS registered_count,
+    COUNT(DISTINCT L.id)::INT AS lobbies_count,
+    COALESCE(BOOL_OR(R.user_id = sqlc.arg(viewer_id)), FALSE)::BOOL AS player_registered
+FROM events AS E
+LEFT JOIN registrations AS R ON R.event_id = E.id
+LEFT JOIN lobbies AS L ON L.event_id = E.id
+WHERE E.group_id = $1
+GROUP BY E.id
+ORDER BY E.start_time ASC;
+
+-- name: GetEventWithGroupById :one
+SELECT
+    E.id,
+    E.group_id,
+    EG.owner_id,
+    EG.registration_open
+FROM events AS E
+JOIN event_groups AS EG ON EG.id = E.group_id
+WHERE E.id = $1;
+
+-- name: CountLobbiesByGroupId :one
+SELECT COUNT(*)::INT
+FROM lobbies AS L
+JOIN events AS E ON E.id = L.event_id
+WHERE E.group_id = $1;
+
+-- name: UpdateEventGroupSettings :one
+UPDATE event_groups
+SET region = $2, sub_min = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: SetEventGroupRegistrationOpen :one
+UPDATE event_groups
+SET registration_open = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteEventGroupById :execrows
+DELETE FROM event_groups
+WHERE id = $1;
+
+-- name: CreateLobby :one
+INSERT INTO lobbies (id, event_id, host, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
+RETURNING *;
+
+-- name: CreatePlayer :exec
+INSERT INTO players (lobby_id, user_id, team_number, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW());
+
+-- name: DeletePlayersByGroupId :exec
+DELETE FROM players
+WHERE lobby_id IN (
+    SELECT L.id
+    FROM lobbies AS L
+    JOIN events AS E ON E.id = L.event_id
+    WHERE E.group_id = $1
+);
+
+-- name: DeleteLobbiesByGroupId :exec
+DELETE FROM lobbies
+WHERE event_id IN (
+    SELECT id
+    FROM events
+    WHERE group_id = $1
+);
+
 -- name: GetEventsForUser :many
 WITH grouped AS (
     SELECT

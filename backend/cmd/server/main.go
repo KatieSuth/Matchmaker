@@ -211,6 +211,19 @@ func main() {
 		events := protected.Group("/events")
 		{
 			events.POST("", h.CreateEventHandler)
+			events.GET("/:groupId", h.GetEventGroupHandler)
+			events.PATCH("/:groupId", h.UpdateEventGroupSettingsHandler)
+			events.DELETE("/:groupId", h.DeleteEventGroupHandler)
+			events.PATCH("/:groupId/registration", h.UpdateEventGroupRegistrationStatusHandler)
+			events.POST("/:groupId/teams", h.CreateTeamsHandler)
+			events.DELETE("/:groupId/teams", h.DeleteTeamsAndOpenRegistrationHandler)
+		}
+
+		registrations := protected.Group("/registrations")
+		{
+			registrations.PUT("/:eventId/me", h.UpsertMyRegistrationHandler)
+			registrations.DELETE("/:eventId/:userId", h.DeleteRegistrationHandler)
+			registrations.DELETE("/:eventId/me", h.DeleteRegistrationHandler)
 		}
 	}
 

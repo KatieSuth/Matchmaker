@@ -10,13 +10,16 @@ import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { REGIONS } from "@/app/_lib/constants";
 import { inputCls } from "@/app/_lib/styles";
-import { createEvent } from "@/app/_services/events";
+import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { Game, GameMode } from "@/app/_types/types";
 
 interface EventFormProps {
   mode: "create" | "edit";
   onCancel: () => void;
+  eventGroupId?: string;
+  initialValues?: Partial<EventFormValues>;
+  onSubmitted?: () => void;
 }
 
 const eventFormSchema = z.object({
@@ -82,9 +85,10 @@ interface NumberStepperProps {
   min: number;
   onChange: (next: number) => void;
   hint?: string;
+  disabled?: boolean;
 }
 
-function NumberStepper({ label, value, min, onChange, hint }: NumberStepperProps) {
+function NumberStepper({ label, value, min, onChange, hint, disabled = false }: NumberStepperProps) {
   const decrement = () => onChange(Math.max(min, value - 1));
   const increment = () => onChange(value + 1);
 
@@ -95,7 +99,7 @@ function NumberStepper({ label, value, min, onChange, hint }: NumberStepperProps
         <button
           type="button"
           onClick={decrement}
-          disabled={value <= min}
+          disabled={disabled || value <= min}
           className="h-9 w-9 rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] transition-colors hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label={`Decrease ${label}`}
         >
@@ -107,12 +111,14 @@ function NumberStepper({ label, value, min, onChange, hint }: NumberStepperProps
           type="number"
           min={min}
           value={value}
+          disabled={disabled}
           onChange={(event) => onChange(Math.max(min, Number(event.target.value) || min))}
           className={`${inputCls} no-native-spinner text-center`}
         />
         <button
           type="button"
           onClick={increment}
+          disabled={disabled}
           className="h-9 w-9 rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] transition-colors hover:bg-white/[0.08]"
           aria-label={`Increase ${label}`}
         >
@@ -131,7 +137,7 @@ function NumberStepper({ label, value, min, onChange, hint }: NumberStepperProps
   );
 }
 
-export function EventForm({ mode, onCancel }: EventFormProps) {
+export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmitted }: EventFormProps) {
   const router = useRouter();
   const { user } = useAuth();
   const userTz =
@@ -139,15 +145,15 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
 
   const defaultValues = useMemo(
     (): EventFormValues => ({
-      game_id: "",
-      game_mode_id: "",
-      region: "",
-      start_time_local: getInitialStartTimeLocal(mode),
-      sub_min: 0,
-      games_to_run: 1,
-      registration_open: true,
+      game_id: initialValues?.game_id ?? "",
+      game_mode_id: initialValues?.game_mode_id ?? "",
+      region: initialValues?.region ?? "",
+      start_time_local: initialValues?.start_time_local ?? getInitialStartTimeLocal(mode),
+      sub_min: initialValues?.sub_min ?? 0,
+      games_to_run: initialValues?.games_to_run ?? 1,
+      registration_open: initialValues?.registration_open ?? true,
     }),
-    [mode]
+    [initialValues, mode]
   );
 
   const {
@@ -174,6 +180,9 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -240,26 +249,59 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
       setSubmitError("You must be signed in to create an event.");
       return;
     }
-    if (mode !== "create") return;
-
-    const startDate = new Date(data.start_time_local);
-
     try {
       setIsSubmitting(true);
-      const result = await createEvent({
-        game_mode_id: data.game_mode_id,
+      if (mode === "create") {
+        const startDate = new Date(data.start_time_local);
+        const result = await createEvent({
+          game_mode_id: data.game_mode_id,
+          region: data.region,
+          start_time: startDate.toISOString(),
+          sub_min: data.sub_min,
+          games_to_run: data.games_to_run,
+          registration_open: data.registration_open,
+        });
+        onCancel();
+        router.push(`/event/${result.group_id}`);
+        return;
+      }
+
+      if (!eventGroupId) {
+        setSubmitError("Missing event group id for edit mode.");
+        return;
+      }
+
+      await updateEventGroup(eventGroupId, {
         region: data.region,
-        start_time: startDate.toISOString(),
         sub_min: data.sub_min,
-        games_to_run: data.games_to_run,
-        registration_open: data.registration_open,
       });
+      onSubmitted?.();
       onCancel();
-      router.push(`/event/${result.group_id}`);
     } catch (err) {
-      setSubmitError(extractApiError(err, "Could not create event. Please try again."));
+      setSubmitError(
+        extractApiError(
+          err,
+          mode === "create" ? "Could not create event. Please try again." : "Could not update event settings."
+        )
+      );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onConfirmDelete = async () => {
+    if (mode !== "edit" || !eventGroupId) return;
+    setDeleteError(null);
+    try {
+      setIsDeleting(true);
+      await deleteEventGroup(eventGroupId);
+      setIsDeleteConfirmOpen(false);
+      onCancel();
+      router.push("/my_events");
+    } catch (err) {
+      setDeleteError(extractApiError(err, "Could not delete this event group."));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -320,7 +362,7 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
                 <Select
                   value={field.value}
                   onChange={field.onChange}
-                  disabled={!watchedGameId || modesLoading || !!modesError}
+                  disabled={mode === "edit" || !watchedGameId || modesLoading || !!modesError}
                   placeholder={
                     !watchedGameId
                       ? "Select game first"
@@ -359,100 +401,178 @@ export function EventForm({ mode, onCancel }: EventFormProps) {
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-              First game start time *
-            </label>
-            <input
-              type="datetime-local"
-              step={900}
-              className={inputCls}
-              {...register("start_time_local")}
-            />
-            {errors.start_time_local && (
-              <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
-            )}
-          </div>
+          {mode === "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <Controller
+                name="sub_min"
+                control={control}
+                render={({ field }) => (
+                  <NumberStepper
+                    label="Minimum subs per lobby"
+                    value={field.value}
+                    min={0}
+                    onChange={field.onChange}
+                    hint="Additional lobbies are created only after this many subs are available per lobby."
+                  />
+                )}
+              />
+              {errors.sub_min && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.sub_min.message}</p>
+              )}
+            </div>
+          )}
+
+          {mode !== "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                First game start time *
+              </label>
+              <input
+                type="datetime-local"
+                step={900}
+                className={inputCls}
+                {...register("start_time_local")}
+              />
+              {errors.start_time_local && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Controller
-              name="sub_min"
-              control={control}
-              render={({ field }) => (
-                <NumberStepper
-                  label="Minimum subs per lobby"
-                  value={field.value}
-                  min={0}
-                  onChange={field.onChange}
-                  hint="Additional lobbies are created only after this many subs are available per lobby."
-                />
-              )}
-            />
-            {errors.sub_min && (
-              <p className="text-xs text-[var(--color-text-danger)]">{errors.sub_min.message}</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Controller
-              name="games_to_run"
-              control={control}
-              render={({ field }) => (
-                <NumberStepper
-                  label="Number of games in event"
-                  value={field.value}
-                  min={1}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-            {errors.games_to_run && (
-              <p className="text-xs text-[var(--color-text-danger)]">{errors.games_to_run.message}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="pt-1 border-t border-white/[0.06]">
-          <Controller
-            name="registration_open"
-            control={control}
-            render={({ field }) => (
-              <ToggleRow
-                label="Registration is open"
-                description={
-                  field.value
-                    ? "Players can register for this event."
-                    : "Registration is currently closed."
-                }
-                checked={field.value}
-                onChange={field.onChange}
+          {mode !== "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <Controller
+                name="sub_min"
+                control={control}
+                render={({ field }) => (
+                  <NumberStepper
+                    label="Minimum subs per lobby"
+                    value={field.value}
+                    min={0}
+                    onChange={field.onChange}
+                    hint="Additional lobbies are created only after this many subs are available per lobby."
+                  />
+                )}
               />
-            )}
-          />
+              {errors.sub_min && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.sub_min.message}</p>
+              )}
+            </div>
+          )}
+
+          {mode !== "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <Controller
+                name="games_to_run"
+                control={control}
+                render={({ field }) => (
+                  <NumberStepper
+                    label="Number of games in event"
+                    value={field.value}
+                    min={1}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+              {errors.games_to_run && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.games_to_run.message}</p>
+              )}
+            </div>
+          )}
         </div>
+
+        {mode !== "edit" && (
+          <div className="pt-1 border-t border-white/[0.06]">
+            <Controller
+              name="registration_open"
+              control={control}
+              render={({ field }) => (
+                <ToggleRow
+                  label="Registration is open"
+                  description={
+                    field.value
+                      ? "Players can register for this event."
+                      : "Registration is currently closed."
+                  }
+                  checked={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+          </div>
+        )}
 
         {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}
 
-        <div className="mt-1 flex items-center justify-end gap-2">
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <div>
+            {mode === "edit" && (
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                disabled={isSubmitting || isDeleting}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Delete Event Group
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onCancel}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isDeleting}
             className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isDeleting}
             className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
           >
-            {isSubmitting ? "Creating..." : mode === "create" ? "Create Event" : "Save Settings"}
+            {isSubmitting
+              ? mode === "create"
+                ? "Creating..."
+                : "Saving..."
+              : mode === "create"
+                ? "Create Event"
+                : "Save Settings"}
           </button>
+          </div>
         </div>
       </form>
+      {isDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--color-bg)] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.7)]">
+            <h3 className="text-base font-semibold text-[var(--color-text)]">Delete Event Group</h3>
+            <p className="mt-2 text-sm text-[var(--color-text-soft)]">
+              This action cannot be undone. All games, registrations, and teams in this event group will be permanently deleted.
+            </p>
+            {deleteError && <p className="mt-3 text-xs text-[var(--color-text-danger)]">{deleteError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                disabled={isDeleting}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmDelete}
+                disabled={isDeleting}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <style jsx global>{`
         .no-native-spinner {
           -moz-appearance: textfield;

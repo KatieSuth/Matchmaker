@@ -13,14 +13,15 @@ It's still very much in the early phases but is intended to one day support Valo
 - [x] Initial infrastructure setup (containers, DB, etc)
 - [x] Basic login functionality via Discord
 - [x] User preferences
-- [ ] One-off event admin configuration
+- [x] One-off event admin configuration
 - [ ] One-off event sign-up for players
 - [ ] One-off event admin team creation
 - [ ] 1.0 web hosting with public availability
+- [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Player duo requests
 - [ ] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Opt-in notifications for updates regarding events
-- [ ] Riot API Linking for automatic competitive rank detection
+- [ ] Allow hosts to ban users from their events
 - [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, etc.)
 - [ ] Non-Discord login support
 - [ ] Tournament bracket event support
