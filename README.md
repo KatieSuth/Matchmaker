@@ -106,7 +106,9 @@ sudo update-ca-certificates
 
 ## API Reference
 
-The API is documented using the OpenAPI specification. See [`openapi.yaml`](https://github.com/KatieSuth/Matchmaker/blob/main/backend/openapi.yaml)
+The API is available at https://matchmaker.localhost/api/
+
+The available paths are documented using the OpenAPI specification. See [openapi.yaml](https://github.com/KatieSuth/Matchmaker/blob/main/backend/openapi.yaml)
 
 ### Example
 
