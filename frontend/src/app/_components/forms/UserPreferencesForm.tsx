@@ -1,5 +1,6 @@
 "use client";
 
+// Editable profile: region, pronouns, and per-game accounts (user games). Used as /my_account.
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';

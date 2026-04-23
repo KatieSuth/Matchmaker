@@ -1,3 +1,4 @@
+// Package middleware_test black-box tests JWT validation and the request ID hook.
 package middleware_test
 
 import (

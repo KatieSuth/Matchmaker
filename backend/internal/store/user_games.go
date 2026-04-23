@@ -21,6 +21,8 @@ func (s *PostgresStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUI
 	return model.MapDbUserGamesToUserGames(dbUserGames), nil
 }
 
+// UpsertGameForUser validates rank ordering and game/rank foreign keys, then insert or updates
+// the user_games row. The int return is an HTTP status code (200 or 4xx/5xx) for the handler to forward.
 func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
 	/*** validate provided info ***/
 

@@ -1,3 +1,5 @@
+// DTOs mirroring the Go API’s JSON field names. Nullable fields use null where the server sends null.
+
 export interface User {
     id: string;
     discord_id: string;

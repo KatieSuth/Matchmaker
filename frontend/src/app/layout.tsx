@@ -1,3 +1,4 @@
+// Root layout: wraps the app with AuthProvider so any subtree can use useAuth and axios auth.
 import type { Metadata } from "next";
 import { AuthProvider } from "@/app/_context/AuthContext"
 import "./globals.css";

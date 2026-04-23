@@ -1,3 +1,4 @@
+// Package logger_test verifies the slog handler wrapper injects request_id attributes.
 package logger_test
 
 import (

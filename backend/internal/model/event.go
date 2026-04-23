@@ -1,3 +1,5 @@
+// Package model defines JSON-facing domain types and maps sqlc-generated row types
+// (internal/db) into those shapes, keeping the DB layer from leaking into handlers.
 package model
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// DashboardEvent is a single card on the "my events" list (keyset-paginated).
 type DashboardEvent struct {
 	ID               uuid.UUID `json:"id"`
 	GameName         string    `json:"game_name"`
@@ -18,6 +21,7 @@ type DashboardEvent struct {
 	RegistrationOpen bool      `json:"registration_open"`
 }
 
+// EventRegistration is one sign-up for an event, as shown on the event detail page.
 type EventRegistration struct {
 	EventID         uuid.UUID `json:"event_id"`
 	UserID          uuid.UUID `json:"user_id"`
@@ -31,6 +35,7 @@ type EventRegistration struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+// EventGroupEvent is one scheduled game within a group, with optional registration rows.
 type EventGroupEvent struct {
 	ID               uuid.UUID           `json:"id"`
 	StartTime        time.Time           `json:"start_time"`
@@ -40,6 +45,7 @@ type EventGroupEvent struct {
 	Registrations    []EventRegistration `json:"registrations"`
 }
 
+// EventGroupDetail is the full host/participant view for a group: header plus each game.
 type EventGroupDetail struct {
 	ID               uuid.UUID         `json:"id"`
 	OwnerID          uuid.UUID         `json:"owner_id"`

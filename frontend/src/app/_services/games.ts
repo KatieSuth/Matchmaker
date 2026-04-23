@@ -1,3 +1,4 @@
+// Game and game-mode fetches, plus a small helper to surface Gin JSON error `message` fields.
 import api from "@/app/_lib/axios";
 import { Game, GameMode } from "@/app/_types/types";
 

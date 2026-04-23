@@ -1,3 +1,4 @@
+// Public landing: Discord login. With auth_session set, the route guard (see `proxy.ts`) can redirect to the app.
 import Image from "next/image";
 import LoginButton from "@/app/_components/LoginButton";
 

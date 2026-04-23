@@ -1,3 +1,4 @@
+// Package handler_test is a black-box test package for the HTTP API surface.
 package handler_test
 
 import (

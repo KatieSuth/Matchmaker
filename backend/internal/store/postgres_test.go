@@ -1,3 +1,5 @@
+// Package store_test contains integration and SQL-level tests for the store, using a real
+// test database and migrations.
 package store_test
 
 import (

@@ -1,3 +1,4 @@
+// Form layout primitive: label, optional error/hint, and a slot for the control.
 interface FieldProps {
   label: string;
   error?: string;

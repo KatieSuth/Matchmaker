@@ -1,3 +1,5 @@
+// Minimal unauthenticated JSON fetch helper (no cookies, no auth headers). Prefer `axios` for
+// anything that may need a JWT or the refresh cookie; this is for simple or pre-login use.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export interface ApiResponse<T> {

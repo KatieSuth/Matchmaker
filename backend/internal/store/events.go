@@ -30,11 +30,15 @@ var (
 	ErrOpenRegistrationTeams = errors.New("cannot open registration while teams exist")
 )
 
+// dashboardCursor is encoded into the opaque "next page" string for the user events list.
 type dashboardCursor struct {
 	EventDate time.Time `json:"event_date"`
 	ID        uuid.UUID `json:"id"`
 }
 
+// GetEventsForUser returns dashboard rows with optional date filters, game filter, and
+// keyset pagination. When from/to are both absent, applyPastFilter drives "today" vs
+// past tabs using the caller’s local-time midnight boundary in UTC.
 func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
 	location, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -43,6 +47,7 @@ func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, 
 
 	nowInLocation := time.Now().In(location)
 	dayStartInLocation := time.Date(nowInLocation.Year(), nowInLocation.Month(), nowInLocation.Day(), 0, 0, 0, 0, location)
+	// "Today" for the user in their zone, as an instant in UTC, for the default past/upcoming filter.
 	boundaryTime := dayStartInLocation.UTC()
 
 	hasFrom := from != nil
@@ -56,6 +61,7 @@ func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, 
 
 	var toTime time.Time
 	if hasTo {
+		// Inclusive end date: add one day and use a half-open [from, to) range in the query.
 		toTime = to.AddDate(0, 0, 1).UTC()
 	}
 
@@ -102,6 +108,7 @@ func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, 
 		return nil, false, "", fmt.Errorf("querying events for user: %w", err)
 	}
 
+	// Fetch one extra row to know whether a next page exists without a separate count query.
 	hasMore := len(rows) > dashboardEventsPageSize
 	if hasMore {
 		rows = rows[:dashboardEventsPageSize]
@@ -203,6 +210,8 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 	return groupID, nil
 }
 
+// GetEventGroupDetail loads a group header plus each scheduled game and, per game,
+// the registration list the viewer may see (full detail for the host, limited otherwise).
 func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
 	groupRow, err := s.q.GetEventGroupDetailById(ctx, groupID)
 	if err != nil {
@@ -306,6 +315,8 @@ func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, group
 	return nil
 }
 
+// CreateTeamsForGroup closes registration, then for each event with signups creates a lobby
+// and assigns the first "can lobby host" registrant as host when available.
 func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {

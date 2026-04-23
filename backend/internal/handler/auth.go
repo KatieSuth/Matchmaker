@@ -14,17 +14,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GenerateState returns a random hex string used as the OAuth2 state parameter to bind the
+// callback to the user’s original /auth/login request (CSRF protection).
 func GenerateState() (string, error) {
 	state := make([]byte, 16)
 	_, err := rand.Read(state)
 	return hex.EncodeToString(state), err
 }
 
+// hashToken returns a stable SHA-256 digest of a bearer or refresh value; we persist only
+// the hash in the database so a DB leak does not immediately expose raw tokens.
 func hashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
 }
 
+// setAuthCookies sets the HttpOnly refresh_token and a lightweight auth_session flag the
+// Next.js layer uses for client-side route guards (API calls still require a valid JWT).
 func (h *Handler) setAuthCookies(c *gin.Context, refreshToken string, maxAge int) {
 	c.SetCookie("refresh_token", refreshToken, maxAge, "/", h.cookieDomain, true, true)
 	c.SetCookie("auth_session", "1", maxAge, "/", h.cookieDomain, true, false)

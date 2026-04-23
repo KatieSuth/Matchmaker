@@ -1,5 +1,6 @@
 "use client";
 
+// Discord OAuth: navigates the browser to GET /auth/login on the API.
 import { useState } from "react";
 
 export default function DiscordLoginButton() {

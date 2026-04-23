@@ -1,5 +1,7 @@
 "use client";
 
+// Event group detail: metadata, per-game registration panels, host controls (teams, registration),
+// and participant registration / profile actions. Large presentational pieces live in local helpers below.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
@@ -186,6 +188,7 @@ function EventPanel({
   );
 }
 
+// EventGroupPage - loads GET /events/:groupId and drives host vs guest UI, sheets, and mutations.
 export default function EventGroupPage() {
   const params = useParams<{ groupId: string }>();
   const groupId = params?.groupId;

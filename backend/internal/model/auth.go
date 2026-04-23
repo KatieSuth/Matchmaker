@@ -14,7 +14,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// generate auth token and refresh tokens
+// GenerateTokens returns a short-lived signed JWT and a long opaque refresh token (the raw
+// refresh is returned to the client; only its hash is stored in the database).
 func GenerateTokens(userID string, jwtSecret []byte) (accessToken, refreshToken string, err error) {
 	if userID == "" {
 		err = errors.New("userID must not be empty")

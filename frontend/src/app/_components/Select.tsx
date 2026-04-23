@@ -1,5 +1,6 @@
 "use client";
 
+// Themed react-select wrapper used in forms; exports shared option types and light/dark styles.
 import ReactSelect, { GroupBase, StylesConfig } from "react-select";
 
 export interface SelectOption {

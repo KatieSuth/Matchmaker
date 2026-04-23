@@ -1,7 +1,8 @@
+// Route guard: uses the auth_session cookie to redirect; API routes still require a valid JWT.
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export  function proxy(request: NextRequest) {
+export function proxy(request: NextRequest) {
     /* note: "isAuthenticated" is just a lightweight flag set on login & token refresh for the
      * sake of middleware redirects. If someone is trying to get clever and change this cookie,
      * the middleware will let them go to whatever page, but the API will still fail their request.

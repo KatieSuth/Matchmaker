@@ -1,5 +1,6 @@
 "use client";
 
+// Global session: restores JWT via silent refresh, hydrates /users/me, and exposes logout.
 import { createContext, useContext, useEffect, useState } from "react";
 import { setAccessToken, refreshAccessToken } from "@/app/_lib/auth";
 import type { User } from "@/app/_types/types";

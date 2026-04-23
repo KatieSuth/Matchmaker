@@ -1,3 +1,4 @@
+// Small titled divider for long forms (e.g. my account).
 interface SectionDividerProps {
   title: string;
 }

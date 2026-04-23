@@ -1,5 +1,6 @@
 "use client";
 
+// Create or edit an event group: zod + react-hook-form, game/mode pickers, and API mutations.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";

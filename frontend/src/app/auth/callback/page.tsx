@@ -1,5 +1,6 @@
 "use client"
 
+// OAuth return path: exchanges the one-time `otc` for tokens, then routes to the app shell.
 import { useEffect } from "react";
 import { useRouter } from "next/navigation"
 import { setAccessToken } from "@/app/_lib/auth";

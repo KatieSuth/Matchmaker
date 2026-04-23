@@ -1,3 +1,4 @@
+// Package model_test table-tests mapping helpers from internal/db row types to API models.
 package model_test
 
 import (

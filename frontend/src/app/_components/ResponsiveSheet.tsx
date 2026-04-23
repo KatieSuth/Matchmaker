@@ -1,5 +1,6 @@
 "use client";
 
+// Modal "sheet" that portals to document.body; used for registration details and event edit flows.
 import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 

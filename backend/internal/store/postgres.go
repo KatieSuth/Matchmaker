@@ -1,3 +1,5 @@
+// Package store is the data access layer: PostgreSQL via sqlc-generated queries, transactions,
+// and store-level validation errors that handlers map to HTTP status codes.
 package store
 
 import (
@@ -17,6 +19,8 @@ type PostgresStore struct {
 	pool *pgxpool.Pool // store the pool directly so we can begin transactions
 }
 
+// Store abstracts persistence for handlers and allows transactional tests to swap in a
+// transaction-backed store via WithTx and NewPostgresStoreFromTx.
 type Store interface {
 	WithTx(ctx context.Context, fn func(Store) error) error
 
@@ -62,6 +66,7 @@ type Store interface {
 	DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
 }
 
+// NewPostgresStore wires a connection pool. Callers are responsible for pool lifecycle.
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{
 		q:    db.New(pool),

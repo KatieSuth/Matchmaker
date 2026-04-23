@@ -1,5 +1,6 @@
 "use client";
 
+// Top nav for the authenticated shell: app links, Discord avatar, and logout.
 import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";

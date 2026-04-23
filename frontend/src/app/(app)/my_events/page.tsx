@@ -1,5 +1,6 @@
 "use client";
 
+// My Events dashboard: list of hosted and joined event groups, filters, and create flow.
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import ReactSelect, { GroupBase } from "react-select";

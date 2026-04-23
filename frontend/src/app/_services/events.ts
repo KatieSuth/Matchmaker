@@ -1,3 +1,4 @@
+// Client calls for event groups, registration, and host actions (uses axios + auth interceptors).
 import api from "@/app/_lib/axios";
 import { EventGroupDetail } from "@/app/_types/types";
 

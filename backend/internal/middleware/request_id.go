@@ -12,6 +12,7 @@ type contextKey string
 
 const requestIDKey contextKey = "request_id"
 
+// RequestID propagates X-Request-ID (or generates one) on the Gin context and the Go context for slog.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader("X-Request-ID")

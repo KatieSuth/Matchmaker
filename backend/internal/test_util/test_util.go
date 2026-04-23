@@ -1,3 +1,5 @@
+// Package test_util supports integration tests: test DB pool, one-shot migrations, Gin
+// test contexts, and shared secrets for handler tests.
 package test_util
 
 import (

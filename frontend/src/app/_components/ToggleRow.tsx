@@ -1,3 +1,4 @@
+// Labeled on/off control with optional subtext, for settings-style forms.
 interface ToggleRowProps {
   label: string;
   description?: string;

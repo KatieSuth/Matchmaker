@@ -1,3 +1,6 @@
+// Command server is the HTTP API for Matchmaker: loads configuration from the environment,
+// runs database migrations, wires PostgreSQL and Discord OAuth, and serves Gin routes
+// (public auth, JWT-protected REST handlers, CORS, and structured request logging).
 package main
 
 import (

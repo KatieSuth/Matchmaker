@@ -1,3 +1,4 @@
+// Package logger provides slog handler wrappers, e.g. injecting request_id from context.
 package logger
 
 import (

@@ -1,3 +1,4 @@
+// Package middleware provides Gin middleware: request IDs for log correlation and JWT parsing.
 package middleware
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Auth requires a valid Bearer JWT, sets c["userID"] to the stringified UUID, or aborts 401.
 func Auth(jwtSecret []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -30,6 +32,7 @@ func Auth(jwtSecret []byte) gin.HandlerFunc {
 	}
 }
 
+// ValidateAuth parses the Authorization header and returns the user id, or an HTTP status to return and a non-nil error.
 func ValidateAuth(jwtSecret []byte, authHeader string) (string, int, error) {
 	//verify the header isn't empty
 	if authHeader == "" {

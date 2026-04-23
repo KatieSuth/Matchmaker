@@ -103,6 +103,7 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 	c.JSON(http.StatusOK, gameRanks)
 }
 
+// GetGameRanksForGame loads rank tiers for a game; shared by the HTTP handler and tests.
 func GetGameRanksForGame(gameId uuid.UUID, s store.Store, ctx context.Context) ([]model.GameRank, error) {
 	gameRanks, err := s.GetGameRanks(ctx, &gameId)
 	if err != nil {

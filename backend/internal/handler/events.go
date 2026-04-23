@@ -37,6 +37,7 @@ type upsertRegistrationRequest struct {
 	DuoRequest    string `json:"duo_request"`
 }
 
+// userIDFromContext returns the user UUID set by JWT middleware, or writes an error response and false.
 func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 	userID, exists := c.Get("userID")
 	if !exists {

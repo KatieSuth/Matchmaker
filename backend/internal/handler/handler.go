@@ -1,3 +1,5 @@
+// Package handler implements Matchmaker’s REST API on top of Gin: Discord OAuth, JWT auth,
+// and JSON responses backed by the store.
 package handler
 
 import (
@@ -11,6 +13,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// Handler holds shared dependencies for all HTTP entrypoints. Mutating it after New is not supported.
 type Handler struct {
 	ginMode           string
 	store             store.Store
@@ -23,6 +26,10 @@ type Handler struct {
 	discordApiUrl     string
 }
 
+// New builds a Handler.
+// gm is the Gin run mode; s is the persistence layer; sc signs/encrypts auth cookies;
+// o2c is the Discord OAuth2 config; cd is the cookie domain; fURL is the frontend base URL;
+// jwt is the JWT signing key; refExp is refresh-token Max-Age in seconds; dApi is Discord's API base URL.
 func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string) *Handler {
 	return &Handler{
 		ginMode:           gm,
