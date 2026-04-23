@@ -106,15 +106,7 @@ sudo update-ca-certificates
 
 ## API Reference
 
-| Method | Path                     | Description                        |
-|--------|--------------------------|------------------------------------|
-| POST   | `/auth/complete`         | Finishes login flow, issues tokens |
-| GET    | `/auth/discord_redirect` | Callback from Discord              |
-| GET    | `/auth/login`            | User login (redirects to Discord)  |
-| POST   | `/auth/logout`           | User logout                        |
-| POST   | `/auth/refresh`          | JWT token refresh endpoint         |
-| GET    | `/users/me`              | Gets the current user's data       |
-| GET    | `/health`                | Health check                       |
+The API is documented using the OpenAPI specification. See [`openapi.yaml`](https://github.com/KatieSuth/Matchmaker/blob/main/backend/openapi.yaml)
 
 ### Example
 

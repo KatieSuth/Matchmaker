@@ -16,6 +16,10 @@ tags:
     description: User profile operations
   - name: games
     description: Game catalogue
+  - name: events
+    description: Event group and team lifecycle
+  - name: registrations
+    description: Event registration management
 
 paths:
 
@@ -27,6 +31,10 @@ paths:
       responses:
         "200":
           description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
 
   # ---------------------------------------------------------------------------
   # Auth
@@ -216,6 +224,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [users]
+      summary: Update current user profile and games
+      operationId: updateUsersMe
+      description: >
+        Updates profile fields for the authenticated user and upserts the provided
+        game entries in a single transaction.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUsersMeRequest"
+      responses:
+        "200":
+          description: Updated user profile and upserted games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateUsersMeResponse"
+        "400":
+          description: Improper JSON, invalid value types, or invalid game payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to update user profile or games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /users/me/games:
     get:
@@ -238,6 +282,85 @@ paths:
           description: Missing or invalid JWT
         "500":
           description: Failed to fetch user games from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/events:
+    get:
+      tags: [users]
+      summary: Get current user's events
+      operationId: getUsersMeEvents
+      description: >
+        Returns event groups for the authenticated user with optional filters
+        and keyset pagination.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hosting
+          in: query
+          required: false
+          description: When true, only include event groups hosted by the current user
+          schema:
+            type: boolean
+        - name: past
+          in: query
+          required: false
+          description: When true, include past events; defaults to upcoming events
+          schema:
+            type: boolean
+        - name: from
+          in: query
+          required: false
+          description: Lower date boundary in YYYY-MM-DD format
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Upper date boundary in YYYY-MM-DD format
+          schema:
+            type: string
+            format: date
+        - name: game_id
+          in: query
+          required: false
+          description: Optional game UUID filter
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          description: Pagination cursor returned by a previous request
+          schema:
+            type: string
+        - name: tz
+          in: query
+          required: true
+          description: IANA timezone used to interpret date filters
+          schema:
+            type: string
+            examples: ["America/New_York"]
+      responses:
+        "200":
+          description: Filtered and paginated event groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardEventsResponse"
+        "400":
+          description: Invalid query params, timezone, dates, game_id, or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch events from storage
           content:
             application/json:
               schema:
@@ -311,6 +434,549 @@ paths:
           description: Missing or invalid JWT
         "500":
           description: Failed to fetch ranks from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/users/{ownerId}:
+    get:
+      tags: [games]
+      summary: Get games for a specific user
+      operationId: getUserGames
+      description: Returns all game entries for the specified owner user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          description: UUID of the user whose games should be returned
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of user games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGame"
+        "400":
+          description: Invalid or unparseable `ownerId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch user games from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/modes:
+    get:
+      tags: [games]
+      summary: Get game modes for a game
+      operationId: getGameModes
+      description: Returns all game modes defined for the specified game.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: UUID of the game
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of game modes for the game
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameMode"
+        "400":
+          description: Invalid or unparseable `gameId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to fetch game modes from storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ---------------------------------------------------------------------------
+  # Events (protected — requires Bearer JWT)
+  # ---------------------------------------------------------------------------
+
+  /events:
+    post:
+      tags: [events]
+      summary: Create event group
+      operationId: createEventGroup
+      description: Creates an event group and its scheduled events.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+      responses:
+        "201":
+          description: Event group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEventResponse"
+        "400":
+          description: Invalid payload, invalid UUID, invalid datetime, or unknown game mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to create event group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /events/{groupId}:
+    get:
+      tags: [events]
+      summary: Get event group detail
+      operationId: getEventGroup
+      description: Returns detailed event group data, including nested events and registrations.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event group detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventGroupDetail"
+        "400":
+          description: Invalid or unparseable `groupId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to fetch event group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [events]
+      summary: Update event group settings
+      operationId: updateEventGroupSettings
+      description: Updates editable event group settings such as region and sub_min.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventGroupSettingsRequest"
+      responses:
+        "204":
+          description: Event group settings updated successfully
+        "400":
+          description: Invalid `groupId` or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can update settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update event group settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [events]
+      summary: Delete event group
+      operationId: deleteEventGroup
+      description: Deletes an event group and associated records.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Event group deleted successfully
+        "400":
+          description: Invalid or unparseable `groupId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can delete the group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to delete event group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /events/{groupId}/registration:
+    patch:
+      tags: [events]
+      summary: Update event group registration status
+      operationId: updateEventGroupRegistrationStatus
+      description: Opens or closes registrations for an event group.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRegistrationStatusRequest"
+      responses:
+        "204":
+          description: Registration status updated successfully
+        "400":
+          description: Invalid request, invalid `groupId`, or teams prevent reopening registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can change registration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update registration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /events/{groupId}/teams:
+    post:
+      tags: [events]
+      summary: Create teams for event group
+      operationId: createTeamsForEventGroup
+      description: Creates teams for the event group and closes registration.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Teams created successfully
+        "400":
+          description: Invalid `groupId` or teams already exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can create teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to create teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [events]
+      summary: Delete teams and reopen registration
+      operationId: deleteTeamsAndOpenRegistration
+      description: Deletes created teams and reopens registration for the group.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Teams deleted and registration reopened successfully
+        "400":
+          description: Invalid `groupId` or no teams exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can delete teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to delete teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ---------------------------------------------------------------------------
+  # Registrations (protected — requires Bearer JWT)
+  # ---------------------------------------------------------------------------
+
+  /registrations/{eventId}/me:
+    put:
+      tags: [registrations]
+      summary: Create or update current user's registration
+      operationId: upsertMyRegistration
+      description: Creates or updates the authenticated user's registration for an event.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the event
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertRegistrationRequest"
+      responses:
+        "204":
+          description: Registration saved successfully
+        "400":
+          description: Invalid payload, invalid `eventId`, or registration is closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to save registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [registrations]
+      summary: Delete current user's registration
+      operationId: deleteMyRegistration
+      description: Deletes the authenticated user's registration for an event.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the event
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Registration deleted successfully
+        "400":
+          description: Invalid `eventId` or registration is closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "404":
+          description: Event or registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to delete registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /registrations/{eventId}/{userId}:
+    delete:
+      tags: [registrations]
+      summary: Delete another user's registration
+      operationId: deleteRegistrationByUserId
+      description: >
+        Deletes the target user's registration for an event.
+        Caller must have permission (for example, event host privileges).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the event
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the registration owner to delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Registration deleted successfully
+        "400":
+          description: Invalid `eventId`/`userId` or registration is closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Caller is not permitted to delete this registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event or registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to delete registration
           content:
             application/json:
               schema:
@@ -401,6 +1067,60 @@ components:
           description: True if this account was created during this login
           examples: [false]
 
+    UserGameUpsert:
+      type: object
+      description: User game payload used when upserting game entries from profile update
+      properties:
+        game_id:
+          type: string
+          format: uuid
+          description: UUID of the game
+        in_game_name:
+          type: ["string", "null"]
+          description: In-game name or handle
+        current_rank:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the current rank
+        peak_rank:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the peak rank
+        show_rank:
+          type: boolean
+          description: Whether rank information is shown publicly
+
+    UpdateUsersMeRequest:
+      type: object
+      properties:
+        pronouns:
+          type: string
+          description: User's pronouns
+          examples: ["she/her"]
+        show_pronouns:
+          type: boolean
+          description: Whether pronouns are shown publicly
+        region:
+          type: string
+          description: User's preferred region
+          examples: ["NA-East"]
+        games:
+          type: array
+          description: Game entries to upsert for the user
+          items:
+            $ref: "#/components/schemas/UserGameUpsert"
+
+    UpdateUsersMeResponse:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [games]
+          properties:
+            games:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserGame"
+
     UserGame:
       type: object
       description: A game associated with a user, including rank information
@@ -456,6 +1176,47 @@ components:
           format: date-time
           description: Timestamp of the last update to this game entry
           examples: ["2024-06-01T08:30:00Z"]
+
+    DashboardEvent:
+      type: object
+      description: Compact event-group card shown on user dashboards
+      required: [id, game_name, game_mode, event_date, host_id, host_name, registered_count, registration_open]
+      properties:
+        id:
+          type: string
+          format: uuid
+        game_name:
+          type: string
+        game_mode:
+          type: string
+        event_date:
+          type: string
+          format: date-time
+        host_id:
+          type: string
+          format: uuid
+        host_name:
+          type: string
+        registered_count:
+          type: integer
+          format: int32
+        registration_open:
+          type: boolean
+
+    DashboardEventsResponse:
+      type: object
+      required: [event_groups, next_cursor, has_more]
+      properties:
+        event_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardEvent"
+        next_cursor:
+          type: string
+          description: Cursor for the next page; empty if no next page
+        has_more:
+          type: boolean
+          description: True if another page is available
 
     Game:
       type: object
@@ -516,3 +1277,216 @@ components:
           format: date-time
           description: Timestamp of the last update to this rank
           examples: ["2024-06-01T08:30:00Z"]
+
+    GameMode:
+      type: object
+      description: Game mode definition available under a game
+      required: [id, game_id, name, team_size, duration, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        game_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        team_size:
+          type: integer
+          format: int32
+        owner_id:
+          type: ["string", "null"]
+          format: uuid
+        duration:
+          type: integer
+          format: int32
+          description: Expected duration in minutes
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateEventRequest:
+      type: object
+      required: [game_mode_id, region, start_time, sub_min, games_to_run]
+      properties:
+        game_mode_id:
+          type: string
+          format: uuid
+        region:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+          description: RFC3339 datetime
+        sub_min:
+          type: integer
+          format: int32
+          minimum: 0
+        games_to_run:
+          type: integer
+          format: int32
+          minimum: 1
+        registration_open:
+          type: boolean
+
+    CreateEventResponse:
+      type: object
+      required: [group_id]
+      properties:
+        group_id:
+          type: string
+          format: uuid
+
+    UpdateEventGroupSettingsRequest:
+      type: object
+      required: [region]
+      properties:
+        region:
+          type: string
+        sub_min:
+          type: integer
+          format: int32
+          minimum: 0
+
+    UpdateRegistrationStatusRequest:
+      type: object
+      properties:
+        registration_open:
+          type: boolean
+
+    UpsertRegistrationRequest:
+      type: object
+      properties:
+        can_substitute:
+          type: boolean
+        can_lobby_host:
+          type: boolean
+        duo_request:
+          type: string
+          description: Optional preferred duo player display name
+
+    EventRegistration:
+      type: object
+      required: [event_id, user_id, discord_name, pronouns, current_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        discord_name:
+          type: string
+        pronouns:
+          type: string
+        current_rank_name:
+          type: string
+        can_substitute:
+          type: boolean
+        can_lobby_host:
+          type: boolean
+        duo_request:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventGroupEvent:
+      type: object
+      required: [id, start_time, registered_count, lobbies_count, player_registered, registrations]
+      properties:
+        id:
+          type: string
+          format: uuid
+        start_time:
+          type: string
+          format: date-time
+        registered_count:
+          type: integer
+          format: int32
+        lobbies_count:
+          type: integer
+          format: int32
+        player_registered:
+          type: boolean
+        registrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventRegistration"
+
+    EventGroupDetail:
+      type: object
+      required:
+        - id
+        - owner_id
+        - owner_name
+        - game_mode_id
+        - game_mode_name
+        - game_id
+        - game_name
+        - team_size
+        - sub_min
+        - registration_open
+        - region
+        - created_at
+        - updated_at
+        - events
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        owner_name:
+          type: string
+        game_mode_id:
+          type: string
+          format: uuid
+        game_mode_name:
+          type: string
+        game_id:
+          type: string
+          format: uuid
+        game_name:
+          type: string
+        team_size:
+          type: integer
+          format: int32
+        sub_min:
+          type: integer
+          format: int32
+        registration_open:
+          type: boolean
+        region:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventGroupEvent"
+
+    HealthResponse:
+      type: object
+      required: [status, message, timestamp]
+      properties:
+        status:
+          type: string
+          examples: ["ok"]
+        message:
+          type: string
+          examples: ["API is running"]
+        timestamp:
+          type: string
+          format: date-time
