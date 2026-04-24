@@ -4,12 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	ErrInvalidGame        = errors.New("invalid game")
+	ErrCurrentRankMissing = errors.New("current rank must not be empty")
+	ErrPeakRankMissing    = errors.New("peak rank must not be empty")
+	ErrInvalidCurrentRank = errors.New("invalid current rank")
+	ErrInvalidPeakRank    = errors.New("invalid peak rank")
+	ErrInvalidRankOrder   = errors.New("peak rank must be greater than or equal to current rank")
 )
 
 func (s *PostgresStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error) {
@@ -21,43 +29,46 @@ func (s *PostgresStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUI
 	return model.MapDbUserGamesToUserGames(dbUserGames), nil
 }
 
-// UpsertGameForUser validates rank ordering and game/rank foreign keys, then insert or updates
-// the user_games row. The int return is an HTTP status code (200 or 4xx/5xx) for the handler to forward.
-func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
+// UpsertGameForUser validates rank ordering and game/rank foreign keys, then inserts or updates
+// the user_games row.
+func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, error) {
 	/*** validate provided info ***/
 
 	//make sure game exists
 	_, err := s.q.GetGameById(ctx, ug.GameID)
 	if err != nil {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("Invalid game: %s", ug.GameID.String())
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.UserGame{}, fmt.Errorf("%w: %s", ErrInvalidGame, ug.GameID.String())
+		}
+		return model.UserGame{}, fmt.Errorf("looking up game by ID: %w", err)
 	}
 
 	//make sure we got existing ranks
 	if ug.CurrentRank == nil || *ug.CurrentRank == uuid.Nil {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("Current rank must not be empty")
+		return model.UserGame{}, ErrCurrentRankMissing
 	}
 
 	if ug.PeakRank == nil || *ug.PeakRank == uuid.Nil {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("Peak rank must not be empty")
+		return model.UserGame{}, ErrPeakRankMissing
 	}
 
 	currentRank, err := s.q.GetRankById(ctx, *ug.CurrentRank)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return model.UserGame{}, http.StatusInternalServerError, fmt.Errorf("looking up current rank by ID: %w", err)
+		return model.UserGame{}, fmt.Errorf("looking up current rank by ID: %w", err)
 	} else if err != nil {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("Invalid current rank: %s", ug.CurrentRank.String())
+		return model.UserGame{}, fmt.Errorf("%w: %s", ErrInvalidCurrentRank, ug.CurrentRank.String())
 	}
 
 	peakRank, err := s.q.GetRankById(ctx, *ug.PeakRank)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return model.UserGame{}, http.StatusInternalServerError, fmt.Errorf("looking up peak rank by ID: %w", err)
+		return model.UserGame{}, fmt.Errorf("looking up peak rank by ID: %w", err)
 	} else if err != nil {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("invalid peak rank: %s", ug.PeakRank.String())
+		return model.UserGame{}, fmt.Errorf("%w: %s", ErrInvalidPeakRank, ug.PeakRank.String())
 	}
 
 	//make sure ranks are logical
 	if currentRank.Order > peakRank.Order {
-		return model.UserGame{}, http.StatusBadRequest, fmt.Errorf("Peak rank must be greater than or equal to current rank")
+		return model.UserGame{}, ErrInvalidRankOrder
 	}
 
 	/*** Upsert ***/
@@ -68,7 +79,7 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		// Genuine DB error — surface it
-		return model.UserGame{}, http.StatusInternalServerError, fmt.Errorf("looking up user game: %w", err)
+		return model.UserGame{}, fmt.Errorf("looking up user game: %w", err)
 	}
 
 	var dbUserGame db.UserGame
@@ -83,7 +94,7 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 			ShowRank:    ug.ShowRank,
 		})
 		if err != nil {
-			return model.UserGame{}, http.StatusInternalServerError, fmt.Errorf("creating game for user: %w", err)
+			return model.UserGame{}, fmt.Errorf("creating game for user: %w", err)
 		}
 	} else {
 		//userGame link exists, update it
@@ -97,9 +108,9 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 		})
 
 		if err != nil {
-			return model.UserGame{}, http.StatusInternalServerError, fmt.Errorf("updated game for user: %w", err)
+			return model.UserGame{}, fmt.Errorf("updated game for user: %w", err)
 		}
 	}
 
-	return model.MapDbUserGameToUserGame(dbUserGame), http.StatusOK, nil
+	return model.MapDbUserGameToUserGame(dbUserGame), nil
 }

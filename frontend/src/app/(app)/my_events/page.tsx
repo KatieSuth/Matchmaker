@@ -6,36 +6,19 @@ import Link from "next/link";
 import ReactSelect, { GroupBase } from "react-select";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import api from "@/app/_lib/axios";
-import { Game } from "@/app/_types/types";
+import { Event, Game } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { SelectOption, selectStyles } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { fetchGames } from "@/app/_services/games";
+import { fetchMyEvents } from "@/app/_services/events";
 import { inputCls, datepickerStyles } from "@/app/_lib/styles";
 import { EventForm } from "@/app/_components/forms/EventForm";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface Event {
-  id: string;
-  game_name: string;
-  game_mode: string | null;
-  event_date: string; // ISO 8601 UTC
-  host_name: string;
-  host_id: string;
-  registered_count: number;
-  registration_open: boolean;
-}
-
-interface EventsPage {
-  event_groups: Event[];
-  next_cursor: string | null;
-  has_more: boolean;
-}
 
 interface BucketState {
   events: Event[];
@@ -73,18 +56,6 @@ const EMPTY_BUCKET: BucketState = {
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
-
-async function fetchEvents(
-  endpoint: string,
-  params: Record<string, string | undefined>
-): Promise<EventsPage> {
-  const query = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== "") query.set(k, v);
-  }
-  const res = await api.get<EventsPage>(`${endpoint}?${query.toString()}`);
-  return res.data;
-}
 
 // ---------------------------------------------------------------------------
 // DateInput — custom trigger for react-datepicker that matches inputCls
@@ -436,10 +407,8 @@ export default function MyEventsPage() {
   // ---------------------------------------------------------------------------
 
   const loadBucket = useCallback(
-    async (tab: Tab, time: TimeFilter, cursor?: string) => {
+    async (tab: Tab, time: TimeFilter, cursor?: string, signal?: AbortSignal) => {
       const key: BucketKey = `${tab}:${time}`;
-      const endpoint = "/users/me/events";
-
       const params: Record<string, string | undefined> = {};
       params.tz = USER_TZ;
       if (tab === "hosting") params.hosting = "true";
@@ -458,7 +427,8 @@ export default function MyEventsPage() {
       }));
 
       try {
-        const page = await fetchEvents(endpoint, params);
+        const page = await fetchMyEvents(params, signal);
+        if (signal?.aborted) return;
         setBuckets((prev) => ({
           ...prev,
           [key]: {
@@ -470,7 +440,18 @@ export default function MyEventsPage() {
           },
         }));
         bucketFilters.current[key] = filterKey;
-      } catch {
+      } catch (err) {
+        const canceled =
+          signal?.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError";
+        if (canceled) {
+          setBuckets((prev) => ({
+            ...prev,
+            [key]: { ...prev[key], isLoadingMore: false },
+          }));
+          return;
+        }
         setBuckets((prev) => ({
           ...prev,
           [key]: { ...prev[key], isLoadingMore: false, loaded: true },
@@ -493,7 +474,11 @@ export default function MyEventsPage() {
     const needsReset = bucketFilters.current[key] !== filterKey;
     if (!activeBucket.loaded || needsReset) {
       if (needsReset) setBuckets((prev) => ({ ...prev, [key]: EMPTY_BUCKET }));
-      loadBucket(activeTab, timeFilter);
+      const ac = new AbortController();
+      loadBucket(activeTab, timeFilter, undefined, ac.signal);
+      return () => {
+        ac.abort();
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, timeFilter, filterKey, authLoading, isAuthenticated]);
@@ -510,10 +495,17 @@ export default function MyEventsPage() {
       return;
     }
 
-    fetchGames()
+    const ac = new AbortController();
+    fetchGames(ac.signal)
       .then(setGames)
-      .catch(() => setGamesError(true))
+      .catch((err) => {
+        if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
+          return;
+        }
+        setGamesError(true);
+      })
       .finally(() => setGamesLoading(false));
+    return () => ac.abort();
   }, [authLoading, isAuthenticated]);
 
   // ---------------------------------------------------------------------------

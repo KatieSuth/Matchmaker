@@ -17,7 +17,7 @@ export function setAccessToken(token: string | null): void {
     accessToken = token;
 }
 
-export async function refreshAccessToken(): Promise<string> {
+export async function refreshAccessToken(signal?: AbortSignal): Promise<string> {
     if (refreshInFlight) {
         return refreshInFlight;
     }
@@ -27,7 +27,7 @@ export async function refreshAccessToken(): Promise<string> {
         const response = await axios.post(
             `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
             {},
-            { withCredentials: true }
+            { withCredentials: true, ...(signal ? { signal } : {}) }
         );
 
         const newToken = response.data.access_token as string;

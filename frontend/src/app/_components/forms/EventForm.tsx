@@ -140,7 +140,7 @@ function NumberStepper({ label, value, min, onChange, hint, disabled = false }: 
 
 export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmitted }: EventFormProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const userTz =
     typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
 
@@ -186,63 +186,80 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (authLoading || !isAuthenticated || !user?.id) return;
 
-    let ignore = false;
+    const ac = new AbortController();
+    const { signal } = ac;
     const loadGames = async () => {
       setGamesLoading(true);
       setGamesError(null);
       try {
-        const data = await fetchGamesForUser(user.id);
-        if (ignore) return;
+        const data = await fetchGamesForUser(user.id, signal);
+        if (signal.aborted) return;
         setGames(data);
-      } catch {
-        if (ignore) return;
+      } catch (err) {
+        if (
+          signal.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError"
+        ) {
+          return;
+        }
         setGames([]);
         setGamesError("Could not load available games.");
       } finally {
-        if (ignore) return;
-        setGamesLoading(false);
+        if (!signal.aborted) {
+          setGamesLoading(false);
+        }
       }
     };
 
     void loadGames();
 
     return () => {
-      ignore = true;
+      ac.abort();
     };
-  }, [user?.id]);
+  }, [authLoading, isAuthenticated, user?.id]);
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
     if (!watchedGameId) return;
 
-    let ignore = false;
+    const ac = new AbortController();
+    const { signal } = ac;
     const loadModes = async () => {
       setModesLoading(true);
       setModesError(null);
       try {
-        const data = await fetchGameModes(watchedGameId);
-        if (ignore) return;
+        const data = await fetchGameModes(watchedGameId, signal);
+        if (signal.aborted) return;
         setModes(data);
         const prevModeId = getValues("game_mode_id");
         setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
-      } catch {
-        if (ignore) return;
+      } catch (err) {
+        if (
+          signal.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError"
+        ) {
+          return;
+        }
         setModes([]);
         setValue("game_mode_id", "");
         setModesError("Could not load game modes.");
       } finally {
-        if (ignore) return;
-        setModesLoading(false);
+        if (!signal.aborted) {
+          setModesLoading(false);
+        }
       }
     };
 
     void loadModes();
 
     return () => {
-      ignore = true;
+      ac.abort();
     };
-  }, [watchedGameId, getValues, setValue]);
+  }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated]);
 
   const onValidSubmit = async (data: EventFormValues) => {
     setSubmitError(null);

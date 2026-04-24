@@ -91,3 +91,24 @@ export interface EventGroupDetail {
   updated_at: string;
   events: EventGroupEvent[];
 }
+
+export interface Event {
+  id: string;
+  game_name: string;
+  game_mode: string | null;
+  event_date: string;
+  host_name: string;
+  host_id: string;
+  registered_count: number;
+  registration_open: boolean;
+}
+
+export interface EventsPage {
+  event_groups: Event[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface CompleteAuthResponse {
+  access_token: string;
+}

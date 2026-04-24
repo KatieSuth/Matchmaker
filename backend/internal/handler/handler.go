@@ -59,9 +59,23 @@ func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
+	var userUUID uuid.UUID
+	switch typedUserID := userID.(type) {
+	case string:
+		parsed, err := uuid.Parse(typedUserID)
+		if err != nil {
+			slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"message": "Could not parse user ID",
+			})
+			return uuid.Nil, false
+		}
+		userUUID = parsed
+	case uuid.UUID:
+		userUUID = typedUserID
+	default:
+		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", "unexpected userID type")
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": "Could not parse user ID",

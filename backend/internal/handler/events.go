@@ -115,7 +115,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		body.GamesToRun,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrGameModeNotFound) || errors.Is(err, pgx.ErrNoRows) {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": "game mode not found",
@@ -155,7 +155,7 @@ func (h *Handler) GetEventGroupHandler(c *gin.Context) {
 
 	detail, err := h.store.GetEventGroupDetail(c.Request.Context(), groupID, userUUID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, store.ErrEventGroupNotFound) || errors.Is(err, pgx.ErrNoRows) {
 			slog.WarnContext(c.Request.Context(), "event group not found", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 			return
@@ -197,7 +197,7 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrInvalidSubMin):
 			slog.WarnContext(c.Request.Context(), "invalid event group settings payload", "user_id", userUUID, "group_id", groupID, "region", body.Region, "sub_min", body.SubMin)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "region is required and sub_min must be >= 0"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
@@ -229,7 +229,7 @@ func (h *Handler) DeleteEventGroupHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrForbidden):
 			slog.WarnContext(c.Request.Context(), "forbidden event group delete attempt", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can delete this event group"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for delete", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
@@ -271,7 +271,7 @@ func (h *Handler) UpdateEventGroupRegistrationStatusHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrOpenRegistrationTeams):
 			slog.WarnContext(c.Request.Context(), "registration open blocked due to existing teams", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Delete teams before opening registration"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for registration status update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
@@ -306,7 +306,7 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrTeamsAlreadyCreated):
 			slog.WarnContext(c.Request.Context(), "create teams blocked because teams already exist", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Teams already exist for this event group"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for create teams", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
@@ -340,7 +340,7 @@ func (h *Handler) DeleteTeamsAndOpenRegistrationHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrTeamsNotCreated):
 			slog.WarnContext(c.Request.Context(), "delete teams requested but no teams exist", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "No teams exist for this event group"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for delete teams", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
@@ -383,7 +383,7 @@ func (h *Handler) UpsertMyRegistrationHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationClosed):
 			slog.WarnContext(c.Request.Context(), "registration upsert rejected because registration is closed", "user_id", userUUID, "event_id", eventID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event not found for registration upsert", "user_id", userUUID, "event_id", eventID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
 		default:
@@ -432,7 +432,7 @@ func (h *Handler) DeleteRegistrationHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationNotFound):
 			slog.WarnContext(c.Request.Context(), "registration not found for delete", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Registration not found"})
-		case errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event not found for registration delete", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
 		default:

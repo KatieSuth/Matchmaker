@@ -7,7 +7,6 @@ import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import api from "@/app/_lib/axios";
 import { REGIONS, type Region } from "@/app/_lib/constants";
 import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
@@ -16,7 +15,8 @@ import { SectionDivider } from "@/app/_components/SectionDivider";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { inputCls } from "@/app/_lib/styles";
-import { fetchGames, extractApiError } from "@/app/_services/games";
+import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
+import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences } from "@/app/_services/users";
 
 
 // ---------------------------------------------------------------------------
@@ -40,39 +40,6 @@ const preferencesSchema = z.object({
 });
 
 type PreferencesFormValues = z.infer<typeof preferencesSchema>;
-
-// ---------------------------------------------------------------------------
-// API helpers
-// ---------------------------------------------------------------------------
-
-async function fetchRanksForGame(gameId: string): Promise<GameRank[]> {
-  const res = await api.get<GameRank[]>(`/games/${gameId}/ranks`);
-  return res.data.sort((a, b) => a.order - b.order);
-}
-
-async function fetchUserGames(): Promise<UserGame[]> {
-  const res = await api.get<UserGame[]>("/users/me/games");
-  return res.data;
-}
-
-async function saveUserPreferences(data: PreferencesFormValues): Promise<void> {
-  try {
-    await api.put("/users/me", {
-      pronouns: data.pronouns || null,
-      show_pronouns: data.show_pronouns,
-      region: data.region ?? null,
-      games: data.games.map((g) => ({
-        game_id: g.game_id,
-        in_game_name: g.in_game_name,
-        current_rank: g.current_rank ?? null,
-        peak_rank: g.peak_rank ?? null,
-        show_rank: g.show_rank,
-      })),
-    });
-  } catch (err: unknown) {
-    throw new Error(extractApiError(err));
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -118,6 +85,7 @@ function GameCard({
 
   useEffect(() => {
     let ignore = false;
+    const ac = new AbortController();
 
     const startSync = async() => {
       if (!watchedGameId) {
@@ -127,9 +95,12 @@ function GameCard({
 
       setRanksLoading(true);
       try {
-        const data = await fetchRanksForGame(watchedGameId);
+        const data = await fetchGameRanks(watchedGameId, ac.signal);
         if (!ignore) setRanks(data);
-      } catch {
+      } catch (err) {
+        if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
+          return;
+        }
         if (!ignore) setRanks([]);
       } finally {
         if (!ignore) setRanksLoading(false);
@@ -140,6 +111,7 @@ function GameCard({
 
     return () => {
       ignore = true;
+      ac.abort();
     }
   }, [watchedGameId]);
 
@@ -296,7 +268,7 @@ function GameCard({
 // ---------------------------------------------------------------------------
 
 export default function UserPreferencesForm() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   const [allGames, setAllGames] = useState<Game[] | null>(null);
@@ -329,18 +301,26 @@ export default function UserPreferencesForm() {
 
   // Fetch game list and user's games in parallel once user is ready
   useEffect(() => {
-    if (!user) return;
-    Promise.all([fetchGames(), fetchUserGames()])
+    if (authLoading || !isAuthenticated || !user) return;
+    const ac = new AbortController();
+    const { signal } = ac;
+    Promise.all([fetchGames(signal), fetchCurrentUserGames(signal)])
       .then(([games, ug]) => {
         setAllGames(games);
         setUserGames(ug);
       })
       .catch((err) => {
+        if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
+          return;
+        }
         console.error(err);
         setAllGames([]);
         setUserGames([]);
       });
-  }, [user]);
+    return () => {
+      ac.abort();
+    };
+  }, [authLoading, isAuthenticated, user]);
 
   // Populate form once both datasets are ready
   useEffect(() => {
@@ -365,12 +345,23 @@ export default function UserPreferencesForm() {
     setErrorMsg("");
     const wasNewUser = user?.new_user ?? false;
     try {
-      await saveUserPreferences(data);
+      await updateCurrentUserPreferences({
+        pronouns: data.pronouns || null,
+        show_pronouns: data.show_pronouns,
+        region: data.region ?? null,
+        games: data.games.map((g) => ({
+          game_id: g.game_id,
+          in_game_name: g.in_game_name,
+          current_rank: g.current_rank ?? null,
+          peak_rank: g.peak_rank ?? null,
+          show_rank: g.show_rank,
+        })),
+      });
       reset(data);
-      const res = await api.get<User>("/users/me");
-      if (res.data) {
-        setUser(res.data);
-        if (wasNewUser && !res.data.new_user) {
+      const resolvedUser = await fetchCurrentUser();
+      if (resolvedUser) {
+        setUser(resolvedUser);
+        if (wasNewUser && !resolvedUser.new_user) {
           router.push("/my_events");
           return;
         }
@@ -398,7 +389,7 @@ export default function UserPreferencesForm() {
     setValue(`games.${index}.peak_rank`, "");
   };
 
-  if (!user || allGames === null || userGames === null) {
+  if (authLoading || !user || allGames === null || userGames === null) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>

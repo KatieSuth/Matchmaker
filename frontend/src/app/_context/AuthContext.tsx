@@ -4,7 +4,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { setAccessToken, refreshAccessToken } from "@/app/_lib/auth";
 import type { User } from "@/app/_types/types";
-import api from "@/app/_lib/axios";
+import { fetchCurrentUser } from "@/app/_services/users";
+import { logoutUser } from "@/app/_services/auth";
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -35,22 +36,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        refreshAccessToken()
-            .then(() => api.get<User>("/users/me"))
-            .then((res) => {
-                setIsAuthenticated(true)
-                setUser(res.data)
-            })
-            .catch(() => {
-                setIsAuthenticated(false)
-                setUser(null)
-                document.cookie = "auth_session=; Max-Age=0; domain="+ process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN;
-            })
-            .finally(() => setIsLoading(false));
+        const ac = new AbortController();
+        const { signal } = ac;
+
+        void (async () => {
+            try {
+                await refreshAccessToken(signal);
+                if (signal.aborted) return;
+                const resolvedUser = await fetchCurrentUser(signal);
+                if (signal.aborted) return;
+                setIsAuthenticated(true);
+                setUser(resolvedUser);
+            } catch {
+                if (signal.aborted) return;
+                setIsAuthenticated(false);
+                setUser(null);
+                document.cookie = "auth_session=; Max-Age=0; domain=" + process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN;
+            } finally {
+                if (!signal.aborted) {
+                    setIsLoading(false);
+                }
+            }
+        })();
+
+        return () => {
+            ac.abort();
+        };
     }, []);
 
     const logout = async () => {
-        await api.post("/auth/logout"); // clears the HttpOnly cookie server-side
+        await logoutUser(); // clears the HttpOnly cookie server-side
         setAccessToken(null);
         setIsAuthenticated(false);
     };

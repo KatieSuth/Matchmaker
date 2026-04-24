@@ -9,25 +9,12 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // GET /users/me
 func (h *Handler) UsersMeHandler(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached UsersMeHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not parse user ID",
-		})
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
@@ -46,20 +33,8 @@ func (h *Handler) UsersMeHandler(c *gin.Context) {
 
 // PUT /users/me
 func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached UpdateUsersMeHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not parse user ID",
-		})
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
@@ -70,7 +45,7 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 		Games        []model.UserGame `json:"games"`
 	}
 
-	if err = c.ShouldBindJSON(&body); err != nil {
+	if err := c.ShouldBindJSON(&body); err != nil {
 		slog.WarnContext(c.Request.Context(), "failed to bind request body", "user_id", userUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
@@ -86,7 +61,7 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 
 	var res result
 
-	err = h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
+	err := h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
 		user, err := tx.UpdateUser(c.Request.Context(), userUUID, &body.Pronouns, body.ShowPronouns, &body.Region)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "failed to update user", "user_id", userUUID, "error", err)
@@ -109,15 +84,21 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 
 		var games []model.UserGame
 		for _, ug := range body.Games {
-			userGame, result, err := tx.UpsertGameForUser(c.Request.Context(), userUUID, ug)
-			if result == http.StatusBadRequest {
+			userGame, err := tx.UpsertGameForUser(c.Request.Context(), userUUID, ug)
+			if errors.Is(err, store.ErrInvalidGame) ||
+				errors.Is(err, store.ErrCurrentRankMissing) ||
+				errors.Is(err, store.ErrPeakRankMissing) ||
+				errors.Is(err, store.ErrInvalidCurrentRank) ||
+				errors.Is(err, store.ErrInvalidPeakRank) ||
+				errors.Is(err, store.ErrInvalidRankOrder) {
 				slog.WarnContext(c.Request.Context(), "bad request upserting game for user", "user_id", userUUID, "game", ug, "error", err)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 					"status":  "error",
 					"message": err.Error(),
 				})
 				return err
-			} else if err != nil {
+			}
+			if err != nil {
 				slog.ErrorContext(c.Request.Context(), "failed to upsert game for user", "user_id", userUUID, "game", ug, "error", err)
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 					"status":  "error",
@@ -141,20 +122,8 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 
 // GET /users/me/games
 func (h *Handler) UsersMeGamesHandler(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached UsersMeGamesHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not parse user ID",
-		})
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
@@ -199,20 +168,8 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached UsersMeEventsHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not parse user ID",
-		})
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
@@ -225,7 +182,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	timezone := params.Tz
 
 	if timezone == "" {
-		slog.WarnContext(c.Request.Context(), "missing timezone query parameter", "user_id", userID)
+		slog.WarnContext(c.Request.Context(), "missing timezone query parameter", "user_id", userUUID)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "tz is required",
@@ -235,7 +192,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 
 	location, err := time.LoadLocation(timezone)
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "invalid timezone", "user_id", userID, "tz", timezone, "error", err)
+		slog.WarnContext(c.Request.Context(), "invalid timezone", "user_id", userUUID, "tz", timezone, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "invalid timezone",
@@ -249,7 +206,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 		if t, err := time.ParseInLocation("2006-01-02", from, location); err == nil {
 			dateFrom = &t
 		} else {
-			slog.WarnContext(c.Request.Context(), "invalid 'from' format", "user_id", userID, "error", err)
+			slog.WarnContext(c.Request.Context(), "invalid 'from' format", "user_id", userUUID, "error", err)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": "invalid 'from' format",
@@ -262,7 +219,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 		if t, err := time.ParseInLocation("2006-01-02", to, location); err == nil {
 			dateTo = &t
 		} else {
-			slog.WarnContext(c.Request.Context(), "invalid 'to' format", "user_id", userID, "error", err)
+			slog.WarnContext(c.Request.Context(), "invalid 'to' format", "user_id", userUUID, "error", err)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": "invalid 'to' format",

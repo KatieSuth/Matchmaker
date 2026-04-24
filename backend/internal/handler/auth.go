@@ -57,7 +57,7 @@ func (h *Handler) LoginHandler(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, h.oauth2Config.AuthCodeURL(state))
 }
 
-// GET /auth/discord_callback
+// GET /auth/discord_redirect
 func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 	cookieVal, err := c.Cookie("oauth_state")
 
@@ -245,10 +245,17 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 		OTC string `json:"otc"`
 	}
 
-	err := c.ShouldBindJSON(&body)
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "auth complete request bind failed", "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Improper json or json value types",
+		})
+		return
+	}
 
-	if err != nil || body.OTC == "" {
-		slog.WarnContext(c.Request.Context(), "auth complete request missing or invalid OTC")
+	if body.OTC == "" {
+		slog.WarnContext(c.Request.Context(), "auth complete request missing OTC")
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "otc is required",
@@ -315,7 +322,6 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 		return
 	}
 
-	//TODO: consider looking up user before this point so who logged out successfully can be logged
 	h.setAuthCookies(c, "", -1)
 	c.AbortWithStatus(http.StatusNoContent)
 }

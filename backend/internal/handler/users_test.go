@@ -349,8 +349,8 @@ func TestUpdateUsersMeHandler_UpsertGameBadRequest(t *testing.T) {
 		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, UpdatedAt: time.Now()}, nil
 		},
-		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, int, error) {
-			return model.UserGame{}, http.StatusBadRequest, errors.New("invalid game data")
+		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, error) {
+			return model.UserGame{}, store.ErrInvalidGame
 		},
 	}
 	h := newTestHandler(t, ms, nil, "")
@@ -377,8 +377,8 @@ func TestUpdateUsersMeHandler_UpsertGameServerError(t *testing.T) {
 		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, UpdatedAt: time.Now()}, nil
 		},
-		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, int, error) {
-			return model.UserGame{}, http.StatusInternalServerError, errors.New("db error")
+		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, error) {
+			return model.UserGame{}, errors.New("db error")
 		},
 	}
 	h := newTestHandler(t, ms, nil, "")
@@ -438,8 +438,8 @@ func TestUpdateUsersMeHandler_Success_WithGames(t *testing.T) {
 		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
-		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
-			return model.UserGame{GameID: ug.GameID, UserID: userID}, http.StatusOK, nil
+		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, ug model.UserGame) (model.UserGame, error) {
+			return model.UserGame{GameID: ug.GameID, UserID: userID}, nil
 		},
 	}
 	h := newTestHandler(t, ms, nil, "")
@@ -472,9 +472,9 @@ func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
 			assert.Equal(t, userID, id)
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
-		UpsertGameForUserFn: func(_ context.Context, id uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
+		UpsertGameForUserFn: func(_ context.Context, id uuid.UUID, ug model.UserGame) (model.UserGame, error) {
 			assert.Equal(t, userID, id)
-			return model.UserGame{GameID: ug.GameID, UserID: id}, http.StatusOK, nil
+			return model.UserGame{GameID: ug.GameID, UserID: id}, nil
 		},
 	}
 
@@ -488,9 +488,9 @@ func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
 			baseUpdateCalled = true
 			return model.User{}, errors.New("base store should not be used in tx callback")
 		},
-		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, int, error) {
+		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, error) {
 			baseUpsertCalled = true
-			return model.UserGame{}, http.StatusInternalServerError, errors.New("base store should not be used in tx callback")
+			return model.UserGame{}, errors.New("base store should not be used in tx callback")
 		},
 	}
 

@@ -214,30 +214,42 @@ export default function EventGroupPage() {
   });
   const [toast, setToast] = useState<string | null>(null);
 
-  const loadGroup = useCallback(async () => {
+  const loadGroup = useCallback(async (signal?: AbortSignal) => {
     if (!groupId) return;
     setLoading(true);
     setPageError(null);
     try {
-      const data = await fetchEventGroup(groupId);
+      const data = await fetchEventGroup(groupId, signal);
+      if (signal?.aborted) return;
       setGroup(data);
       if (!activeEventId || !data.events.some((event) => event.id === activeEventId)) {
         setActiveEventId(data.events[0]?.id ?? null);
       }
-    } catch {
+    } catch (err) {
+      const canceled =
+        signal?.aborted ||
+        (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+        (err as { name?: string })?.name === "CanceledError";
+      if (canceled) return;
       setPageError("Could not load this event group.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, [activeEventId, groupId]);
 
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated || !groupId) return;
+    const ac = new AbortController();
     const timer = window.setTimeout(() => {
-      void loadGroup();
+      void loadGroup(ac.signal);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
   }, [authLoading, groupId, isAuthenticated, loadGroup]);
 
   useEffect(() => {

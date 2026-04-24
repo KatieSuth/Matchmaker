@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"net/http"
 	"testing"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
@@ -46,14 +45,13 @@ func TestUpsertGameForUser_InvalidGame(t *testing.T) {
 		rankID := uuid.New()
 		inGameName := "player1"
 
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      uuid.New(), // nonexistent game
 			CurrentRank: &rankID,
 			PeakRank:    &rankID,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrInvalidGame)
 	})
 }
 
@@ -64,14 +62,13 @@ func TestUpsertGameForUser_NilCurrentRank(t *testing.T) {
 		peakRank := uuid.New()
 		inGameName := "player2"
 
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: nil,
 			PeakRank:    &peakRank,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrCurrentRankMissing)
 	})
 }
 
@@ -82,14 +79,13 @@ func TestUpsertGameForUser_NilPeakRank(t *testing.T) {
 		currentRank := uuid.New()
 		inGameName := "player3"
 
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &currentRank,
 			PeakRank:    nil,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrPeakRankMissing)
 	})
 }
 
@@ -101,14 +97,13 @@ func TestUpsertGameForUser_UuidNilCurrentRank(t *testing.T) {
 		peakRank := uuid.New()
 		inGameName := "player4"
 
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &nilRank,
 			PeakRank:    &peakRank,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrCurrentRankMissing)
 	})
 }
 
@@ -119,14 +114,13 @@ func TestUpsertGameForUser_InvalidCurrentRank(t *testing.T) {
 		nonexistentRank := uuid.New()
 		inGameName := "player5"
 
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &nonexistentRank,
 			PeakRank:    &nonexistentRank,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrInvalidCurrentRank)
 	})
 }
 
@@ -153,14 +147,13 @@ func TestUpsertGameForUser_CurrentRankHigherThanPeakRank(t *testing.T) {
 
 		inGameName := "player6"
 		// Set current rank higher than peak rank — should be rejected.
-		_, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err = s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &highRank.ID,
 			PeakRank:    &lowRank.ID,
 			InGameName:  &inGameName,
 		})
-		assert.Equal(t, http.StatusBadRequest, status)
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrInvalidRankOrder)
 	})
 }
 
@@ -175,7 +168,7 @@ func TestUpsertGameForUser_CreatesNewEntry(t *testing.T) {
 		rank := seedGameRank(t, q, game.ID)
 		inGameName := "player7"
 
-		result, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		result, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &rank.ID,
 			PeakRank:    &rank.ID,
@@ -183,7 +176,6 @@ func TestUpsertGameForUser_CreatesNewEntry(t *testing.T) {
 			ShowRank:    true,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, status)
 		assert.Equal(t, game.ID, result.GameID)
 		assert.Equal(t, seeded.ID, result.UserID)
 	})
@@ -198,7 +190,7 @@ func TestUpsertGameForUser_UpdatesExistingEntry(t *testing.T) {
 		updatedName := "player8-updated"
 
 		// Create.
-		_, _, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &rank.ID,
 			PeakRank:    &rank.ID,
@@ -207,7 +199,7 @@ func TestUpsertGameForUser_UpdatesExistingEntry(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update.
-		result, status, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		result, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &rank.ID,
 			PeakRank:    &rank.ID,
@@ -215,7 +207,6 @@ func TestUpsertGameForUser_UpdatesExistingEntry(t *testing.T) {
 			ShowRank:    true,
 		})
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, status)
 		assert.Equal(t, &updatedName, result.InGameName)
 	})
 }
@@ -241,7 +232,7 @@ func TestGetUserGamesForUser_ReturnsAddedGames(t *testing.T) {
 		rank := seedGameRank(t, q, game.ID)
 		inGameName := "player10"
 
-		_, _, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
 			GameID:      game.ID,
 			CurrentRank: &rank.ID,
 			PeakRank:    &rank.ID,

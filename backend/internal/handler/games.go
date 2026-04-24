@@ -14,19 +14,17 @@ import (
 
 // GET /games
 func (h *Handler) GetSystemGamesHandler(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached GetSystemGamesHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
 	systemGames, err := h.store.GetSystemGames(c.Request.Context())
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to get system games", "user_id", userID, "error", err)
+		slog.ErrorContext(c.Request.Context(), "failed to get system games", "user_id", userUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Failed to fetch games",
 		})
 		return
 	}
@@ -36,17 +34,15 @@ func (h *Handler) GetSystemGamesHandler(c *gin.Context) {
 
 // GET /games/users/:ownerId
 func (h *Handler) GetUserGamesHandler(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached GetUserGamesHandler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
 	ownerIDParam := c.Param("ownerId")
 	ownerID, err := uuid.Parse(ownerIDParam)
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "invalid ownerId param", "user_id", userID, "owner_id", ownerIDParam, "error", err)
+		slog.WarnContext(c.Request.Context(), "invalid ownerId param", "user_id", userUUID, "owner_id", ownerIDParam, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "bad ownerId",
@@ -56,10 +52,10 @@ func (h *Handler) GetUserGamesHandler(c *gin.Context) {
 
 	userGames, err := h.store.GetUserGames(c.Request.Context(), &ownerID)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to get user games", "user_id", userID, "owner_id", ownerID, "error", err)
+		slog.ErrorContext(c.Request.Context(), "failed to get user games", "user_id", userUUID, "owner_id", ownerID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Failed to fetch user games",
 		})
 		return
 	}
@@ -69,17 +65,15 @@ func (h *Handler) GetUserGamesHandler(c *gin.Context) {
 
 // GET /games/:gameId/ranks
 func (h *Handler) GetGameRanksByGame(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached GetGameRanksByGame without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
 	gameId := c.Param("gameId")
 	gameUUID, err := uuid.Parse(gameId)
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "invalid gameId param", "user_id", userID, "game_id", gameId, "error", err)
+		slog.WarnContext(c.Request.Context(), "invalid gameId param", "user_id", userUUID, "game_id", gameId, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "bad gameId",
@@ -89,10 +83,10 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 
 	gameRanks, err := GetGameRanksForGame(gameUUID, h.store, c.Request.Context())
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to get game ranks", "user_id", userID, "game_id", gameUUID, "error", err)
+		slog.ErrorContext(c.Request.Context(), "failed to get game ranks", "user_id", userUUID, "game_id", gameUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Failed to fetch game ranks",
 		})
 		return
 	}
@@ -112,17 +106,15 @@ func GetGameRanksForGame(gameId uuid.UUID, s store.Store, ctx context.Context) (
 
 // GET /games/:gameId/modes
 func (h *Handler) GetGameModesByGame(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached GetGameModesByGame without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
 		return
 	}
 
 	gameId := c.Param("gameId")
 	gameUUID, err := uuid.Parse(gameId)
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "invalid gameId param", "user_id", userID, "game_id", gameId, "error", err)
+		slog.WarnContext(c.Request.Context(), "invalid gameId param", "user_id", userUUID, "game_id", gameId, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "bad gameId",
@@ -132,10 +124,10 @@ func (h *Handler) GetGameModesByGame(c *gin.Context) {
 
 	gameModes, err := h.store.GetGameModes(c.Request.Context(), gameUUID)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to get game modes", "user_id", userID, "game_id", gameUUID, "error", err)
+		slog.ErrorContext(c.Request.Context(), "failed to get game modes", "user_id", userUUID, "game_id", gameUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": err,
+			"message": "Failed to fetch game modes",
 		})
 		return
 	}

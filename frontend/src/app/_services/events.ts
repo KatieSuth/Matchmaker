@@ -1,6 +1,6 @@
 // Client calls for event groups, registration, and host actions (uses axios + auth interceptors).
 import api from "@/app/_lib/axios";
-import { EventGroupDetail } from "@/app/_types/types";
+import { EventGroupDetail, EventsPage } from "@/app/_types/types";
 
 export interface CreateEventRequest {
   game_mode_id: string;
@@ -31,8 +31,8 @@ export interface UpdateRegistrationRequest {
   duo_request: string;
 }
 
-export async function fetchEventGroup(groupId: string): Promise<EventGroupDetail> {
-  const res = await api.get<EventGroupDetail>(`/events/${groupId}`);
+export async function fetchEventGroup(groupId: string, signal?: AbortSignal): Promise<EventGroupDetail> {
+  const res = await api.get<EventGroupDetail>(`/events/${groupId}`, signal ? { signal } : undefined);
   return res.data;
 }
 
@@ -66,4 +66,16 @@ export async function deleteRegistration(eventId: string, userId?: string): Prom
     return;
   }
   await api.delete(`/registrations/${eventId}/me`);
+}
+
+export async function fetchMyEvents(params: Record<string, string | undefined>, signal?: AbortSignal): Promise<EventsPage> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") {
+      query.set(key, value);
+    }
+  }
+
+  const res = await api.get<EventsPage>(`/users/me/events?${query.toString()}`, signal ? { signal } : undefined);
+  return res.data;
 }

@@ -356,7 +356,7 @@ func TestGetEventGroupDetail_NotFound(t *testing.T) {
 
 	_, err := s.GetEventGroupDetail(ctx, uuid.New(), user.ID)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, pgx.ErrNoRows))
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
 
 func TestUpdateEventGroupSettings_Success(t *testing.T) {
@@ -414,7 +414,7 @@ func TestUpdateEventGroupSettings_NotFound(t *testing.T) {
 
 	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "NA", 0)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, pgx.ErrNoRows))
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
 
 func TestDeleteEventGroup_Success(t *testing.T) {
@@ -581,7 +581,7 @@ func TestCreateTeamsForGroup_NotFound(t *testing.T) {
 
 	err := s.CreateTeamsForGroup(ctx, uuid.New(), host.ID)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, pgx.ErrNoRows))
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
 
 func TestDeleteTeamsAndOpenRegistration_Success(t *testing.T) {
@@ -707,7 +707,7 @@ func TestUpsertRegistrationForEvent_EventNotFound(t *testing.T) {
 
 	err := s.UpsertRegistrationForEvent(ctx, uuid.New(), u.ID, true, true, nil)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, pgx.ErrNoRows))
+	assert.ErrorIs(t, err, store.ErrEventNotFound)
 }
 
 func TestDeleteRegistrationForEvent_SelfWhileOpen(t *testing.T) {
@@ -808,5 +808,5 @@ func TestDeleteRegistrationForEvent_EventNotFound(t *testing.T) {
 
 	err := s.DeleteRegistrationForEvent(ctx, uuid.New(), u.ID, u.ID)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, pgx.ErrNoRows))
+	assert.ErrorIs(t, err, store.ErrEventNotFound)
 }

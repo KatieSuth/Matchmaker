@@ -28,6 +28,9 @@ var (
 	ErrRegistrationNotFound  = errors.New("registration not found")
 	ErrInvalidSubMin         = errors.New("invalid sub_min")
 	ErrOpenRegistrationTeams = errors.New("cannot open registration while teams exist")
+	ErrEventGroupNotFound    = errors.New("event group not found")
+	ErrEventNotFound         = errors.New("event not found")
+	ErrGameModeNotFound      = errors.New("game mode not found")
 )
 
 // dashboardCursor is encoded into the opaque "next page" string for the user events list.
@@ -172,6 +175,9 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 
 		gameMode, err := txStore.q.GetGameModeById(ctx, gameModeID)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrGameModeNotFound
+			}
 			return fmt.Errorf("get game mode by id: %w", err)
 		}
 
@@ -215,6 +221,9 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
 	groupRow, err := s.q.GetEventGroupDetailById(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.EventGroupDetail{}, ErrEventGroupNotFound
+		}
 		return model.EventGroupDetail{}, fmt.Errorf("get event group detail: %w", err)
 	}
 
@@ -248,6 +257,9 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventGroupNotFound
+		}
 		return fmt.Errorf("get event group: %w", err)
 	}
 	if group.OwnerID != ownerID {
@@ -282,7 +294,7 @@ func (s *PostgresStore) DeleteEventGroup(ctx context.Context, groupID, ownerID u
 		return fmt.Errorf("delete event group: %w", err)
 	}
 	if rowsDeleted == 0 {
-		return pgx.ErrNoRows
+		return ErrEventGroupNotFound
 	}
 	return nil
 }
@@ -290,6 +302,9 @@ func (s *PostgresStore) DeleteEventGroup(ctx context.Context, groupID, ownerID u
 func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventGroupNotFound
+		}
 		return fmt.Errorf("get event group: %w", err)
 	}
 	if group.OwnerID != ownerID {
@@ -320,6 +335,9 @@ func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, group
 func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventGroupNotFound
+		}
 		return fmt.Errorf("get event group: %w", err)
 	}
 	if group.OwnerID != ownerID {
@@ -397,6 +415,9 @@ func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerI
 func (s *PostgresStore) DeleteTeamsAndOpenRegistration(ctx context.Context, groupID, ownerID uuid.UUID) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventGroupNotFound
+		}
 		return fmt.Errorf("get event group: %w", err)
 	}
 	if group.OwnerID != ownerID {
@@ -436,6 +457,9 @@ func (s *PostgresStore) DeleteTeamsAndOpenRegistration(ctx context.Context, grou
 func (s *PostgresStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {
 	eventRow, err := s.q.GetEventWithGroupById(ctx, eventID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventNotFound
+		}
 		return fmt.Errorf("get event with group: %w", err)
 	}
 	if !eventRow.RegistrationOpen {
@@ -479,6 +503,9 @@ func (s *PostgresStore) UpsertRegistrationForEvent(ctx context.Context, eventID,
 func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {
 	eventRow, err := s.q.GetEventWithGroupById(ctx, eventID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrEventNotFound
+		}
 		return fmt.Errorf("get event with group: %w", err)
 	}
 	isHost := eventRow.OwnerID == actorUserID
