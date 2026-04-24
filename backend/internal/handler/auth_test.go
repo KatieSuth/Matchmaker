@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,24 +79,91 @@ func TestLoginHandler_Success(t *testing.T) {
 	require.NotNil(t, stateCookie, "oauth_state cookie should be set")
 }
 
-func TestDiscordCallbackHandler_Success(t *testing.T) {
-	// Set up Mock Discord Server
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/token" {
+func TestLoginHandler_GenerateStateFailure(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, discordOAuthConfig("https://discord.com/api/oauth2/token"), "")
+	handler.SetLoginTestHooks(
+		h,
+		func() (string, error) { return "", errors.New("entropy unavailable") },
+		nil,
+	)
+
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/login")
+	h.LoginHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, w.Header().Get("Location"))
+}
+
+func TestLoginHandler_EncodeStateCookieFailure(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, discordOAuthConfig("https://discord.com/api/oauth2/token"), "")
+	handler.SetLoginTestHooks(
+		h,
+		func() (string, error) { return "known-state", nil },
+		func(_ string, _ interface{}) (string, error) { return "", fmt.Errorf("encode failed") },
+	)
+
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/login")
+	h.LoginHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, w.Header().Get("Location"))
+}
+
+func discordOAuthConfig(tokenURL string) *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     "test-client-id",
+		ClientSecret: "test-client-secret",
+		RedirectURL:  "http://localhost/callback",
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://discord.com/oauth2/authorize",
+			TokenURL: tokenURL,
+		},
+	}
+}
+
+func newDiscordOAuthServer(t *testing.T, tokenStatus int, tokenBody string, userStatus int, userBody string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"access_token": "fake-token", "token_type": "Bearer"}`))
-			return
-		}
-		if r.URL.Path == "/api/users/@me" {
+			w.WriteHeader(tokenStatus)
+			_, _ = w.Write([]byte(tokenBody))
+		case "/api/users/@me":
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"id": "12345", "username": "testuser", "avatar": "hash"}`))
-			return
+			w.WriteHeader(userStatus)
+			_, _ = w.Write([]byte(userBody))
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
+}
+
+func callbackRequestWithStateCookie(t *testing.T, state string, code string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	sc, err := test_util.GetSecureCookie(t)
+	require.NoError(t, err)
+
+	encoded, err := sc.Encode("oauth_state", state)
+	require.NoError(t, err)
+
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/discord_callback?state="+state+"&code="+code)
+	test_util.SetCookie(c, "oauth_state", encoded)
+	return c, w
+}
+
+func TestDiscordCallbackHandler_Success(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`{"id":"12345","username":"testuser","avatar":"hash"}`,
+	)
 	defer ts.Close()
 
-	// Configure Handler to use Mock Server
-	sc, _ := test_util.GetSecureCookie(t)
 	ms := &store.MockStore{
 		GetUserByDiscordIDFn: func(ctx context.Context, id string, update bool) (model.User, error) {
 			return model.User{ID: uuid.New(), NewUser: true}, nil
@@ -107,30 +176,219 @@ func TestDiscordCallbackHandler_Success(t *testing.T) {
 		},
 	}
 
-	// Create a dummy OAuth2 config (no real secrets needed for this test) & point OAuth config to our test server
-	dummyOauth := &oauth2.Config{
-		ClientID:     "test-client-id",
-		ClientSecret: "test-client-secret",
-		RedirectURL:  "http://localhost/callback",
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://discord.com/oauth2/authorize",
-			TokenURL: ts.URL + "/token",
-		},
-	}
-
-	h := newTestHandler(t, ms, dummyOauth, ts.URL+"/api")
-
-	// Prepare Request with valid State Cookie
-	state := "valid-state"
-	encoded, _ := sc.Encode("oauth_state", state)
-
-	c, w := test_util.NewGinContext(http.MethodGet, "/auth/discord_callback?state="+state+"&code=fake-code")
-	test_util.SetCookie(c, "oauth_state", encoded)
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "fake-code")
 
 	h.DiscordCallbackHandler(c)
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Contains(t, w.Header().Get("Location"), "/auth/callback?&otc=")
+}
+
+func TestDiscordCallbackHandler_MissingStateCookie(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/discord_callback?state=s&code=c")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDiscordCallbackHandler_BadStateCookieDecode(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/discord_callback?state=s&code=c")
+	test_util.SetCookie(c, "oauth_state", "not-a-valid-securecookie-value")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDiscordCallbackHandler_StateMismatch(t *testing.T) {
+	sc, _ := test_util.GetSecureCookie(t)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+
+	encoded, _ := sc.Encode("oauth_state", "expected-state")
+	c, w := test_util.NewGinContext(http.MethodGet, "/auth/discord_callback?state=wrong-state&code=fake-code")
+	test_util.SetCookie(c, "oauth_state", encoded)
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDiscordCallbackHandler_ExchangeFailure(t *testing.T) {
+	ts := newDiscordOAuthServer(t, http.StatusBadRequest, `{"error":"invalid_grant"}`, http.StatusOK, `{}`)
+	defer ts.Close()
+
+	h := newTestHandler(t, &store.MockStore{}, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "bad-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDiscordCallbackHandler_DiscordAPIFetchFailure(t *testing.T) {
+	ts := newDiscordOAuthServer(t, http.StatusOK, `{"access_token":"fake-token","token_type":"Bearer"}`, http.StatusOK, `{}`)
+	defer ts.Close()
+
+	h := newTestHandler(t, &store.MockStore{}, discordOAuthConfig(ts.URL+"/token"), "http://127.0.0.1:1")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Could not reach Discord API", body["message"])
+}
+
+func TestDiscordCallbackHandler_DiscordUserDecodeFailure(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`not-json`,
+	)
+	defer ts.Close()
+
+	h := newTestHandler(t, &store.MockStore{}, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Unexpected, possibly malformed, response from Discord API", body["message"])
+}
+
+func TestDiscordCallbackHandler_CreateNewUserFails(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`{"id":"12345","username":"new-user","avatar":"hash"}`,
+	)
+	defer ts.Close()
+
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{}, errors.New("not found")
+		},
+		CreateNewUserFn: func(context.Context, model.DiscordUser) (model.User, error) {
+			return model.User{}, errors.New("create failed")
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Could not locate the user account and could not create a new one", body["message"])
+}
+
+func TestDiscordCallbackHandler_CreateOneTimeCodeFails(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`{"id":"12345","username":"existing-user","avatar":"hash"}`,
+	)
+	defer ts.Close()
+
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{ID: uuid.New()}, nil
+		},
+		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
+			return model.User{ID: uid}, nil
+		},
+		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
+			return errors.New("insert failed")
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Could not store code to complete auth", body["message"])
+}
+
+func TestDiscordCallbackHandler_NewUserSuccess(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`{"id":"12345","username":"created-user","avatar":"hash"}`,
+	)
+	defer ts.Close()
+
+	userID := uuid.New()
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{}, errors.New("not found")
+		},
+		CreateNewUserFn: func(context.Context, model.DiscordUser) (model.User, error) {
+			return model.User{ID: userID, NewUser: true}, nil
+		},
+		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
+			return nil
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "new_user=true")
+}
+
+func TestDiscordCallbackHandler_UpdateUserFailureStillRedirects(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		http.StatusOK,
+		`{"id":"12345","username":"discord-name","avatar":"avatar-hash"}`,
+	)
+	defer ts.Close()
+
+	discordName := "stored-name"
+	avatar := "stored-avatar"
+	userID := uuid.New()
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{
+				ID:          userID,
+				NewUser:     false,
+				DiscordName: &discordName,
+				ImageUrl:    &avatar,
+			}, nil
+		},
+		UpdateUserFromLoginFn: func(context.Context, uuid.UUID, model.DiscordUser) (model.User, error) {
+			return model.User{}, errors.New("update failed")
+		},
+		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
+			return nil
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "new_user=false")
 }
 
 // ============================================================

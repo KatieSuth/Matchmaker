@@ -31,7 +31,6 @@ func (h *Handler) GetSystemGamesHandler(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "system games fetched", "user_id", userID, "count", len(systemGames))
 	c.JSON(http.StatusOK, systemGames)
 }
 
@@ -65,7 +64,6 @@ func (h *Handler) GetUserGamesHandler(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "user games fetched", "user_id", userID, "owner_id", ownerID, "count", len(userGames))
 	c.JSON(http.StatusOK, userGames)
 }
 
@@ -99,7 +97,6 @@ func (h *Handler) GetGameRanksByGame(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "game ranks fetched", "user_id", userID, "game_id", gameUUID, "count", len(gameRanks))
 	c.JSON(http.StatusOK, gameRanks)
 }
 
@@ -143,6 +140,5 @@ func (h *Handler) GetGameModesByGame(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "game modes fetched", "user_id", userID, "game_id", gameUUID, "count", len(gameModes))
 	c.JSON(http.StatusOK, gameModes)
 }

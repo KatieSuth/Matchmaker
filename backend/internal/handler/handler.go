@@ -3,12 +3,14 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
+	"github.com/google/uuid"
 
 	"golang.org/x/oauth2"
 )
@@ -19,6 +21,8 @@ type Handler struct {
 	store             store.Store
 	secureCookie      *securecookie.SecureCookie
 	oauth2Config      *oauth2.Config
+	generateState     func() (string, error)
+	encodeStateCookie func(name string, value interface{}) (string, error)
 	cookieDomain      string
 	frontendURL       string
 	jwtSecret         []byte
@@ -36,12 +40,35 @@ func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Co
 		store:             s,
 		secureCookie:      sc,
 		oauth2Config:      o2c,
+		generateState:     GenerateState,
+		encodeStateCookie: sc.Encode,
 		cookieDomain:      cd,
 		frontendURL:       fURL,
 		jwtSecret:         jwt,
 		refreshExpiration: refExp,
 		discordApiUrl:     dApi,
 	}
+}
+
+// userIDFromContext returns the user UUID set by JWT middleware, or writes an error response and false.
+func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		slog.WarnContext(c.Request.Context(), "request reached handler without userID in context")
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return uuid.Nil, false
+	}
+
+	userUUID, err := uuid.Parse(userID.(string))
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not parse user ID",
+		})
+		return uuid.Nil, false
+	}
+	return userUUID, true
 }
 
 // GET /health

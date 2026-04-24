@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"log"
 	"log/slog"
 	"os"
 	"strconv"
@@ -25,27 +24,51 @@ import (
 	"golang.org/x/oauth2"
 )
 
+func fatalExit(msg string, args ...any) {
+	slog.Error(msg, args...)
+	os.Exit(1)
+}
+
+// configureLogger sets process-wide slog defaults from GIN_MODE.
+// release mode uses production-safe verbosity; all other modes use dev/test verbosity.
+func configureLogger(ginEnv string) {
+	options := &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}
+	if ginEnv == gin.ReleaseMode {
+		options = &slog.HandlerOptions{Level: slog.LevelInfo}
+	}
+
+	base := slog.NewJSONHandler(os.Stdout, options)
+	slog.SetDefault(slog.New(logger.New(base)))
+}
+
 func main() {
+	ginEnv := os.Getenv("GIN_MODE")
+	configureLogger(ginEnv)
+
+	switch ginEnv {
+	case gin.ReleaseMode:
+		gin.SetMode(gin.ReleaseMode)
+	case gin.TestMode:
+		gin.SetMode(gin.TestMode)
+	default:
+		gin.SetMode(gin.DebugMode)
+	}
+
 	/*** ENVIRONMENT VARIABLES ***/
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	ginEnv := os.Getenv("GIN_MODE")
-	if ginEnv == "release" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
 	// Database
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL is required")
+		fatalExit("DATABASE_URL is required")
 	}
 
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
-		log.Fatalf("db connect: %v", err)
+		fatalExit("db connect failed", "error", err)
 	}
 	defer pool.Close()
 
@@ -56,12 +79,12 @@ func main() {
 	defer sqlDB.Close()
 
 	if err := goose.SetDialect("postgres"); err != nil {
-		log.Fatalf("goose dialect: %v", err)
+		fatalExit("failed to set goose dialect", "error", err)
 	}
 
 	goose.SetBaseFS(nil) // use OS filesystem
 	if err := goose.Up(sqlDB, "sql/migrations"); err != nil {
-		log.Fatalf("migrations: %v", err)
+		fatalExit("failed to run migrations", "error", err)
 	}
 
 	s := store.NewPostgresStore(pool)
@@ -71,20 +94,20 @@ func main() {
 	cookieEncryptKey := os.Getenv("COOKIE_ENCRYPT_KEY")
 
 	if cookieHashKey == "" {
-		log.Fatal("COOKIE_HASH_KEY is required")
+		fatalExit("COOKIE_HASH_KEY is required")
 	}
 
 	hashKeyBytes, err := hex.DecodeString(cookieHashKey)
 	if err != nil {
-		log.Fatal("invalid COOKIE_HASH_KEY")
+		fatalExit("invalid COOKIE_HASH_KEY", "error", err)
 	}
 
 	if cookieEncryptKey == "" {
-		log.Fatal("COOKIE_ENCRYPT_KEY is required")
+		fatalExit("COOKIE_ENCRYPT_KEY is required")
 	}
 	encryptKeyBytes, err := hex.DecodeString(cookieEncryptKey)
 	if err != nil {
-		log.Fatal("invalid COOKIE_ENCRYPT_KEY")
+		fatalExit("invalid COOKIE_ENCRYPT_KEY", "error", err)
 	}
 
 	sc := securecookie.New(
@@ -98,11 +121,11 @@ func main() {
 	discordAPIURL := os.Getenv("DISCORD_API_URL")
 
 	if discordClientID == "" {
-		log.Fatal("DISCORD_CLIENT_ID is required")
+		fatalExit("DISCORD_CLIENT_ID is required")
 	}
 
 	if discordClientSecret == "" {
-		log.Fatal("DISCORD_CLIENT_SECRET is required")
+		fatalExit("DISCORD_CLIENT_SECRET is required")
 	}
 
 	if discordRedirectURI == "" {
@@ -127,11 +150,11 @@ func main() {
 	// jwt setup
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		fatalExit("JWT_SECRET is required")
 	}
 	jwtSecretBytes, err := hex.DecodeString(jwtSecret)
 	if err != nil {
-		log.Fatal("invalid JWT_SECRET")
+		fatalExit("invalid JWT_SECRET", "error", err)
 	}
 
 	refreshExpiration := os.Getenv("REFRESH_EXPIRE_LIMIT")
@@ -141,7 +164,7 @@ func main() {
 	} else {
 		refreshInt, err = strconv.Atoi(refreshExpiration)
 		if err != nil {
-			log.Fatal("invalid refresh expiration--must be integer value")
+			fatalExit("invalid refresh expiration--must be integer value", "error", err)
 		}
 	}
 
@@ -159,7 +182,7 @@ func main() {
 	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL)
 
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())
 	r.SetTrustedProxies([]string{"172.20.0.0/16"})
 
 	// CORS — allow the Next.js origin
@@ -170,13 +193,6 @@ func main() {
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
-
-	// Request ID
-	r.Use(middleware.RequestID())
-
-	// logging
-	base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-	slog.SetDefault(slog.New(logger.New(base)))
 
 	// ── Routes ─────────────────────────────────────────────────
 	r.GET("/health", h.Health)
@@ -230,8 +246,8 @@ func main() {
 		}
 	}
 
-	log.Printf("🚀  API listening on :%s", port)
+	slog.Info("API listening", "port", port)
 	if err := r.Run(":" + port); err != nil {
-		log.Fatalf("server error: %v", err)
+		fatalExit("server error", "error", err)
 	}
 }

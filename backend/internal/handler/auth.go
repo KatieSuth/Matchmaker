@@ -39,14 +39,14 @@ func (h *Handler) setAuthCookies(c *gin.Context, refreshToken string, maxAge int
 // GET /auth/login
 func (h *Handler) LoginHandler(c *gin.Context) {
 	//generate state for the Discord
-	state, err := GenerateState()
+	state, err := h.generateState()
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to generate OAuth state", "error", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	encoded, err := h.secureCookie.Encode("oauth_state", state)
+	encoded, err := h.encodeStateCookie("oauth_state", state)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to generate OAuth state cookie", "error", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
@@ -54,7 +54,6 @@ func (h *Handler) LoginHandler(c *gin.Context) {
 	}
 
 	c.SetCookie("oauth_state", encoded, 300, "/", h.cookieDomain, true, true)
-	slog.InfoContext(c.Request.Context(), "OAuth login initiated, redirecting to Discord")
 	c.Redirect(http.StatusTemporaryRedirect, h.oauth2Config.AuthCodeURL(state))
 }
 
@@ -157,7 +156,6 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "Discord callback complete, redirecting to frontend", "user_id", user.ID, "new_user", user.NewUser)
 	redirectURL := fmt.Sprintf("%s/auth/callback?&otc=%s&new_user=%t", h.frontendURL, otc, user.NewUser)
 	c.Redirect(http.StatusFound, redirectURL)
 }
@@ -166,7 +164,6 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 func (h *Handler) RefreshHandler(c *gin.Context) {
 	cookieVal, err := c.Cookie("refresh_token")
 	if err != nil {
-		slog.DebugContext(c.Request.Context(), "refresh attempt with no token cookie")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -236,7 +233,6 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "token refresh successful", "user_id", refresh.UserID)
 	//return token
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": accessToken,
@@ -293,7 +289,6 @@ func (h *Handler) CompleteAuthHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "auth completed successfully", "user_id", otcUserID)
 	h.setAuthCookies(c, refreshToken, h.refreshExpiration)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": accessToken,
@@ -305,7 +300,6 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 	cookieVal, err := c.Cookie("refresh_token")
 	if err != nil {
 		//No cookie, already logged out
-		slog.DebugContext(c.Request.Context(), "logout called with no refresh token cookie — already logged out")
 		//calling this anyway to make sure auth_session is deleted too
 		h.setAuthCookies(c, "", -1)
 		c.AbortWithStatus(http.StatusNoContent)
@@ -322,7 +316,6 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 	}
 
 	//TODO: consider looking up user before this point so who logged out successfully can be logged
-	slog.InfoContext(c.Request.Context(), "user logged out successfully")
 	h.setAuthCookies(c, "", -1)
 	c.AbortWithStatus(http.StatusNoContent)
 }

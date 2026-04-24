@@ -455,3 +455,49 @@ func TestUpdateUsersMeHandler_Success_WithGames(t *testing.T) {
 	require.Len(t, got.Games, 1)
 	assert.Equal(t, gameID, got.Games[0].GameID)
 }
+
+func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.New()
+	username := "tx-user"
+	body := `{"pronouns":"they/them","show_pronouns":true,"region":"EU","games":[{"game_id":"` + gameID.String() + `"}]}`
+
+	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	txStore := &store.MockStore{
+		UpdateUserFn: func(_ context.Context, id uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+			assert.Equal(t, userID, id)
+			return model.User{ID: userID, DiscordName: &username}, nil
+		},
+		UpsertGameForUserFn: func(_ context.Context, id uuid.UUID, ug model.UserGame) (model.UserGame, int, error) {
+			assert.Equal(t, userID, id)
+			return model.UserGame{GameID: ug.GameID, UserID: id}, http.StatusOK, nil
+		},
+	}
+
+	baseUpdateCalled := false
+	baseUpsertCalled := false
+	baseStore := &store.MockStore{
+		WithTxFn: func(_ context.Context, fn func(store.Store) error) error {
+			return fn(txStore)
+		},
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+			baseUpdateCalled = true
+			return model.User{}, errors.New("base store should not be used in tx callback")
+		},
+		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, int, error) {
+			baseUpsertCalled = true
+			return model.UserGame{}, http.StatusInternalServerError, errors.New("base store should not be used in tx callback")
+		},
+	}
+
+	h := newTestHandler(t, baseStore, nil, "")
+	h.UpdateUsersMeHandler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, baseUpdateCalled, "UpdateUser must run on tx store")
+	assert.False(t, baseUpsertCalled, "UpsertGameForUser must run on tx store")
+}

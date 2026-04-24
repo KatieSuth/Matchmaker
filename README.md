@@ -130,8 +130,7 @@ curl https://matchmaker.localhost/api/health
 | `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 
-# Node values
-NODE_ENV=development
+
 ### Backend (`backend/.env.example`)
 
 | Variable                 | Default                                                  | Description                                                          |

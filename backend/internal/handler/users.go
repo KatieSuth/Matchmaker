@@ -41,7 +41,6 @@ func (h *Handler) UsersMeHandler(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "user fetched successfully", "user_id", userUUID)
 	c.JSON(http.StatusOK, user)
 }
 
@@ -88,7 +87,7 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 	var res result
 
 	err = h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
-		user, err := h.store.UpdateUser(c.Request.Context(), userUUID, &body.Pronouns, body.ShowPronouns, &body.Region)
+		user, err := tx.UpdateUser(c.Request.Context(), userUUID, &body.Pronouns, body.ShowPronouns, &body.Region)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "failed to update user", "user_id", userUUID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -110,7 +109,7 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 
 		var games []model.UserGame
 		for _, ug := range body.Games {
-			userGame, result, err := h.store.UpsertGameForUser(c.Request.Context(), userUUID, ug)
+			userGame, result, err := tx.UpsertGameForUser(c.Request.Context(), userUUID, ug)
 			if result == http.StatusBadRequest {
 				slog.WarnContext(c.Request.Context(), "bad request upserting game for user", "user_id", userUUID, "game", ug, "error", err)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
@@ -137,7 +136,6 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "user updated successfully", "user_id", userUUID, "game_count", len(res.Games))
 	c.JSON(http.StatusOK, res)
 }
 
@@ -170,7 +168,6 @@ func (h *Handler) UsersMeGamesHandler(c *gin.Context) {
 		return
 	}
 
-	slog.DebugContext(c.Request.Context(), "user games fetched successfully", "user_id", userUUID, "count", len(userGames))
 	c.JSON(http.StatusOK, userGames)
 }
 
@@ -306,6 +303,5 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 		NextCursor:  nextCursor,
 	}
 
-	slog.DebugContext(c.Request.Context(), "user event groups fetched successfully", "user_id", userUUID, "count", len(eventGroups))
 	c.JSON(http.StatusOK, response)
 }

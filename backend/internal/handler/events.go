@@ -37,27 +37,6 @@ type upsertRegistrationRequest struct {
 	DuoRequest    string `json:"duo_request"`
 }
 
-// userIDFromContext returns the user UUID set by JWT middleware, or writes an error response and false.
-func userIDFromContext(c *gin.Context) (uuid.UUID, bool) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.WarnContext(c.Request.Context(), "request reached handler without userID in context")
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return uuid.Nil, false
-	}
-
-	userUUID, err := uuid.Parse(userID.(string))
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to parse userID into UUID", "user_id", userID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not parse user ID",
-		})
-		return uuid.Nil, false
-	}
-	return userUUID, true
-}
-
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -186,7 +165,6 @@ func (h *Handler) GetEventGroupHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "event group fetched", "user_id", userUUID, "group_id", groupID, "events_count", len(detail.Events))
 	c.JSON(http.StatusOK, detail)
 }
 
@@ -229,7 +207,6 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "event group settings updated", "user_id", userUUID, "group_id", groupID, "region", body.Region, "sub_min", body.SubMin)
 	c.Status(http.StatusNoContent)
 }
 
@@ -262,7 +239,6 @@ func (h *Handler) DeleteEventGroupHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "event group deleted", "user_id", userUUID, "group_id", groupID)
 	c.Status(http.StatusNoContent)
 }
 
@@ -305,7 +281,6 @@ func (h *Handler) UpdateEventGroupRegistrationStatusHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "event group registration status updated", "user_id", userUUID, "group_id", groupID, "registration_open", body.RegistrationOpen)
 	c.Status(http.StatusNoContent)
 }
 
@@ -340,7 +315,6 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 		}
 		return
 	}
-	slog.InfoContext(c.Request.Context(), "teams created for event group", "user_id", userUUID, "group_id", groupID)
 	c.Status(http.StatusNoContent)
 }
 
@@ -375,7 +349,6 @@ func (h *Handler) DeleteTeamsAndOpenRegistrationHandler(c *gin.Context) {
 		}
 		return
 	}
-	slog.InfoContext(c.Request.Context(), "teams deleted and registration reopened", "user_id", userUUID, "group_id", groupID)
 	c.Status(http.StatusNoContent)
 }
 
@@ -420,7 +393,6 @@ func (h *Handler) UpsertMyRegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "registration upserted", "user_id", userUUID, "event_id", eventID, "can_substitute", body.CanSubstitute, "can_lobby_host", body.CanLobbyHost)
 	c.Status(http.StatusNoContent)
 }
 
@@ -470,6 +442,5 @@ func (h *Handler) DeleteRegistrationHandler(c *gin.Context) {
 		return
 	}
 
-	slog.InfoContext(c.Request.Context(), "registration deleted", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
 	c.Status(http.StatusNoContent)
 }
