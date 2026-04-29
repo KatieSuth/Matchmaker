@@ -22,7 +22,7 @@ import (
 
 const validCreateEventBody = `{
   "game_mode_id": "%s",
-  "region": "NA",
+  "region": "AMER",
   "start_time": "%s",
   "sub_min": 0,
   "games_to_run": 3,
@@ -125,7 +125,7 @@ func TestCreateEventHandler_SubMinNegative(t *testing.T) {
 	gameModeID := uuid.New()
 	body := `{
 	  "game_mode_id": "` + gameModeID.String() + `",
-	  "region": "NA",
+	  "region": "AMER",
 	  "start_time": "` + startTimeHoursFromNow(48) + `",
 	  "sub_min": -1,
 	  "games_to_run": 3,
@@ -147,7 +147,7 @@ func TestCreateEventHandler_StartTimeInPast(t *testing.T) {
 	gameModeID := uuid.New()
 	body := `{
 	  "game_mode_id": "` + gameModeID.String() + `",
-	  "region": "NA",
+	  "region": "AMER",
 	  "start_time": "2000-01-01T00:00:00Z",
 	  "sub_min": 0,
 	  "games_to_run": 3,
@@ -182,7 +182,7 @@ func TestCreateEventHandler_Success(t *testing.T) {
 			assert.Equal(t, gameModeID, inGameModeID)
 			assert.Equal(t, int32(0), subMin)
 			assert.True(t, registrationOpen)
-			assert.Equal(t, "NA", region)
+			assert.Equal(t, "AMER", region)
 			assert.Equal(t, int32(3), gamesToRun)
 			want, err := time.Parse(time.RFC3339, startAt)
 			require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestGetEventGroupHandler_Success(t *testing.T) {
 	viewer := uuid.New()
 	test_util.WithUserIDString(c, viewer)
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
-	detail := model.EventGroupDetail{ID: gid, Region: "NA"}
+	detail := model.EventGroupDetail{ID: gid, Region: "AMER"}
 	h := newTestHandler(t, &store.MockStore{
 		GetEventGroupDetailFn: func(_ context.Context, inGroup, inViewer uuid.UUID) (model.EventGroupDetail, error) {
 			assert.Equal(t, gid, inGroup)
@@ -269,7 +269,7 @@ func TestGetEventGroupHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	got := test_util.DecodeJSON[model.EventGroupDetail](t, w)
 	assert.Equal(t, gid, got.ID)
-	assert.Equal(t, "NA", got.Region)
+	assert.Equal(t, "AMER", got.Region)
 }
 
 func TestUpdateEventGroupSettingsHandler_Unauthorized(t *testing.T) {
@@ -284,7 +284,7 @@ func TestUpdateEventGroupSettingsHandler_InvalidGroupID(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"NA","sub_min":0}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":0}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
@@ -305,7 +305,7 @@ func TestUpdateEventGroupSettingsHandler_BadJSON(t *testing.T) {
 func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
-	body := `{"region":"NA","sub_min":1}`
+	body := `{"region":"AMER","sub_min":1}`
 
 	cases := []struct {
 		name   string
@@ -588,6 +588,7 @@ func TestUpsertMyRegistrationHandler_StoreErrors(t *testing.T) {
 		status int
 	}{
 		{"closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"incomplete profile", store.ErrUserGameProfileIncomplete, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -703,6 +704,7 @@ func TestUpsertMyGroupRegistrationsHandler_StoreErrors(t *testing.T) {
 	}{
 		{"invalid registration", store.ErrInvalidRegistration, http.StatusBadRequest},
 		{"registration closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"incomplete profile", store.ErrUserGameProfileIncomplete, http.StatusBadRequest},
 		{"invalid event", store.ErrEventNotFound, http.StatusBadRequest},
 		{"group not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},

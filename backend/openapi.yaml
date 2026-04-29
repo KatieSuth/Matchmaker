@@ -286,6 +286,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /users/me/games/{gameId}:
+    put:
+      tags: [users]
+      summary: Create or update current user's game entry
+      operationId: upsertUsersMeGame
+      description: Creates or updates the authenticated user's game profile for the specified game.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: UUID of the game
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertUsersMeGameRequest"
+      responses:
+        "204":
+          description: User game upserted successfully
+        "400":
+          description: Invalid payload, invalid `gameId`, invalid rank UUIDs, or invalid rank ordering
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to upsert user game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /users/me/events:
     get:
@@ -843,6 +882,52 @@ paths:
   # Registrations (protected — requires Bearer JWT)
   # ---------------------------------------------------------------------------
 
+  /registrations/group/{groupId}/me:
+    put:
+      tags: [registrations]
+      summary: Create or update current user's registrations for an event group
+      operationId: upsertMyGroupRegistrations
+      description: Creates or updates the authenticated user's registrations for selected events in the specified group.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertGroupRegistrationsRequest"
+      responses:
+        "204":
+          description: Group registrations saved successfully
+        "400":
+          description: Invalid payload, invalid UUIDs, duplicate event IDs, invalid event selection, registration is closed, or game profile is incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to save registrations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /registrations/{eventId}/me:
     put:
       tags: [registrations]
@@ -869,7 +954,7 @@ paths:
         "204":
           description: Registration saved successfully
         "400":
-          description: Invalid payload, invalid `eventId`, or registration is closed
+          description: Invalid payload, invalid `eventId`, registration is closed, or game profile is incomplete
           content:
             application/json:
               schema:
@@ -1061,7 +1146,7 @@ components:
         region:
           type: ["string", "null"]
           description: User's region
-          examples: ["NA-East"]
+          examples: ["AMER-East"]
         new_user:
           type: boolean
           description: True if this account was created during this login
@@ -1103,12 +1188,31 @@ components:
         region:
           type: string
           description: User's preferred region
-          examples: ["NA-East"]
+          examples: ["AMER-East"]
         games:
           type: array
           description: Game entries to upsert for the user
           items:
             $ref: "#/components/schemas/UserGameUpsert"
+
+    UpsertUsersMeGameRequest:
+      type: object
+      required: [in_game_name, current_rank, peak_rank, show_rank]
+      properties:
+        in_game_name:
+          type: string
+          description: The user's in-game name or tag
+        current_rank:
+          type: string
+          format: uuid
+          description: UUID of the user's current rank
+        peak_rank:
+          type: string
+          format: uuid
+          description: UUID of the user's peak rank
+        show_rank:
+          type: boolean
+          description: Whether rank information is shown publicly
 
     UpdateUsersMeResponse:
       allOf:
@@ -1367,6 +1471,33 @@ components:
         duo_request:
           type: string
           description: Optional preferred duo player display name
+
+    GroupRegistrationEventUpsertRequest:
+      type: object
+      required: [event_id, can_substitute, can_lobby_host]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUID of the event to register for
+        can_substitute:
+          type: boolean
+        can_lobby_host:
+          type: boolean
+
+    UpsertGroupRegistrationsRequest:
+      type: object
+      required: [events]
+      properties:
+        duo_request:
+          type: string
+          description: Optional preferred duo player display name
+        events:
+          type: array
+          minItems: 1
+          description: List of event registrations to upsert for the group
+          items:
+            $ref: "#/components/schemas/GroupRegistrationEventUpsertRequest"
 
     EventRegistration:
       type: object

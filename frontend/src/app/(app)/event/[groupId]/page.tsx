@@ -2,7 +2,7 @@
 
 // Event group detail: metadata, per-game registration panels, host controls (teams, registration),
 // and participant registration / profile actions. Large presentational pieces live in local helpers below.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
@@ -63,6 +63,10 @@ function formatDateTime(value: string) {
   return DATE_TIME_FMT.format(new Date(value));
 }
 
+function formatPlayerCount(count: number) {
+  return `${count} ${count === 1 ? "Player" : "Players"}`;
+}
+
 function ActionButton({
   label,
   onClick,
@@ -98,6 +102,8 @@ function ActionButton({
 function PlayerCard({
   registration,
   gameNumber,
+  eventRegion,
+  currentUserRegion,
   isHostView,
   currentUserId,
   canEditRegistration,
@@ -107,6 +113,8 @@ function PlayerCard({
 }: {
   registration: EventRegistration;
   gameNumber: number;
+  eventRegion: string;
+  currentUserRegion?: string | null;
   isHostView: boolean;
   currentUserId?: string;
   canEditRegistration: boolean;
@@ -116,6 +124,10 @@ function PlayerCard({
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
   const canDelete = isHostView || registration.user_id === currentUserId;
+  const regionMismatch =
+    canEditRegistration &&
+    !!currentUserRegion &&
+    currentUserRegion.trim().toUpperCase() !== eventRegion.trim().toUpperCase();
   const menuOptions: EllipsisMenuOption[] = [];
   menuOptions.push({
     label: "Show More Details",
@@ -128,14 +140,19 @@ function PlayerCard({
       tone: "danger",
     });
     menuOptions.push({
-      label: `Delete All From Player`,
+      label: `Delete All`,
       onSelect: () => onDeleteAllFromUser(registration, gameNumber),
       tone: "danger",
     });
   }
 
   return (
-    <div className="card rounded-xl p-4 flex flex-col gap-3 relative overflow-visible">
+    <div
+      className={[
+        "card rounded-xl p-4 flex flex-col gap-3 relative overflow-visible",
+        regionMismatch ? "ring-1 ring-amber-400/35" : "",
+      ].join(" ")}
+    >
       <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -145,6 +162,11 @@ function PlayerCard({
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
             {registration.pronouns || EMPTY_VALUE}
           </p>
+          {regionMismatch && (
+            <p className="text-[11px] text-amber-300 mt-1">
+              Region: {currentUserRegion}
+            </p>
+          )}
         </div>
         {canOpenMenu && (
           <EllipsisMenu options={menuOptions} ariaLabel="Registration actions" />
@@ -170,6 +192,8 @@ function PlayerCard({
 function EventPanel({
   event,
   gameNumber,
+  eventRegion,
+  currentUserRegion,
   isHostView,
   currentUserId,
   onShowDetails,
@@ -178,6 +202,8 @@ function EventPanel({
 }: {
   event: EventGroupEvent;
   gameNumber: number;
+  eventRegion: string;
+  currentUserRegion?: string | null;
   isHostView: boolean;
   currentUserId?: string;
   onShowDetails: (registration: EventRegistration) => void;
@@ -196,6 +222,8 @@ function EventPanel({
             key={registration.user_id}
             registration={registration}
             gameNumber={gameNumber}
+            eventRegion={eventRegion}
+            currentUserRegion={currentUserRegion}
             isHostView={isHostView}
             currentUserId={currentUserId}
             canEditRegistration={registration.user_id === currentUserId}
@@ -246,6 +274,8 @@ export default function EventGroupPage() {
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [registrationLoading, setRegistrationLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const topAnchorRef = useRef<HTMLDivElement | null>(null);
+  const eventSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadGroup = useCallback(async (signal?: AbortSignal) => {
     if (!groupId) return;
@@ -306,6 +336,18 @@ export default function EventGroupPage() {
     const idx = group.events.findIndex((event) => event.id === activeEvent.id);
     return idx >= 0 ? idx + 1 : 1;
   }, [activeEvent, group]);
+  const scrollToEventSection = useCallback((eventId: string) => {
+    eventSectionRefs.current[eventId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+  const scrollToTop = useCallback(() => {
+    topAnchorRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
 
   const firstEventStart = group?.events[0]?.start_time ?? "";
   const isHost = !!(group && user?.id && user.id === group.owner_id);
@@ -342,6 +384,14 @@ export default function EventGroupPage() {
   const canSaveRegistration =
     selectedValidEventIds.length > 0 && !working && !registrationLoading && !hasUserGameErrors;
   const canSubmitRegistration = canSaveRegistration || canDeleteAllViaSave;
+  const regionMismatchWarning = (() => {
+    if (!group || !user?.region || selectedValidEventIds.length === 0) return null;
+    const preferredRegion = user.region.trim();
+    const eventRegion = group.region.trim();
+    if (!preferredRegion || !eventRegion) return null;
+    if (preferredRegion.toUpperCase() === eventRegion.toUpperCase()) return null;
+    return `Heads up: your preferred region is ${preferredRegion}, but this event is in ${eventRegion}.`;
+  })();
 
   const refreshAndCloseMenus = async () => {
     await loadGroup();
@@ -473,7 +523,7 @@ export default function EventGroupPage() {
       return;
     }
     if (hasUserGameErrors) {
-      setRegistrationError("Update your in-game name and both rank fields before saving.");
+      setRegistrationError("Complete your game profile (in-game name, current rank, and peak rank) before saving.");
       return;
     }
     setWorking(true);
@@ -486,7 +536,7 @@ export default function EventGroupPage() {
       });
     } catch (err) {
       setRegistrationError(
-        `${extractApiError(err)}. Update your game settings here or in my_account, then try saving again.`
+        `${extractApiError(err)}. Complete your game profile, then try again.`
       );
       setWorking(false);
       return;
@@ -513,7 +563,7 @@ export default function EventGroupPage() {
       setRegistrationError(
         `Your game settings were saved, but registration update failed: ${extractApiError(
           err
-        )}. Review event selections and retry Save Registration.`
+        )}. Complete your game profile, then retry Save Registration.`
       );
     } finally {
       setWorking(false);
@@ -648,6 +698,7 @@ export default function EventGroupPage() {
   return (
     <div className="flex-1 flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-3xl flex flex-col gap-5" style={{ animation: "var(--animate-rise)" }}>
+        <div ref={topAnchorRef} />
         <div className="card rounded-xl p-4 sm:p-5 flex flex-col gap-4 relative overflow-visible">
           <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
           <div className="flex items-start justify-between gap-3">
@@ -778,6 +829,10 @@ export default function EventGroupPage() {
                 key={event.id}
                 type="button"
                 onClick={() => {
+                  if (showAllEvents) {
+                    scrollToEventSection(event.id);
+                    return;
+                  }
                   setActiveEventId(event.id);
                   setShowAllEvents(false);
                 }}
@@ -834,6 +889,9 @@ export default function EventGroupPage() {
             <h2 className="text-sm font-semibold text-[var(--color-text)]">
               {myRegistrationsByEvent.size > 0 ? "Edit registration" : "Register"}
             </h2>
+            {regionMismatchWarning && (
+              <p className="text-xs text-amber-300">{regionMismatchWarning}</p>
+            )}
             <UserGameEditor
               hideGameSelector
               gameLabel={group.game_name}
@@ -949,9 +1007,19 @@ export default function EventGroupPage() {
         ) : showAllEvents ? (
           <div className="flex flex-col gap-4">
             {group.events.map((event, index) => (
-              <div key={event.id} className="flex flex-col gap-3">
-                <h2 className="text-sm font-semibold text-[var(--color-text)]">
-                  Game {index + 1} · {formatDateTime(event.start_time)}
+              <div
+                key={event.id}
+                ref={(node) => {
+                  eventSectionRefs.current[event.id] = node;
+                }}
+                className="flex flex-col gap-3 scroll-mt-24"
+              >
+                <h2 className="relative flex items-center justify-between text-sm font-semibold text-[var(--color-text)]">
+                  <span className="relative z-[1]">Game {index + 1}</span>
+                  <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
+                    {formatDateTime(event.start_time)}
+                  </span>
+                  <span className="relative z-[1] text-right">{formatPlayerCount(event.registrations.length)}</span>
                 </h2>
                 {!group.registration_open && event.lobbies_count > 0 ? (
                   <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
@@ -961,6 +1029,8 @@ export default function EventGroupPage() {
                       <EventPanel
                         event={event}
                         gameNumber={index + 1}
+                        eventRegion={group.region}
+                        currentUserRegion={user?.region}
                         isHostView={isHost}
                         currentUserId={user?.id}
                         onShowDetails={(registration) => {
@@ -980,6 +1050,8 @@ export default function EventGroupPage() {
                   <EventPanel
                     event={event}
                     gameNumber={index + 1}
+                    eventRegion={group.region}
+                    currentUserRegion={user?.region}
                     isHostView={isHost}
                     currentUserId={user?.id}
                     onShowDetails={(registration) => {
@@ -994,73 +1066,111 @@ export default function EventGroupPage() {
                     }
                   />
                 )}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={scrollToTop}
+                    className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] hover:bg-white/[0.08] hover:text-[var(--color-text-soft)]"
+                  >
+                    Back to top
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         ) : activeEvent ? (
-          !group.registration_open && activeEvent.lobbies_count > 0 ? (
-            <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
-              Teams display placeholder. Team assignment UI is coming next, but player cards are reused here.
-              <div className="mt-3">
-                <EventPanel
-                  event={activeEvent}
-                  gameNumber={activeEventNumber}
-                  isHostView={isHost}
-                  currentUserId={user?.id}
-                  onShowDetails={(registration) => {
-                    setSelectedRegistration(registration);
-                    setDetailsSheetOpen(true);
-                  }}
-                  onDeleteRegistrationForGame={(registration, gameNumber) =>
-                    openDeleteConfirmation(registration, gameNumber, "single")
-                  }
-                  onDeleteAllFromUser={(registration, gameNumber) =>
-                    openDeleteConfirmation(registration, gameNumber, "all")
-                  }
-                />
+          <div className="flex flex-col gap-3">
+            <h2 className="relative flex items-center justify-between text-sm font-semibold text-[var(--color-text)]">
+              <span className="relative z-[1]">Game {activeEventNumber}</span>
+              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
+                {formatDateTime(activeEvent.start_time)}
+              </span>
+              <span className="relative z-[1] text-right">{formatPlayerCount(activeEvent.registrations.length)}</span>
+            </h2>
+            {!group.registration_open && activeEvent.lobbies_count > 0 ? (
+              <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
+                Teams display placeholder. Team assignment UI is coming next, but player cards are reused here.
+                <div className="mt-3">
+                  <EventPanel
+                    event={activeEvent}
+                    gameNumber={activeEventNumber}
+                    eventRegion={group.region}
+                    currentUserRegion={user?.region}
+                    isHostView={isHost}
+                    currentUserId={user?.id}
+                    onShowDetails={(registration) => {
+                      setSelectedRegistration(registration);
+                      setDetailsSheetOpen(true);
+                    }}
+                    onDeleteRegistrationForGame={(registration, gameNumber) =>
+                      openDeleteConfirmation(registration, gameNumber, "single")
+                    }
+                    onDeleteAllFromUser={(registration, gameNumber) =>
+                      openDeleteConfirmation(registration, gameNumber, "all")
+                    }
+                  />
+                </div>
               </div>
+            ) : (
+              <EventPanel
+                event={activeEvent}
+                gameNumber={activeEventNumber}
+                eventRegion={group.region}
+                currentUserRegion={user?.region}
+                isHostView={isHost}
+                currentUserId={user?.id}
+                onShowDetails={(registration) => {
+                  setSelectedRegistration(registration);
+                  setDetailsSheetOpen(true);
+                }}
+                onDeleteRegistrationForGame={(registration, gameNumber) =>
+                  openDeleteConfirmation(registration, gameNumber, "single")
+                }
+                onDeleteAllFromUser={(registration, gameNumber) =>
+                  openDeleteConfirmation(registration, gameNumber, "all")
+                }
+              />
+            )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] hover:bg-white/[0.08] hover:text-[var(--color-text-soft)]"
+              >
+                Back to top
+              </button>
             </div>
-          ) : (
-            <EventPanel
-              event={activeEvent}
-              gameNumber={activeEventNumber}
-              isHostView={isHost}
-              currentUserId={user?.id}
-              onShowDetails={(registration) => {
-                setSelectedRegistration(registration);
-                setDetailsSheetOpen(true);
-              }}
-              onDeleteRegistrationForGame={(registration, gameNumber) =>
-                openDeleteConfirmation(registration, gameNumber, "single")
-              }
-              onDeleteAllFromUser={(registration, gameNumber) =>
-                openDeleteConfirmation(registration, gameNumber, "all")
-              }
-            />
-          )
+          </div>
         ) : null}
 
         {registrationEditorOpen && (
           <div className="w-full flex justify-end pt-2 pb-1 border-t border-white/[0.08]">
-            <button
-              type="button"
-              onClick={() => {
-                if (!canSubmitRegistration) return;
-                void handleSaveRegistration();
-              }}
-              disabled={!canSubmitRegistration}
-              aria-disabled={!canSubmitRegistration}
-              className={[
-                "rounded-lg border px-5 py-2.5 text-sm font-medium",
-                canSubmitRegistration
-                  ? canDeleteAllViaSave
-                    ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
-                    : "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
-                  : "cursor-not-allowed border-white/10 bg-white/[0.03] text-[var(--color-text-muted)]",
-              ].join(" ")}
-            >
-              {working ? (canDeleteAllViaSave ? "Deleting..." : "Saving...") : canDeleteAllViaSave ? "Delete Registration" : "Save Registration"}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              {!canDeleteAllViaSave && hasUserGameErrors && (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Save is disabled until your in-game name, current rank, and peak rank are filled out.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!canSubmitRegistration) return;
+                  void handleSaveRegistration();
+                }}
+                disabled={!canSubmitRegistration}
+                aria-disabled={!canSubmitRegistration}
+                className={[
+                  "rounded-lg border px-5 py-2.5 text-sm font-medium",
+                  canSubmitRegistration
+                    ? canDeleteAllViaSave
+                      ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
+                      : "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
+                    : "cursor-not-allowed border-white/10 bg-white/[0.03] text-[var(--color-text-muted)]",
+                ].join(" ")}
+              >
+                {working ? (canDeleteAllViaSave ? "Deleting..." : "Saving...") : canDeleteAllViaSave ? "Delete Registration" : "Save Registration"}
+              </button>
+            </div>
           </div>
         )}
       </div>

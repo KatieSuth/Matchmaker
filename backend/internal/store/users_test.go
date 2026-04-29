@@ -139,7 +139,7 @@ func TestUpdateUser_UpdatesPronouns(t *testing.T) {
 func TestUpdateUser_NotFound(t *testing.T) {
 	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
 		pronouns := "she/her"
-		region := "NA"
+		region := "AMER"
 		_, err := s.UpdateUser(context.Background(), uuid.New(), &pronouns, false, &region)
 		assert.Error(t, err)
 	})

@@ -3,6 +3,22 @@ name: matchmaker
 services:
   db:
     image: postgres:18-alpine
+    command:
+      [
+        "postgres",
+        "-c",
+        "timezone=UTC",
+        "-c",
+        "log_timezone=UTC",
+        "-c",
+        "datestyle=ISO,YMD",
+        "-c",
+        "statement_timeout=30s",
+        "-c",
+        "idle_in_transaction_session_timeout=60s",
+        "-c",
+        "lock_timeout=5s",
+      ]
     container_name: matchmaker-db
     restart: unless-stopped
     env_file:

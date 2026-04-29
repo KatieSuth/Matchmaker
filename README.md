@@ -176,7 +176,14 @@ make dev-ps        # Show running development containers
 make health        # Quick API health check
 make test          # Run Go tests
 make test-coverage # Run Go tests with coverage percentage output, filtering for test-supporting files
+
+make seed-users         # Dev-only: seed 30 users
+make seed-events        # Dev-only: seed 20 groups and adjacent events (run after seed-users)
+make seed-registrations # Dev-only: seed event registrations (run after seed-events)
+make seed-all           # Dev-only: run all seed scripts in required order
 ```
+
+Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.
 
 ---
 

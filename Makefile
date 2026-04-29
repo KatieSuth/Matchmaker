@@ -1,4 +1,4 @@
-.PHONY: up down build logs ps clean dev
+.PHONY: up down build logs ps clean dev seed-users seed-events seed-registrations seed-all
 
 ## ── Production ────────────────────────────────────────────────
 
@@ -83,3 +83,18 @@ test-coverage:
 	go test -coverprofile=coverage.out $$PKGS && \
 	sed -i.bak '/mock_store.go/d' coverage.out && rm coverage.out.bak && \
 	go tool cover -func=coverage.out
+
+# Seed local development users
+seed-users:
+	cd backend && go run ./cmd/scripts/users
+
+# Seed local development event groups/events
+seed-events:
+	cd backend && go run ./cmd/scripts/events
+
+# Seed local development registrations
+seed-registrations:
+	cd backend && go run ./cmd/scripts/registrations
+
+# Run all local development seeders in required order
+seed-all: seed-users seed-events seed-registrations

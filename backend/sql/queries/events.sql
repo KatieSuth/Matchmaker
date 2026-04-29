@@ -67,10 +67,13 @@ ORDER BY E.start_time ASC;
 SELECT
     E.id,
     E.group_id,
+    G.id AS game_id,
     EG.owner_id,
     EG.registration_open
 FROM events AS E
 JOIN event_groups AS EG ON EG.id = E.group_id
+JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
 WHERE E.id = $1;
 
 -- name: CountLobbiesByGroupId :one

@@ -18,20 +18,21 @@ import (
 const dashboardEventsPageSize = 20
 
 var (
-	ErrInvalidGameID         = errors.New("invalid game_id")
-	ErrInvalidCursor         = errors.New("invalid cursor")
-	ErrInvalidTimezone       = errors.New("invalid timezone")
-	ErrForbidden             = errors.New("forbidden")
-	ErrRegistrationClosed    = errors.New("registration is closed")
-	ErrTeamsAlreadyCreated   = errors.New("teams already created")
-	ErrTeamsNotCreated       = errors.New("teams not created")
-	ErrRegistrationNotFound  = errors.New("registration not found")
-	ErrInvalidSubMin         = errors.New("invalid sub_min")
-	ErrOpenRegistrationTeams = errors.New("cannot open registration while teams exist")
-	ErrEventGroupNotFound    = errors.New("event group not found")
-	ErrEventNotFound         = errors.New("event not found")
-	ErrInvalidRegistration   = errors.New("invalid registration payload")
-	ErrGameModeNotFound      = errors.New("game mode not found")
+	ErrInvalidGameID             = errors.New("invalid game_id")
+	ErrInvalidCursor             = errors.New("invalid cursor")
+	ErrInvalidTimezone           = errors.New("invalid timezone")
+	ErrForbidden                 = errors.New("forbidden")
+	ErrRegistrationClosed        = errors.New("registration is closed")
+	ErrTeamsAlreadyCreated       = errors.New("teams already created")
+	ErrTeamsNotCreated           = errors.New("teams not created")
+	ErrRegistrationNotFound      = errors.New("registration not found")
+	ErrInvalidSubMin             = errors.New("invalid sub_min")
+	ErrOpenRegistrationTeams     = errors.New("cannot open registration while teams exist")
+	ErrEventGroupNotFound        = errors.New("event group not found")
+	ErrEventNotFound             = errors.New("event not found")
+	ErrInvalidRegistration       = errors.New("invalid registration payload")
+	ErrGameModeNotFound          = errors.New("game mode not found")
+	ErrUserGameProfileIncomplete = errors.New("user game profile is incomplete")
 )
 
 type RegistrationUpsertItem struct {
@@ -472,6 +473,9 @@ func (s *PostgresStore) UpsertRegistrationForEvent(ctx context.Context, eventID,
 	if !eventRow.RegistrationOpen {
 		return ErrRegistrationClosed
 	}
+	if err := requireCompleteUserGame(ctx, s.q, userID, eventRow.GameID); err != nil {
+		return err
+	}
 
 	_, err = s.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
 		EventID: eventID,
@@ -518,7 +522,7 @@ func (s *PostgresStore) UpsertRegistrationsForGroup(ctx context.Context, groupID
 			return fmt.Errorf("unexpected tx store type %T", tx)
 		}
 
-		groupRow, err := txStore.q.GetEventGroupById(ctx, groupID)
+		groupRow, err := txStore.q.GetEventGroupDetailById(ctx, groupID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrEventGroupNotFound
@@ -527,6 +531,9 @@ func (s *PostgresStore) UpsertRegistrationsForGroup(ctx context.Context, groupID
 		}
 		if !groupRow.RegistrationOpen {
 			return ErrRegistrationClosed
+		}
+		if err := requireCompleteUserGame(ctx, txStore.q, userID, groupRow.GameID); err != nil {
+			return err
 		}
 
 		groupEvents, err := txStore.q.GetEventsByGroupId(ctx, &groupID)
@@ -594,6 +601,27 @@ func (s *PostgresStore) UpsertRegistrationsForGroup(ctx context.Context, groupID
 
 		return nil
 	})
+}
+
+func requireCompleteUserGame(ctx context.Context, q *db.Queries, userID, gameID uuid.UUID) error {
+	userGame, err := q.GetGameForUserByIds(ctx, db.GetGameForUserByIdsParams{
+		UserID: userID,
+		GameID: gameID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUserGameProfileIncomplete
+		}
+		return fmt.Errorf("get user game for registration: %w", err)
+	}
+
+	if strings.TrimSpace(userGame.InGameName) == "" ||
+		userGame.CurrentRank == nil || *userGame.CurrentRank == uuid.Nil ||
+		userGame.PeakRank == nil || *userGame.PeakRank == uuid.Nil {
+		return ErrUserGameProfileIncomplete
+	}
+
+	return nil
 }
 
 func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {

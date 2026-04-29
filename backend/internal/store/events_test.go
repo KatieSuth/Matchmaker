@@ -122,7 +122,7 @@ func TestCreateEventGroupWithEvents_UnknownGameMode(t *testing.T) {
 
 	user := createTestUser(t, ctx, s)
 
-	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "NA", time.Now().UTC(), 1)
+	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "AMER", time.Now().UTC(), 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
 }
@@ -160,6 +160,24 @@ func firstModeForGame(t *testing.T, ctx context.Context, s *store.PostgresStore,
 	return modes[0]
 }
 
+func createCompleteUserGameForRegistration(t *testing.T, ctx context.Context, tx db.DBTX, s *store.PostgresStore, userID, gameID uuid.UUID) {
+	t.Helper()
+
+	var rankID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM game_ranks WHERE game_id = $1 ORDER BY "order" ASC LIMIT 1`, gameID).Scan(&rankID)
+	require.NoError(t, err)
+
+	inGameName := "registered-player"
+	_, err = s.UpsertGameForUser(ctx, userID, model.UserGame{
+		GameID:      gameID,
+		InGameName:  &inGameName,
+		CurrentRank: &rankID,
+		PeakRank:    &rankID,
+		ShowRank:    true,
+	})
+	require.NoError(t, err)
+}
+
 func insertEventFixture(t *testing.T, ctx context.Context, tx db.DBTX, ownerID, gameModeID uuid.UUID, start time.Time) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 
@@ -167,7 +185,7 @@ func insertEventFixture(t *testing.T, ctx context.Context, tx db.DBTX, ownerID, 
 	eventID := uuid.New()
 	_, err := tx.Exec(ctx, `
 		INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, created_at, updated_at)
-		VALUES ($1, $2, $3, 0, true, 'NA', NOW(), NOW())
+		VALUES ($1, $2, $3, 0, true, 'AMER', NOW(), NOW())
 	`, groupID, ownerID, gameModeID)
 	require.NoError(t, err)
 
@@ -446,7 +464,7 @@ func TestUpdateEventGroupSettings_Forbidden(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "NA", 0)
+	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
@@ -474,7 +492,7 @@ func TestUpdateEventGroupSettings_InvalidNegativeSubMin(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "NA", -1)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -484,7 +502,7 @@ func TestUpdateEventGroupSettings_NotFound(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 
-	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "NA", 0)
+	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
@@ -772,6 +790,7 @@ func TestUpsertRegistrationForEvent_InsertAndUpdate(t *testing.T) {
 	require.NoError(t, err)
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	_, eventID := insertEventFixture(t, ctx, tx, u.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+	createCompleteUserGameForRegistration(t, ctx, tx, s, u.ID, games[0].ID)
 
 	dr := "partner"
 	err = s.UpsertRegistrationForEvent(ctx, eventID, u.ID, true, false, &dr)
@@ -798,6 +817,21 @@ func TestUpsertRegistrationForEvent_InsertAndUpdate(t *testing.T) {
 	assert.False(t, canSub)
 	assert.True(t, canHost)
 	assert.Nil(t, duo)
+}
+
+func TestUpsertRegistrationForEvent_IncompleteUserGameProfile(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	joiner := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	_, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpsertRegistrationForEvent(ctx, eventID, joiner.ID, true, true, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrUserGameProfileIncomplete)
 }
 
 func TestUpsertRegistrationForEvent_RegistrationClosed(t *testing.T) {
@@ -837,6 +871,7 @@ func TestUpsertRegistrationsForGroup_InsertUpdateDelete(t *testing.T) {
 	games, err := s.GetSystemGames(ctx)
 	require.NoError(t, err)
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	createCompleteUserGameForRegistration(t, ctx, tx, s, participant.ID, games[0].ID)
 
 	groupID, event1 := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 	event2 := insertEventInGroupFixture(t, ctx, tx, groupID, time.Now().UTC().Add(48*time.Hour))
@@ -910,11 +945,29 @@ func TestUpsertRegistrationsForGroup_ErrorCases(t *testing.T) {
 
 	_, err = tx.Exec(ctx, `UPDATE event_groups SET registration_open = true WHERE id = $1`, groupID)
 	require.NoError(t, err)
+	createCompleteUserGameForRegistration(t, ctx, tx, s, participant.ID, games[0].ID)
 	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
 		{EventID: uuid.New(), CanSubstitute: true, CanLobbyHost: false},
 	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventNotFound)
+}
+
+func TestUpsertRegistrationsForGroup_IncompleteUserGameProfile(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	participant := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
+		{EventID: eventID, CanSubstitute: true, CanLobbyHost: false},
+	}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrUserGameProfileIncomplete)
 }
 
 func TestDeleteRegistrationForEvent_SelfWhileOpen(t *testing.T) {

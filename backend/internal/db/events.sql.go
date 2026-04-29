@@ -265,16 +265,20 @@ const getEventWithGroupById = `-- name: GetEventWithGroupById :one
 SELECT
     E.id,
     E.group_id,
+    G.id AS game_id,
     EG.owner_id,
     EG.registration_open
 FROM events AS E
 JOIN event_groups AS EG ON EG.id = E.group_id
+JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
 WHERE E.id = $1
 `
 
 type GetEventWithGroupByIdRow struct {
 	ID               uuid.UUID
 	GroupID          *uuid.UUID
+	GameID           uuid.UUID
 	OwnerID          uuid.UUID
 	RegistrationOpen bool
 }
@@ -285,6 +289,7 @@ func (q *Queries) GetEventWithGroupById(ctx context.Context, id uuid.UUID) (GetE
 	err := row.Scan(
 		&i.ID,
 		&i.GroupID,
+		&i.GameID,
 		&i.OwnerID,
 		&i.RegistrationOpen,
 	)

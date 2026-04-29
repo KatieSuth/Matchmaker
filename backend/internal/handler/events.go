@@ -402,6 +402,9 @@ func (h *Handler) UpsertMyRegistrationHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationClosed):
 			slog.WarnContext(c.Request.Context(), "registration upsert rejected because registration is closed", "user_id", userUUID, "event_id", eventID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
+		case errors.Is(err, store.ErrUserGameProfileIncomplete):
+			slog.WarnContext(c.Request.Context(), "registration upsert rejected due to incomplete user game profile", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Complete your game profile before registering"})
 		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event not found for registration upsert", "user_id", userUUID, "event_id", eventID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
@@ -477,6 +480,9 @@ func (h *Handler) UpsertMyGroupRegistrationsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationClosed):
 			slog.WarnContext(c.Request.Context(), "group registration upsert rejected because registration is closed", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
+		case errors.Is(err, store.ErrUserGameProfileIncomplete):
+			slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to incomplete user game profile", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Complete your game profile before registering"})
 		case errors.Is(err, store.ErrEventNotFound):
 			slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to invalid events for group", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "One or more selected events are invalid for this group"})
