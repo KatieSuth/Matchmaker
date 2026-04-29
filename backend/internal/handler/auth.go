@@ -164,6 +164,7 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 func (h *Handler) RefreshHandler(c *gin.Context) {
 	cookieVal, err := c.Cookie("refresh_token")
 	if err != nil {
+		slog.WarnContext(c.Request.Context(), "missing refresh token cookie")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}

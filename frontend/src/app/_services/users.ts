@@ -1,17 +1,24 @@
 import api from "@/app/_lib/axios";
 import { User, UserGame } from "@/app/_types/types";
 
-interface UpdateUserPreferencesPayload {
+export interface UpdateUserPreferencesPayload {
   pronouns: string | null;
   show_pronouns: boolean;
   region: string | null;
-  games: {
+  games?: {
     game_id: string;
     in_game_name: string;
     current_rank: string | null;
     peak_rank: string | null;
     show_rank: boolean;
   }[];
+}
+
+export interface UpsertUserGamePayload {
+  in_game_name: string;
+  current_rank: string | null;
+  peak_rank: string | null;
+  show_rank: boolean;
 }
 
 export async function fetchCurrentUser(signal?: AbortSignal): Promise<User> {
@@ -26,4 +33,8 @@ export async function fetchCurrentUserGames(signal?: AbortSignal): Promise<UserG
 
 export async function updateCurrentUserPreferences(payload: UpdateUserPreferencesPayload): Promise<void> {
   await api.put("/users/me", payload);
+}
+
+export async function upsertCurrentUserGame(gameId: string, payload: UpsertUserGamePayload): Promise<void> {
+  await api.put(`/users/me/games/${gameId}`, payload);
 }

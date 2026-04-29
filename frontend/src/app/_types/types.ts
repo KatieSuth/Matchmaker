@@ -43,12 +43,12 @@ export interface UserGame {
   user_id: string;
   game_id: string;
   in_game_name: string;
-  region: string | null;
+  game_name?: string;
   current_rank: string | null;
+  current_rank_name?: string;
   peak_rank: string | null;
+  peak_rank_name?: string;
   show_rank: boolean;
-  api_permission: boolean;
-  api_links_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +59,7 @@ export interface EventRegistration {
   discord_name: string;
   pronouns: string;
   current_rank_name: string;
+  peak_rank_name?: string;
   can_substitute: boolean;
   can_lobby_host: boolean;
   duo_request: string | null;
@@ -90,6 +91,17 @@ export interface EventGroupDetail {
   created_at: string;
   updated_at: string;
   events: EventGroupEvent[];
+}
+
+export interface GroupRegistrationEventInput {
+  event_id: string;
+  can_substitute: boolean;
+  can_lobby_host: boolean;
+}
+
+export interface UpsertGroupRegistrationRequest {
+  duo_request: string;
+  events: GroupRegistrationEventInput[];
 }
 
 export interface Event {

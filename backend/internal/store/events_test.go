@@ -2,6 +2,8 @@ package store_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -122,6 +124,7 @@ func TestCreateEventGroupWithEvents_UnknownGameMode(t *testing.T) {
 
 	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "NA", time.Now().UTC(), 1)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
 }
 
 func TestCreateEventGroupWithEvents_SingleGame(t *testing.T) {
@@ -322,6 +325,61 @@ func TestGetEventsForUser_CursorPagination(t *testing.T) {
 	assert.NotEqual(t, page1[len(page1)-1].ID, page2[0].ID)
 }
 
+func TestGetEventsForUser_InvalidInputs(t *testing.T) {
+	s, _ := createEventTestStoreTx(t)
+	ctx := context.Background()
+	user := createTestUser(t, ctx, s)
+
+	_, _, _, err := s.GetEventsForUser(ctx, user.ID, true, false, nil, nil, "", "", "Not/A_Real_Timezone")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidTimezone)
+
+	_, _, _, err = s.GetEventsForUser(ctx, user.ID, true, false, nil, nil, "not-a-uuid", "", "UTC")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidGameID)
+
+	_, _, _, err = s.GetEventsForUser(ctx, user.ID, true, false, nil, nil, "", "not-base64", "UTC")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidCursor)
+
+	payload, marshalErr := json.Marshal(map[string]any{
+		"event_date": time.Now().UTC(),
+		"id":         uuid.Nil,
+	})
+	require.NoError(t, marshalErr)
+	missingFieldsCursor := base64.RawURLEncoding.EncodeToString(payload)
+	_, _, _, err = s.GetEventsForUser(ctx, user.ID, true, false, nil, nil, "", missingFieldsCursor, "UTC")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidCursor)
+}
+
+func TestDashboardCursorEncodeDecode_RoundTripAndValidation(t *testing.T) {
+	original := store.DashboardCursorForTest{
+		EventDate: time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
+		ID:        uuid.New(),
+	}
+
+	encoded, err := store.EncodeDashboardCursorForTest(original)
+	require.NoError(t, err)
+	require.NotEmpty(t, encoded)
+
+	decoded, err := store.DecodeDashboardCursorForTest(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, original.ID, decoded.ID)
+	assert.Equal(t, original.EventDate.UTC().Unix(), decoded.EventDate.UTC().Unix())
+
+	_, err = store.DecodeDashboardCursorForTest("%%%")
+	require.Error(t, err)
+
+	badPayload, err := json.Marshal(map[string]any{
+		"event_date": time.Now().UTC(),
+		"id":         uuid.Nil,
+	})
+	require.NoError(t, err)
+	_, err = store.DecodeDashboardCursorForTest(base64.RawURLEncoding.EncodeToString(badPayload))
+	require.Error(t, err)
+}
+
 func TestGetEventGroupDetail_Success(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -403,6 +461,20 @@ func TestUpdateEventGroupSettings_Invalid(t *testing.T) {
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
 	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
+}
+
+func TestUpdateEventGroupSettings_InvalidNegativeSubMin(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "NA", -1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -512,6 +584,16 @@ func TestSetEventGroupRegistrationOpen_BlockedByExistingTeams(t *testing.T) {
 	assert.ErrorIs(t, err, store.ErrOpenRegistrationTeams)
 }
 
+func TestSetEventGroupRegistrationOpen_NotFound(t *testing.T) {
+	s, _ := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+
+	err := s.SetEventGroupRegistrationOpen(ctx, uuid.New(), host.ID, true)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
+}
+
 func TestCreateTeamsForGroup_Success(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -538,6 +620,33 @@ func TestCreateTeamsForGroup_Success(t *testing.T) {
 	err = tx.QueryRow(ctx, `SELECT registration_open FROM event_groups WHERE id = $1`, groupID).Scan(&regClosed)
 	require.NoError(t, err)
 	assert.False(t, regClosed)
+}
+
+func TestCreateTeamsForGroup_NoLobbyHostEligibleLeavesLobbyHostNull(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	p1 := createTestUser(t, ctx, s)
+	p2 := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+	registerUserForEventWithFlags(t, ctx, tx, eventID, p1.ID, true, false)
+	registerUserForEventWithFlags(t, ctx, tx, eventID, p2.ID, false, false)
+
+	err = s.CreateTeamsForGroup(ctx, groupID, host.ID)
+	require.NoError(t, err)
+
+	var lobbyHost *uuid.UUID
+	err = tx.QueryRow(ctx, `
+		SELECT L.host
+		FROM lobbies L
+		JOIN events E ON E.id = L.event_id
+		WHERE E.group_id = $1
+		LIMIT 1`, groupID).Scan(&lobbyHost)
+	require.NoError(t, err)
+	assert.Nil(t, lobbyHost)
 }
 
 func TestCreateTeamsForGroup_TeamsAlreadyCreated(t *testing.T) {
@@ -645,6 +754,16 @@ func TestDeleteTeamsAndOpenRegistration_Forbidden(t *testing.T) {
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
 
+func TestDeleteTeamsAndOpenRegistration_NotFound(t *testing.T) {
+	s, _ := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+
+	err := s.DeleteTeamsAndOpenRegistration(ctx, uuid.New(), host.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
+}
+
 func TestUpsertRegistrationForEvent_InsertAndUpdate(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -706,6 +825,94 @@ func TestUpsertRegistrationForEvent_EventNotFound(t *testing.T) {
 	u := createTestUser(t, ctx, s)
 
 	err := s.UpsertRegistrationForEvent(ctx, uuid.New(), u.ID, true, true, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrEventNotFound)
+}
+
+func TestUpsertRegistrationsForGroup_InsertUpdateDelete(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	participant := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+
+	groupID, event1 := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+	event2 := insertEventInGroupFixture(t, ctx, tx, groupID, time.Now().UTC().Add(48*time.Hour))
+	event3 := insertEventInGroupFixture(t, ctx, tx, groupID, time.Now().UTC().Add(72*time.Hour))
+
+	registerUserForEventWithFlags(t, ctx, tx, event1, participant.ID, false, false)
+	registerUserForEventWithFlags(t, ctx, tx, event2, participant.ID, true, false)
+
+	duo := "carry-me"
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
+		{EventID: event1, CanSubstitute: true, CanLobbyHost: true},  // update existing
+		{EventID: event3, CanSubstitute: false, CanLobbyHost: true}, // insert new
+	}, &duo)
+	require.NoError(t, err)
+
+	var canSub, canHost bool
+	var duoRequest *string
+	err = tx.QueryRow(ctx, `
+		SELECT can_substitute, can_lobby_host, duo_request
+		FROM registrations WHERE event_id = $1 AND user_id = $2`,
+		event1, participant.ID).Scan(&canSub, &canHost, &duoRequest)
+	require.NoError(t, err)
+	assert.True(t, canSub)
+	assert.True(t, canHost)
+	require.NotNil(t, duoRequest)
+	assert.Equal(t, duo, *duoRequest)
+
+	err = tx.QueryRow(ctx, `
+		SELECT can_substitute, can_lobby_host, duo_request
+		FROM registrations WHERE event_id = $1 AND user_id = $2`,
+		event3, participant.ID).Scan(&canSub, &canHost, &duoRequest)
+	require.NoError(t, err)
+	assert.False(t, canSub)
+	assert.True(t, canHost)
+	require.NotNil(t, duoRequest)
+	assert.Equal(t, duo, *duoRequest)
+
+	var deletedCount int
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM registrations WHERE event_id = $1 AND user_id = $2`, event2, participant.ID).Scan(&deletedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, deletedCount)
+}
+
+func TestUpsertRegistrationsForGroup_ErrorCases(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	participant := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidRegistration)
+
+	err = s.UpsertRegistrationsForGroup(ctx, uuid.New(), participant.ID, []store.RegistrationUpsertItem{
+		{EventID: eventID, CanSubstitute: true, CanLobbyHost: false},
+	}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
+
+	_, err = tx.Exec(ctx, `UPDATE event_groups SET registration_open = false WHERE id = $1`, groupID)
+	require.NoError(t, err)
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
+		{EventID: eventID, CanSubstitute: true, CanLobbyHost: false},
+	}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrRegistrationClosed)
+
+	_, err = tx.Exec(ctx, `UPDATE event_groups SET registration_open = true WHERE id = $1`, groupID)
+	require.NoError(t, err)
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
+		{EventID: uuid.New(), CanSubstitute: true, CanLobbyHost: false},
+	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventNotFound)
 }

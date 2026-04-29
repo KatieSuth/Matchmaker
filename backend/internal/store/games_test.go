@@ -136,3 +136,36 @@ func TestGetGameModeByID_NotFound(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+
+func TestGetSystemGames_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := s.GetSystemGames(ctx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "looking up system games")
+	})
+}
+
+func TestGetGameModes_Found(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		ctx := context.Background()
+		games, err := s.GetSystemGames(ctx)
+		require.NoError(t, err)
+		require.NotEmpty(t, games)
+		modes, err := s.GetGameModes(ctx, games[0].ID)
+		require.NoError(t, err)
+		assert.NotNil(t, modes)
+	})
+}
+
+func TestGetGameModes_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := s.GetGameModes(ctx, uuid.New())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "looking up game modes for game")
+	})
+}

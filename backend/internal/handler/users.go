@@ -4,11 +4,13 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // GET /users/me
@@ -140,6 +142,99 @@ func (h *Handler) UsersMeGamesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, userGames)
 }
 
+// PUT /users/me/games/:gameId
+func (h *Handler) UpsertUsersMeGameHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	gameID, err := uuid.Parse(c.Param("gameId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid gameId in UpsertUsersMeGameHandler", "user_id", userUUID, "game_id", c.Param("gameId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "gameId must be a valid UUID",
+		})
+		return
+	}
+
+	var body struct {
+		InGameName  string `json:"in_game_name"`
+		CurrentRank string `json:"current_rank"`
+		PeakRank    string `json:"peak_rank"`
+		ShowRank    bool   `json:"show_rank"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "failed to bind game upsert body", "user_id", userUUID, "game_id", gameID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Improper json or json value types",
+		})
+		return
+	}
+
+	currentRankID, err := uuid.Parse(strings.TrimSpace(body.CurrentRank))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid current_rank in UpsertUsersMeGameHandler", "user_id", userUUID, "game_id", gameID, "current_rank", body.CurrentRank, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "current_rank must be a valid UUID",
+		})
+		return
+	}
+	peakRankID, err := uuid.Parse(strings.TrimSpace(body.PeakRank))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid peak_rank in UpsertUsersMeGameHandler", "user_id", userUUID, "game_id", gameID, "peak_rank", body.PeakRank, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "peak_rank must be a valid UUID",
+		})
+		return
+	}
+	inGameName := strings.TrimSpace(body.InGameName)
+	if inGameName == "" {
+		slog.WarnContext(c.Request.Context(), "missing in_game_name in UpsertUsersMeGameHandler", "user_id", userUUID, "game_id", gameID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "in_game_name is required",
+		})
+		return
+	}
+
+	_, err = h.store.UpsertGameForUser(c.Request.Context(), userUUID, model.UserGame{
+		GameID:      gameID,
+		InGameName:  &inGameName,
+		CurrentRank: &currentRankID,
+		PeakRank:    &peakRankID,
+		ShowRank:    body.ShowRank,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidGame) ||
+			errors.Is(err, store.ErrCurrentRankMissing) ||
+			errors.Is(err, store.ErrPeakRankMissing) ||
+			errors.Is(err, store.ErrInvalidCurrentRank) ||
+			errors.Is(err, store.ErrInvalidPeakRank) ||
+			errors.Is(err, store.ErrInvalidRankOrder) {
+			slog.WarnContext(c.Request.Context(), "invalid game upsert payload", "user_id", userUUID, "game_id", gameID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": err.Error(),
+			})
+			return
+		}
+		slog.ErrorContext(c.Request.Context(), "failed to upsert game for user", "user_id", userUUID, "game_id", gameID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Something went wrong",
+		})
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "upserted user game", "user_id", userUUID, "game_id", gameID)
+	c.Status(http.StatusNoContent)
+}
+
 // GET /users/me/events
 func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	type QueryParams struct {
@@ -229,6 +324,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	}
 
 	if dateFrom != nil && dateTo != nil && dateFrom.After(*dateTo) {
+		slog.WarnContext(c.Request.Context(), "invalid date range in UsersMeEventsHandler", "user_id", userUUID, "from", from, "to", to)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "'from' must be before or equal to 'to'",
@@ -239,6 +335,7 @@ func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	eventGroups, hasMore, nextCursor, err := h.store.GetEventsForUser(c.Request.Context(), userUUID, hosting, past, dateFrom, dateTo, gameId, cursor, timezone)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidGameID) || errors.Is(err, store.ErrInvalidCursor) || errors.Is(err, store.ErrInvalidTimezone) {
+			slog.WarnContext(c.Request.Context(), "invalid users/me/events query values", "user_id", userUUID, "game_id", gameId, "cursor", cursor, "tz", timezone, "error", err)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": err.Error(),

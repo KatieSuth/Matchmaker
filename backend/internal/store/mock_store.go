@@ -53,6 +53,7 @@ type MockStore struct {
 	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	DeleteTeamsAndOpenRegistrationFn func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
+	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
 	DeleteRegistrationForEventFn     func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
 }
 
@@ -162,6 +163,10 @@ func (m *MockStore) DeleteTeamsAndOpenRegistration(ctx context.Context, groupID,
 
 func (m *MockStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {
 	return m.UpsertRegistrationForEventFn(ctx, eventID, userID, canSubstitute, canLobbyHost, duoRequest)
+}
+
+func (m *MockStore) UpsertRegistrationsForGroup(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error {
+	return m.UpsertRegistrationsForGroupFn(ctx, groupID, userID, registrations, duoRequest)
 }
 
 func (m *MockStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {

@@ -35,3 +35,15 @@ func TestGetGameRanks_KnownGame(t *testing.T) {
 		assert.NotNil(t, ranks)
 	})
 }
+
+
+func TestGetGameRanks_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		gameID := uuid.New()
+		_, err := s.GetGameRanks(ctx, &gameID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "looking up ranks for game")
+	})
+}

@@ -429,6 +429,41 @@ func TestUpdateEventGroupRegistrationStatusHandler_StoreErrors(t *testing.T) {
 	}
 }
 
+func TestUpdateEventGroupRegistrationStatusHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x/registration")
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"registration_open":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupRegistrationStatusHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUpdateEventGroupRegistrationStatusHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/bad/registration")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"registration_open":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupRegistrationStatusHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupRegistrationStatusHandler_BadJSON(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x/registration")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupRegistrationStatusHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestUpdateEventGroupRegistrationStatusHandler_Success(t *testing.T) {
 	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x/registration")
 	test_util.WithUserIDString(c, uuid.New())
@@ -595,6 +630,135 @@ func TestUpsertMyRegistrationHandler_SuccessTrimsDuo(t *testing.T) {
 		},
 	}, nil, "")
 	h.UpsertMyRegistrationHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpsertMyGroupRegistrationsHandler_Validation(t *testing.T) {
+	t.Run("invalid group id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/bad/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"events":[{"event_id":"` + uuid.NewString() + `","can_substitute":true,"can_lobby_host":false}]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyGroupRegistrationsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyGroupRegistrationsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("empty events", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"events":[]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyGroupRegistrationsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"events":[{"event_id":"not-a-uuid","can_substitute":true,"can_lobby_host":false}]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyGroupRegistrationsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("duplicate event id", func(t *testing.T) {
+		eventID := uuid.NewString()
+		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"events":[{"event_id":"` + eventID + `","can_substitute":true,"can_lobby_host":false},{"event_id":"` + eventID + `","can_substitute":false,"can_lobby_host":true}]}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertMyGroupRegistrationsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestUpsertMyGroupRegistrationsHandler_StoreErrors(t *testing.T) {
+	groupID := uuid.New()
+	userID := uuid.New()
+	eventID := uuid.New()
+
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"invalid registration", store.ErrInvalidRegistration, http.StatusBadRequest},
+		{"registration closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"invalid event", store.ErrEventNotFound, http.StatusBadRequest},
+		{"group not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+			test_util.WithUserIDString(c, userID)
+			c.Params = gin.Params{{Key: "groupId", Value: groupID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(`{"duo_request":" duo ","events":[{"event_id":"` + eventID.String() + `","can_substitute":true,"can_lobby_host":false}]}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			h := newTestHandler(t, &store.MockStore{
+				UpsertRegistrationsForGroupFn: func(_ context.Context, inGroup, inUser uuid.UUID, regs []store.RegistrationUpsertItem, duo *string) error {
+					assert.Equal(t, groupID, inGroup)
+					assert.Equal(t, userID, inUser)
+					require.Len(t, regs, 1)
+					assert.Equal(t, eventID, regs[0].EventID)
+					assert.True(t, regs[0].CanSubstitute)
+					assert.False(t, regs[0].CanLobbyHost)
+					require.NotNil(t, duo)
+					assert.Equal(t, "duo", *duo)
+					return tc.err
+				},
+			}, nil, "")
+			h.UpsertMyGroupRegistrationsHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestUpsertMyGroupRegistrationsHandler_Success(t *testing.T) {
+	groupID := uuid.New()
+	userID := uuid.New()
+	eventID := uuid.New()
+
+	c, _ := test_util.NewGinContext(http.MethodPut, "/registrations/group/x/me")
+	test_util.WithUserIDString(c, userID)
+	c.Params = gin.Params{{Key: "groupId", Value: groupID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"duo_request":"  ","events":[{"event_id":"` + eventID.String() + `","can_substitute":false,"can_lobby_host":true}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{
+		UpsertRegistrationsForGroupFn: func(_ context.Context, inGroup, inUser uuid.UUID, regs []store.RegistrationUpsertItem, duo *string) error {
+			assert.Equal(t, groupID, inGroup)
+			assert.Equal(t, userID, inUser)
+			require.Len(t, regs, 1)
+			assert.Equal(t, eventID, regs[0].EventID)
+			assert.False(t, regs[0].CanSubstitute)
+			assert.True(t, regs[0].CanLobbyHost)
+			assert.Nil(t, duo)
+			return nil
+		},
+	}, nil, "")
+	h.UpsertMyGroupRegistrationsHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 

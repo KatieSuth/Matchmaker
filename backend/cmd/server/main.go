@@ -216,6 +216,7 @@ func main() {
 			users.GET("/me", h.UsersMeHandler)
 			users.PUT("/me", h.UpdateUsersMeHandler)
 			users.GET("/me/games", h.UsersMeGamesHandler)
+			users.PUT("/me/games/:gameId", h.UpsertUsersMeGameHandler)
 			users.GET("/me/events", h.UsersMeEventsHandler)
 		}
 
@@ -240,6 +241,7 @@ func main() {
 
 		registrations := protected.Group("/registrations")
 		{
+			registrations.PUT("/group/:groupId/me", h.UpsertMyGroupRegistrationsHandler)
 			registrations.PUT("/:eventId/me", h.UpsertMyRegistrationHandler)
 			registrations.DELETE("/:eventId/:userId", h.DeleteRegistrationHandler)
 			registrations.DELETE("/:eventId/me", h.DeleteRegistrationHandler)

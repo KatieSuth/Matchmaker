@@ -37,6 +37,17 @@ type upsertRegistrationRequest struct {
 	DuoRequest    string `json:"duo_request"`
 }
 
+type bulkRegistrationEventRequest struct {
+	EventID       string `json:"event_id"`
+	CanSubstitute bool   `json:"can_substitute"`
+	CanLobbyHost  bool   `json:"can_lobby_host"`
+}
+
+type upsertGroupRegistrationRequest struct {
+	DuoRequest string                         `json:"duo_request"`
+	Events     []bulkRegistrationEventRequest `json:"events"`
+}
+
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -46,6 +57,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 
 	var body createEventRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in CreateEventHandler", "user_id", userUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "Improper json or json value types",
@@ -55,6 +67,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 
 	gameModeID, err := uuid.Parse(body.GameModeID)
 	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid game_mode_id in CreateEventHandler", "user_id", userUUID, "game_mode_id", body.GameModeID, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "game_mode_id must be a valid UUID",
@@ -64,6 +77,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 
 	region := strings.TrimSpace(body.Region)
 	if region == "" {
+		slog.WarnContext(c.Request.Context(), "missing region in CreateEventHandler", "user_id", userUUID)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "region is required",
@@ -73,6 +87,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 
 	startTime, err := time.Parse(time.RFC3339, body.StartTime)
 	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid start_time in CreateEventHandler", "user_id", userUUID, "start_time", body.StartTime, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "start_time must be RFC3339 datetime",
@@ -81,6 +96,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 	}
 
 	if startTime.Before(time.Now()) {
+		slog.WarnContext(c.Request.Context(), "start_time in past in CreateEventHandler", "user_id", userUUID, "start_time", startTime)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "start_time cannot be in the past",
@@ -89,6 +105,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 	}
 
 	if body.SubMin < 0 {
+		slog.WarnContext(c.Request.Context(), "invalid sub_min in CreateEventHandler", "user_id", userUUID, "sub_min", body.SubMin)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "sub_min cannot be negative",
@@ -97,6 +114,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 	}
 
 	if body.GamesToRun <= 0 {
+		slog.WarnContext(c.Request.Context(), "invalid games_to_run in CreateEventHandler", "user_id", userUUID, "games_to_run", body.GamesToRun)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": "games_to_run must be greater than 0",
@@ -116,6 +134,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 	)
 	if err != nil {
 		if errors.Is(err, store.ErrGameModeNotFound) || errors.Is(err, pgx.ErrNoRows) {
+			slog.WarnContext(c.Request.Context(), "game mode not found in CreateEventHandler", "user_id", userUUID, "game_mode_id", gameModeID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": "game mode not found",
@@ -393,6 +412,85 @@ func (h *Handler) UpsertMyRegistrationHandler(c *gin.Context) {
 		return
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+// PUT /registrations/group/:groupId/me
+func (h *Handler) UpsertMyGroupRegistrationsHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+	groupID, err := uuid.Parse(c.Param("groupId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid groupId in UpsertMyGroupRegistrationsHandler", "user_id", userUUID, "group_id", c.Param("groupId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "groupId must be a valid UUID"})
+		return
+	}
+
+	var body upsertGroupRegistrationRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in UpsertMyGroupRegistrationsHandler", "user_id", userUUID, "group_id", groupID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+	if len(body.Events) == 0 {
+		slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to empty event selection", "user_id", userUUID, "group_id", groupID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "At least one event must be selected"})
+		return
+	}
+
+	items := make([]store.RegistrationUpsertItem, 0, len(body.Events))
+	seenEventIDs := make(map[uuid.UUID]struct{}, len(body.Events))
+	for _, requestedEvent := range body.Events {
+		eventID, err := uuid.Parse(requestedEvent.EventID)
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "invalid event_id in UpsertMyGroupRegistrationsHandler", "user_id", userUUID, "group_id", groupID, "event_id", requestedEvent.EventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "event_id must be a valid UUID"})
+			return
+		}
+		if _, exists := seenEventIDs[eventID]; exists {
+			slog.WarnContext(c.Request.Context(), "duplicate event_id in UpsertMyGroupRegistrationsHandler", "user_id", userUUID, "group_id", groupID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Duplicate event_id values are not allowed"})
+			return
+		}
+		seenEventIDs[eventID] = struct{}{}
+
+		items = append(items, store.RegistrationUpsertItem{
+			EventID:       eventID,
+			CanSubstitute: requestedEvent.CanSubstitute,
+			CanLobbyHost:  requestedEvent.CanLobbyHost,
+		})
+	}
+
+	var duoRequest *string
+	if trimmed := strings.TrimSpace(body.DuoRequest); trimmed != "" {
+		duoRequest = &trimmed
+	}
+
+	err = h.store.UpsertRegistrationsForGroup(c.Request.Context(), groupID, userUUID, items, duoRequest)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrInvalidRegistration):
+			slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to invalid registration payload", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "At least one event must be selected"})
+		case errors.Is(err, store.ErrRegistrationClosed):
+			slog.WarnContext(c.Request.Context(), "group registration upsert rejected because registration is closed", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
+		case errors.Is(err, store.ErrEventNotFound):
+			slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to invalid events for group", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "One or more selected events are invalid for this group"})
+		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
+			slog.WarnContext(c.Request.Context(), "event group not found for group registration upsert", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
+		default:
+			slog.ErrorContext(c.Request.Context(), "failed to upsert group registrations", "group_id", groupID, "user_id", userUUID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to save registrations"})
+		}
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "upserted group registrations", "group_id", groupID, "user_id", userUUID, "event_count", len(items))
 	c.Status(http.StatusNoContent)
 }
 

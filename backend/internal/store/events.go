@@ -30,8 +30,15 @@ var (
 	ErrOpenRegistrationTeams = errors.New("cannot open registration while teams exist")
 	ErrEventGroupNotFound    = errors.New("event group not found")
 	ErrEventNotFound         = errors.New("event not found")
+	ErrInvalidRegistration   = errors.New("invalid registration payload")
 	ErrGameModeNotFound      = errors.New("game mode not found")
 )
+
+type RegistrationUpsertItem struct {
+	EventID       uuid.UUID
+	CanSubstitute bool
+	CanLobbyHost  bool
+}
 
 // dashboardCursor is encoded into the opaque "next page" string for the user events list.
 type dashboardCursor struct {
@@ -498,6 +505,95 @@ func (s *PostgresStore) UpsertRegistrationForEvent(ctx context.Context, eventID,
 		return fmt.Errorf("update registration: %w", err)
 	}
 	return nil
+}
+
+func (s *PostgresStore) UpsertRegistrationsForGroup(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error {
+	if len(registrations) == 0 {
+		return ErrInvalidRegistration
+	}
+
+	return s.WithTx(ctx, func(tx Store) error {
+		txStore, ok := tx.(*PostgresStore)
+		if !ok {
+			return fmt.Errorf("unexpected tx store type %T", tx)
+		}
+
+		groupRow, err := txStore.q.GetEventGroupById(ctx, groupID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrEventGroupNotFound
+			}
+			return fmt.Errorf("get event group: %w", err)
+		}
+		if !groupRow.RegistrationOpen {
+			return ErrRegistrationClosed
+		}
+
+		groupEvents, err := txStore.q.GetEventsByGroupId(ctx, &groupID)
+		if err != nil {
+			return fmt.Errorf("get group events: %w", err)
+		}
+		eventIDsInGroup := make(map[uuid.UUID]struct{}, len(groupEvents))
+		for _, groupEvent := range groupEvents {
+			eventIDsInGroup[groupEvent.ID] = struct{}{}
+		}
+
+		selectedEventIDs := make(map[uuid.UUID]RegistrationUpsertItem, len(registrations))
+		for _, item := range registrations {
+			if _, exists := eventIDsInGroup[item.EventID]; !exists {
+				return ErrEventNotFound
+			}
+			selectedEventIDs[item.EventID] = item
+		}
+
+		for _, item := range registrations {
+			_, err = txStore.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
+				EventID: item.EventID,
+				UserID:  userID,
+			})
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					_, err = txStore.q.CreateRegistration(ctx, db.CreateRegistrationParams{
+						EventID:       item.EventID,
+						UserID:        userID,
+						CanSubstitute: item.CanSubstitute,
+						CanLobbyHost:  item.CanLobbyHost,
+						DuoRequest:    duoRequest,
+					})
+					if err != nil {
+						return fmt.Errorf("create registration: %w", err)
+					}
+					continue
+				}
+				return fmt.Errorf("get registration: %w", err)
+			}
+
+			_, err = txStore.q.UpdateRegistration(ctx, db.UpdateRegistrationParams{
+				EventID:       item.EventID,
+				UserID:        userID,
+				CanSubstitute: item.CanSubstitute,
+				CanLobbyHost:  item.CanLobbyHost,
+				DuoRequest:    duoRequest,
+			})
+			if err != nil {
+				return fmt.Errorf("update registration: %w", err)
+			}
+		}
+
+		for _, groupEvent := range groupEvents {
+			if _, selected := selectedEventIDs[groupEvent.ID]; selected {
+				continue
+			}
+			if err := txStore.q.DeleteRegistration(ctx, db.DeleteRegistrationParams{
+				EventID: groupEvent.ID,
+				UserID:  userID,
+			}); err != nil {
+				return fmt.Errorf("delete unselected registration: %w", err)
+			}
+		}
+
+		return nil
+	})
 }
 
 func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error {

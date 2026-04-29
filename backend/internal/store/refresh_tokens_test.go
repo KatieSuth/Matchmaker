@@ -69,3 +69,26 @@ func TestDeleteRefreshToken_NotFound(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+
+func TestCreateNewRefreshToken_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-rt-err1", "rt-err1")
+		expires := time.Now().Add(24 * time.Hour)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := s.CreateNewRefreshToken(ctx, "token-hash-err", seeded.ID, expires)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "creating refresh token")
+	})
+}
+
+func TestDeleteRefreshToken_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := s.DeleteRefreshToken(ctx, "token-hash-err")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "deleting refresh token")
+	})
+}

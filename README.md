@@ -14,7 +14,7 @@ It's still very much in the early phases but is intended to one day support Valo
 - [x] Basic login functionality via Discord
 - [x] User preferences
 - [x] One-off event admin configuration
-- [ ] One-off event sign-up for players
+- [x] One-off event sign-up for players
 - [ ] One-off event admin team creation
 - [ ] 1.0 web hosting with public availability
 - [ ] Riot API Linking for automatic competitive rank detection

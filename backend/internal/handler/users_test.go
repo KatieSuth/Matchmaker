@@ -12,6 +12,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,6 +206,39 @@ func TestUsersMeEventsHandler_InvalidFromDate(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestUsersMeEventsHandler_InvalidTimezone(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=Not_A_Timezone")
+	test_util.WithUserIDString(c, userID)
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_InvalidToDate(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC&to=2026/01/01")
+	test_util.WithUserIDString(c, userID)
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_InvalidDateRange(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC&from=2026-04-22&to=2026-04-21")
+	test_util.WithUserIDString(c, userID)
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestUsersMeEventsHandler_StoreValidationError(t *testing.T) {
 	userID := uuid.New()
 	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC")
@@ -219,6 +253,22 @@ func TestUsersMeEventsHandler_StoreValidationError(t *testing.T) {
 	h.UsersMeEventsHandler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsersMeEventsHandler_StoreServerError(t *testing.T) {
+	userID := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodGet, "/users/me/events?tz=UTC")
+	test_util.WithUserIDString(c, userID)
+
+	ms := &store.MockStore{
+		GetEventsForUserFn: func(_ context.Context, _ uuid.UUID, _ bool, _ bool, _ *time.Time, _ *time.Time, _ string, _ string, _ string) ([]model.DashboardEvent, bool, string, error) {
+			return nil, false, "", errors.New("db down")
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.UsersMeEventsHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestUsersMeEventsHandler_Success(t *testing.T) {
@@ -500,4 +550,149 @@ func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.False(t, baseUpdateCalled, "UpdateUser must run on tx store")
 	assert.False(t, baseUpsertCalled, "UpsertGameForUser must run on tx store")
+}
+
+// ============================================================
+// UpsertUsersMeGameHandler — PUT /users/me/games/:gameId
+// ============================================================
+
+func TestUpsertUsersMeGameHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+	c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"abc","current_rank":"` + uuid.NewString() + `","peak_rank":"` + uuid.NewString() + `","show_rank":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpsertUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUpsertUsersMeGameHandler_Validation(t *testing.T) {
+	t.Run("invalid game id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/bad")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "gameId", Value: "bad"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"abc","current_rank":"` + uuid.NewString() + `","peak_rank":"` + uuid.NewString() + `","show_rank":true}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertUsersMeGameHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertUsersMeGameHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid current rank", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"abc","current_rank":"bad","peak_rank":"` + uuid.NewString() + `","show_rank":true}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertUsersMeGameHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid peak rank", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"abc","current_rank":"` + uuid.NewString() + `","peak_rank":"bad","show_rank":true}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertUsersMeGameHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("missing in game name", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"  ","current_rank":"` + uuid.NewString() + `","peak_rank":"` + uuid.NewString() + `","show_rank":true}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpsertUsersMeGameHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestUpsertUsersMeGameHandler_StoreErrors(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.New()
+	currentRankID := uuid.New()
+	peakRankID := uuid.New()
+
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"invalid payload", store.ErrInvalidCurrentRank, http.StatusBadRequest},
+		{"server error", errors.New("db exploded"), http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+			test_util.WithUserIDString(c, userID)
+			c.Params = gin.Params{{Key: "gameId", Value: gameID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"  PlayerOne  ","current_rank":"` + currentRankID.String() + `","peak_rank":"` + peakRankID.String() + `","show_rank":true}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			h := newTestHandler(t, &store.MockStore{
+				UpsertGameForUserFn: func(_ context.Context, inUser uuid.UUID, ug model.UserGame) (model.UserGame, error) {
+					assert.Equal(t, userID, inUser)
+					assert.Equal(t, gameID, ug.GameID)
+					require.NotNil(t, ug.CurrentRank)
+					require.NotNil(t, ug.PeakRank)
+					assert.Equal(t, currentRankID, *ug.CurrentRank)
+					assert.Equal(t, peakRankID, *ug.PeakRank)
+					require.NotNil(t, ug.InGameName)
+					assert.Equal(t, "PlayerOne", *ug.InGameName)
+					assert.True(t, ug.ShowRank)
+					return model.UserGame{}, tc.err
+				},
+			}, nil, "")
+			h.UpsertUsersMeGameHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestUpsertUsersMeGameHandler_Success(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.New()
+	currentRankID := uuid.New()
+	peakRankID := uuid.New()
+
+	c, _ := test_util.NewGinContext(http.MethodPut, "/users/me/games/x")
+	test_util.WithUserIDString(c, userID)
+	c.Params = gin.Params{{Key: "gameId", Value: gameID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"in_game_name":"  PlayerOne  ","current_rank":"` + currentRankID.String() + `","peak_rank":"` + peakRankID.String() + `","show_rank":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{
+		UpsertGameForUserFn: func(_ context.Context, inUser uuid.UUID, ug model.UserGame) (model.UserGame, error) {
+			assert.Equal(t, userID, inUser)
+			assert.Equal(t, gameID, ug.GameID)
+			require.NotNil(t, ug.InGameName)
+			assert.Equal(t, "PlayerOne", *ug.InGameName)
+			require.NotNil(t, ug.CurrentRank)
+			require.NotNil(t, ug.PeakRank)
+			assert.Equal(t, currentRankID, *ug.CurrentRank)
+			assert.Equal(t, peakRankID, *ug.PeakRank)
+			assert.False(t, ug.ShowRank)
+			return ug, nil
+		},
+	}, nil, "")
+	h.UpsertUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }

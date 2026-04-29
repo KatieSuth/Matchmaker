@@ -1,6 +1,6 @@
 // Client calls for event groups, registration, and host actions (uses axios + auth interceptors).
 import api from "@/app/_lib/axios";
-import { EventGroupDetail, EventsPage } from "@/app/_types/types";
+import { EventGroupDetail, EventsPage, UpsertGroupRegistrationRequest } from "@/app/_types/types";
 
 export interface CreateEventRequest {
   game_mode_id: string;
@@ -58,6 +58,10 @@ export async function deleteEventGroup(groupId: string): Promise<void> {
 
 export async function upsertMyRegistration(eventId: string, payload: UpdateRegistrationRequest): Promise<void> {
   await api.put(`/registrations/${eventId}/me`, payload);
+}
+
+export async function upsertMyGroupRegistrations(groupId: string, payload: UpsertGroupRegistrationRequest): Promise<void> {
+  await api.put(`/registrations/group/${groupId}/me`, payload);
 }
 
 export async function deleteRegistration(eventId: string, userId?: string): Promise<void> {

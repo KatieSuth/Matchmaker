@@ -246,3 +246,15 @@ func TestGetUserGamesForUser_ReturnsAddedGames(t *testing.T) {
 		assert.Equal(t, game.ID, games[0].GameID)
 	})
 }
+
+
+func TestGetUserGamesForUser_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug-queryerr", "ug-queryerr")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := s.GetUserGamesForUser(ctx, seeded.ID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "looking up user's games")
+	})
+}
