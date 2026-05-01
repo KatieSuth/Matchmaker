@@ -17,17 +17,21 @@ export function setAccessToken(token: string | null): void {
     accessToken = token;
 }
 
-export async function refreshAccessToken(signal?: AbortSignal): Promise<string> {
+export async function refreshAccessToken(_signal?: AbortSignal): Promise<string> {
     if (refreshInFlight) {
         return refreshInFlight;
     }
 
     refreshInFlight = (async () => {
-        // withCredentials sends the HttpOnly refresh_token cookie automatically
+        // withCredentials sends the HttpOnly refresh_token cookie automatically.
+        // Do not pass AbortSignal here: AuthProvider's Strict Mode effect cleanup aborts
+        // the shared controller while this POST is in flight. That cancels the singleton
+        // refresh used by every 401 retry — the server may still rotate and revoke the old
+        // token, then the next refresh sees "token not in DB" / 401.
         const response = await axios.post(
             `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
             {},
-            { withCredentials: true, ...(signal ? { signal } : {}) }
+            { withCredentials: true }
         );
 
         const newToken = response.data.access_token as string;

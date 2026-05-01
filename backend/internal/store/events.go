@@ -272,7 +272,7 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string) error {
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -295,11 +295,22 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 		return ErrInvalidSortLogic
 	}
 
+	if registrationOpen {
+		lobbyCount, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
+		if err != nil {
+			return fmt.Errorf("count lobbies by group: %w", err)
+		}
+		if lobbyCount > 0 {
+			return ErrOpenRegistrationTeams
+		}
+	}
+
 	_, err = s.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
-		ID:        groupID,
-		Region:    strings.TrimSpace(region),
-		SubMin:    subMin,
-		SortLogic: effectiveSort,
+		ID:               groupID,
+		Region:           strings.TrimSpace(region),
+		SubMin:           subMin,
+		SortLogic:        effectiveSort,
+		RegistrationOpen: registrationOpen,
 	})
 	if err != nil {
 		return fmt.Errorf("update event group settings: %w", err)
@@ -439,7 +450,9 @@ func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerI
 	})
 }
 
-func (s *PostgresStore) DeleteTeamsAndOpenRegistration(ctx context.Context, groupID, ownerID uuid.UUID) error {
+// DeleteTeamsForGroup removes all lobbies and assigned players for the group.
+// Registration status is unchanged; the host can reopen registration via settings when ready.
+func (s *PostgresStore) DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -470,12 +483,6 @@ func (s *PostgresStore) DeleteTeamsAndOpenRegistration(ctx context.Context, grou
 		}
 		if err := txStore.q.DeleteLobbiesByGroupId(ctx, &groupID); err != nil {
 			return fmt.Errorf("delete lobbies by group: %w", err)
-		}
-		if _, err := txStore.q.SetEventGroupRegistrationOpen(ctx, db.SetEventGroupRegistrationOpenParams{
-			ID:               groupID,
-			RegistrationOpen: true,
-		}); err != nil {
-			return fmt.Errorf("open registration for group: %w", err)
 		}
 		return nil
 	})

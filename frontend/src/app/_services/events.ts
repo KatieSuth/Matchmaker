@@ -30,6 +30,7 @@ export interface UpdateEventGroupRequest {
   region: string;
   sub_min: number;
   sort_logic: EventSortLogic;
+  registration_open: boolean;
 }
 
 export interface UpdateRegistrationRequest {
@@ -55,7 +56,7 @@ export async function createTeams(groupId: string): Promise<void> {
   await api.post(`/events/${groupId}/teams`);
 }
 
-export async function deleteTeamsAndOpenRegistration(groupId: string): Promise<void> {
+export async function deleteTeams(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}/teams`);
 }
 

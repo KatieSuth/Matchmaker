@@ -17,9 +17,8 @@ import { extractApiError, fetchGameRanks } from "@/app/_services/games";
 import {
   createTeams,
   deleteRegistration,
-  deleteTeamsAndOpenRegistration,
+  deleteTeams,
   fetchEventGroup,
-  setEventGroupRegistrationOpen,
   upsertMyGroupRegistrations,
 } from "@/app/_services/events";
 import { fetchCurrentUserGames, upsertCurrentUserGame } from "@/app/_services/users";
@@ -65,38 +64,6 @@ function formatDateTime(value: string) {
 
 function formatPlayerCount(count: number) {
   return `${count} ${count === 1 ? "Player" : "Players"}`;
-}
-
-function ActionButton({
-  label,
-  onClick,
-  tone = "default",
-  disabled = false,
-}: {
-  label: string;
-  onClick: () => void;
-  tone?: "default" | "danger";
-  disabled?: boolean;
-}) {
-  const toneClass =
-    tone === "danger"
-      ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
-      : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]";
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        "w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
-        "disabled:opacity-40 disabled:cursor-not-allowed",
-        toneClass,
-      ].join(" ")}
-    >
-      {label}
-    </button>
-  );
 }
 
 function PlayerCard({
@@ -249,7 +216,6 @@ export default function EventGroupPage() {
   const [working, setWorking] = useState(false);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
-  const [hostMenuOpen, setHostMenuOpen] = useState(false);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [registrationEditorOpen, setRegistrationEditorOpen] = useState(false);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
@@ -395,7 +361,6 @@ export default function EventGroupPage() {
 
   const refreshAndCloseMenus = async () => {
     await loadGroup();
-    setHostMenuOpen(false);
     setWarningSheetOpen(false);
   };
 
@@ -404,8 +369,8 @@ export default function EventGroupPage() {
       setWorking(true);
       await action();
       await refreshAndCloseMenus();
-    } catch {
-      setPageError("Could not complete that action.");
+    } catch (err) {
+      setPageError(extractApiError(err, "Could not complete that action."));
     } finally {
       setWorking(false);
     }
@@ -625,52 +590,6 @@ export default function EventGroupPage() {
   };
   const deletingSelf = !!(pendingDeleteAction && user?.id && pendingDeleteAction.userId === user.id);
 
-  const hostActionButtons = () => {
-    if (!isHost || !group) return null;
-    if (group.registration_open) {
-      return (
-        <>
-          <ActionButton
-            label="Close registration"
-            onClick={() => withHostAction(() => setEventGroupRegistrationOpen(group.id, false))}
-            disabled={working}
-          />
-          <ActionButton
-            label="Close registration & Create Teams"
-            onClick={() => withHostAction(() => createTeams(group.id))}
-            disabled={working}
-          />
-        </>
-      );
-    }
-
-    if (!hasAnyLobbies) {
-      return (
-        <>
-          <ActionButton
-            label="Open registration"
-            onClick={() => withHostAction(() => setEventGroupRegistrationOpen(group.id, true))}
-            disabled={working}
-          />
-          <ActionButton
-            label="Create Teams"
-            onClick={() => withHostAction(() => createTeams(group.id))}
-            disabled={working}
-          />
-        </>
-      );
-    }
-
-    return (
-      <ActionButton
-        label="Delete Teams & Open Registration"
-        tone="danger"
-        onClick={() => setWarningSheetOpen(true)}
-        disabled={working}
-      />
-    );
-  };
-
   if (authLoading || (isAuthenticated && loading)) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -765,18 +684,44 @@ export default function EventGroupPage() {
                 )}
               </div>
               {isHost && (
-                <button
-                  type="button"
-                  onClick={() => setEditSheetOpen(true)}
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-[var(--color-text-soft)] hover:bg-white/[0.08]"
-                >
-                  Edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEditSheetOpen(true)}
+                    className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-[var(--color-text-soft)] hover:bg-white/[0.08]"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={working}
+                    onClick={() => {
+                      if (!group.registration_open && hasAnyLobbies) {
+                        setWarningSheetOpen(true);
+                        return;
+                      }
+                      void withHostAction(() => createTeams(group.id));
+                    }}
+                    className={[
+                      "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                      "disabled:opacity-40 disabled:cursor-not-allowed",
+                      !group.registration_open && hasAnyLobbies
+                        ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
+                        : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
+                    ].join(" ")}
+                  >
+                    {group.registration_open
+                      ? "Lock In & Create Teams"
+                      : hasAnyLobbies
+                        ? "Delete teams"
+                        : "Create teams"}
+                  </button>
+                </>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Status</p>
               <p className="text-xs text-[var(--color-text-soft)]">
@@ -791,23 +736,6 @@ export default function EventGroupPage() {
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Host</p>
               <p className="text-xs text-[var(--color-text-soft)]">{isHost ? "You" : group.owner_name}</p>
             </div>
-            {isHost && (
-              <div className="relative">
-                <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Registration</p>
-                <button
-                  type="button"
-                  onClick={() => setHostMenuOpen((v) => !v)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-[var(--color-text-soft)] hover:bg-white/[0.08]"
-                >
-                  Manage Registration
-                </button>
-                {hostMenuOpen && (
-                  <div className="absolute right-0 mt-2 z-20 w-72 rounded-lg border border-white/10 bg-[var(--color-bg)] p-2 shadow-[0_18px_45px_rgba(0,0,0,0.7)] flex flex-col gap-2">
-                    {hostActionButtons()}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -849,8 +777,7 @@ export default function EventGroupPage() {
           </div>
         </div>
 
-        {group.registration_open &&
-          (registrationEditorOpen || showAllEvents || (!showAllEvents && activeEvent)) && (
+        {(registrationEditorOpen || showAllEvents || (!showAllEvents && activeEvent)) && (
           <div className="flex justify-center">
             {registrationEditorOpen ? (
               <button
@@ -864,15 +791,31 @@ export default function EventGroupPage() {
                 Cancel
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  void handleOpenRegistrationSheet();
-                }}
-                className="rounded-lg border border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
+              <span
+                title={!group.registration_open ? "Registration is closed" : undefined}
+                className={[
+                  "inline-flex rounded-lg",
+                  !group.registration_open ? "cursor-not-allowed" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
               >
-                {myRegistrationsByEvent.size > 0 ? "Edit My Registration" : "Register Now"}
-              </button>
+                <button
+                  type="button"
+                  disabled={!group.registration_open}
+                  onClick={() => {
+                    void handleOpenRegistrationSheet();
+                  }}
+                  className={[
+                    "rounded-lg border px-5 py-2.5 text-sm font-medium",
+                    group.registration_open
+                      ? "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
+                      : "pointer-events-none border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] opacity-50",
+                  ].join(" ")}
+                >
+                  {myRegistrationsByEvent.size > 0 ? "Edit My Registration" : "Register Now"}
+                </button>
+              </span>
             )}
           </div>
         )}
@@ -1298,11 +1241,11 @@ export default function EventGroupPage() {
       <ResponsiveSheet
         isOpen={warningSheetOpen}
         onClose={() => setWarningSheetOpen(false)}
-        title="Delete Teams & Open Registration"
+        title="Delete teams"
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--color-text-soft)]">
-            This action cannot be undone. All generated teams for this event group will be deleted.
+            All lobbies and teams for this event will be deleted, but registrations will remain. Registration stays closed until you open it from Edit. This action cannot be undone.
           </p>
           <div className="flex justify-end gap-2">
             <button
@@ -1314,7 +1257,7 @@ export default function EventGroupPage() {
             </button>
             <button
               type="button"
-              onClick={() => withHostAction(() => deleteTeamsAndOpenRegistration(group.id))}
+              onClick={() => withHostAction(() => deleteTeams(group.id))}
               disabled={working}
               className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)] disabled:opacity-40"
             >

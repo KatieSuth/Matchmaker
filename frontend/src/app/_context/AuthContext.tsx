@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         void (async () => {
             try {
-                await refreshAccessToken(signal);
+                await refreshAccessToken();
                 if (signal.aborted) return;
                 const resolvedUser = await fetchCurrentUser(signal);
                 if (signal.aborted) return;

@@ -835,9 +835,9 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags: [events]
-      summary: Delete teams and reopen registration
-      operationId: deleteTeamsAndOpenRegistration
-      description: Deletes created teams and reopens registration for the group.
+      summary: Delete teams for event group
+      operationId: deleteTeamsForEventGroup
+      description: Deletes lobbies and team assignments for the group. Registration status is unchanged; reopen registration via group settings when ready.
       security:
         - bearerAuth: []
       parameters:
@@ -850,7 +850,7 @@ paths:
             format: uuid
       responses:
         "204":
-          description: Teams deleted and registration reopened successfully
+          description: Teams deleted successfully
         "400":
           description: Invalid `groupId` or no teams exist
           content:
@@ -1454,7 +1454,7 @@ components:
 
     UpdateEventGroupSettingsRequest:
       type: object
-      required: [region]
+      required: [region, registration_open]
       properties:
         region:
           type: string
@@ -1465,6 +1465,8 @@ components:
         sort_logic:
           $ref: "#/components/schemas/SortLogic"
           description: Omit or send empty string to keep the current value.
+        registration_open:
+          type: boolean
 
     UpdateRegistrationStatusRequest:
       type: object

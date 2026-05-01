@@ -24,9 +24,10 @@ type createEventRequest struct {
 }
 
 type updateEventGroupSettingsRequest struct {
-	Region    string `json:"region"`
-	SubMin    int32  `json:"sub_min"`
-	SortLogic string `json:"sort_logic"`
+	Region           string `json:"region"`
+	SubMin           int32  `json:"sub_min"`
+	SortLogic        string `json:"sort_logic"`
+	RegistrationOpen *bool  `json:"registration_open"`
 }
 
 type updateRegistrationStatusRequest struct {
@@ -230,6 +231,11 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
 		return
 	}
+	if body.RegistrationOpen == nil {
+		slog.WarnContext(c.Request.Context(), "missing registration_open in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "registration_open is required"})
+		return
+	}
 
 	sortLogicInput := strings.TrimSpace(body.SortLogic)
 	if sortLogicInput != "" && sortLogicInput != "balanced" && sortLogicInput != "ranked" {
@@ -241,7 +247,7 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput)
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -253,6 +259,9 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrInvalidSubMin):
 			slog.WarnContext(c.Request.Context(), "invalid event group settings payload", "user_id", userUUID, "group_id", groupID, "region", body.Region, "sub_min", body.SubMin)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "region is required and sub_min must be >= 0"})
+		case errors.Is(err, store.ErrOpenRegistrationTeams):
+			slog.WarnContext(c.Request.Context(), "registration open blocked due to existing teams in settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Delete teams before opening registration"})
 		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
@@ -375,19 +384,19 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 }
 
 // DELETE /events/:groupId/teams
-func (h *Handler) DeleteTeamsAndOpenRegistrationHandler(c *gin.Context) {
+func (h *Handler) DeleteTeamsHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
 	if !ok {
 		return
 	}
 	groupID, err := uuid.Parse(c.Param("groupId"))
 	if err != nil {
-		slog.WarnContext(c.Request.Context(), "invalid groupId in DeleteTeamsAndOpenRegistrationHandler", "user_id", userUUID, "group_id", c.Param("groupId"), "error", err)
+		slog.WarnContext(c.Request.Context(), "invalid groupId in DeleteTeamsHandler", "user_id", userUUID, "group_id", c.Param("groupId"), "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "groupId must be a valid UUID"})
 		return
 	}
 
-	err = h.store.DeleteTeamsAndOpenRegistration(c.Request.Context(), groupID, userUUID)
+	err = h.store.DeleteTeamsForGroup(c.Request.Context(), groupID, userUUID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -400,7 +409,7 @@ func (h *Handler) DeleteTeamsAndOpenRegistrationHandler(c *gin.Context) {
 			slog.WarnContext(c.Request.Context(), "event group not found for delete teams", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})
 		default:
-			slog.ErrorContext(c.Request.Context(), "failed to delete teams and open registration", "group_id", groupID, "error", err)
+			slog.ErrorContext(c.Request.Context(), "failed to delete teams", "group_id", groupID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to delete teams"})
 		}
 		return

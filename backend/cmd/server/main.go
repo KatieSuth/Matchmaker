@@ -236,7 +236,7 @@ func main() {
 			events.DELETE("/:groupId", h.DeleteEventGroupHandler)
 			events.PATCH("/:groupId/registration", h.UpdateEventGroupRegistrationStatusHandler)
 			events.POST("/:groupId/teams", h.CreateTeamsHandler)
-			events.DELETE("/:groupId/teams", h.DeleteTeamsAndOpenRegistrationHandler)
+			events.DELETE("/:groupId/teams", h.DeleteTeamsHandler)
 		}
 
 		registrations := protected.Group("/registrations")

@@ -292,7 +292,7 @@ func TestUpdateEventGroupSettingsHandler_SortLogicInvalid(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uid)
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"bogus"}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"bogus","registration_open":true}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
@@ -382,7 +382,7 @@ func TestUpdateEventGroupSettingsHandler_InvalidGroupID(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":0,"sort_logic":"balanced"}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":0,"sort_logic":"balanced","registration_open":false}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
@@ -403,7 +403,7 @@ func TestUpdateEventGroupSettingsHandler_BadJSON(t *testing.T) {
 func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
-	body := `{"region":"AMER","sub_min":1,"sort_logic":"balanced"}`
+	body := `{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true}`
 
 	cases := []struct {
 		name   string
@@ -413,6 +413,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
 		{"invalid sub_min", store.ErrInvalidSubMin, http.StatusBadRequest},
 		{"invalid sort_logic", store.ErrInvalidSortLogic, http.StatusBadRequest},
+		{"open registration teams", store.ErrOpenRegistrationTeams, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -424,7 +425,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
 					return tc.err
@@ -442,18 +443,31 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uid)
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked"}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
 			assert.Equal(t, "ranked", sortLogic)
+			assert.False(t, registrationOpen)
 			return nil
 		},
 	}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpdateEventGroupSettingsHandler_MissingRegistrationOpen(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestDeleteEventGroupHandler_StoreErrors(t *testing.T) {
@@ -618,7 +632,7 @@ func TestCreateTeamsHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
-func TestDeleteTeamsAndOpenRegistrationHandler_StoreErrors(t *testing.T) {
+func TestDeleteTeamsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
 	cases := []struct {
@@ -637,22 +651,22 @@ func TestDeleteTeamsAndOpenRegistrationHandler_StoreErrors(t *testing.T) {
 			test_util.WithUserIDString(c, uid)
 			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
 			h := newTestHandler(t, &store.MockStore{
-				DeleteTeamsAndOpenRegistrationFn: func(_ context.Context, _, _ uuid.UUID) error { return tc.err },
+				DeleteTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID) error { return tc.err },
 			}, nil, "")
-			h.DeleteTeamsAndOpenRegistrationHandler(c)
+			h.DeleteTeamsHandler(c)
 			assert.Equal(t, tc.status, w.Code)
 		})
 	}
 }
 
-func TestDeleteTeamsAndOpenRegistrationHandler_Success(t *testing.T) {
+func TestDeleteTeamsHandler_Success(t *testing.T) {
 	c, _ := test_util.NewGinContext(http.MethodDelete, "/events/x/teams")
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
 	h := newTestHandler(t, &store.MockStore{
-		DeleteTeamsAndOpenRegistrationFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
+		DeleteTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
 	}, nil, "")
-	h.DeleteTeamsAndOpenRegistrationHandler(c)
+	h.DeleteTeamsHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
