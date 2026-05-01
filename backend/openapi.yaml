@@ -645,7 +645,7 @@ paths:
       tags: [events]
       summary: Update event group settings
       operationId: updateEventGroupSettings
-      description: Updates editable event group settings such as region and sub_min.
+      description: Updates editable event group settings (region, subs, sort logic, registration, game mode). Game mode must stay within the same game.
       security:
         - bearerAuth: []
       parameters:
@@ -1454,7 +1454,7 @@ components:
 
     UpdateEventGroupSettingsRequest:
       type: object
-      required: [region, registration_open]
+      required: [region, registration_open, game_mode_id]
       properties:
         region:
           type: string
@@ -1467,6 +1467,10 @@ components:
           description: Omit or send empty string to keep the current value.
         registration_open:
           type: boolean
+        game_mode_id:
+          type: string
+          format: uuid
+          description: Must be a mode for the same game as this event group (game cannot be changed).
 
     UpdateRegistrationStatusRequest:
       type: object

@@ -360,6 +360,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
         sub_min: data.sub_min,
         sort_logic: data.sort_logic,
         registration_open: data.registration_open,
+        game_mode_id: data.game_mode_id,
       });
       onSubmitted?.();
       onCancel();
@@ -430,7 +431,9 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
               gamesError && <p className="text-xs text-[var(--color-text-danger)]">{gamesError}</p>
             )}
             {mode === "edit" && (
-              <p className="text-xs text-[var(--color-text-faint)]">Game cannot be changed while editing.</p>
+              <p className="text-xs text-[var(--color-text-faint)]">
+                Game cannot be changed; you can pick a different mode for this game below.
+              </p>
             )}
             {errors.game_id && (
               <p className="text-xs text-[var(--color-text-danger)]">{errors.game_id.message}</p>
@@ -448,7 +451,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
                 <Select
                   value={field.value}
                   onChange={field.onChange}
-                  disabled={mode === "edit" || !watchedGameId || modesLoading || !!modesError}
+                  disabled={!watchedGameId || modesLoading || !!modesError}
                   placeholder={
                     !watchedGameId
                       ? "Select game first"

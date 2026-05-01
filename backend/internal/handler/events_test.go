@@ -403,7 +403,7 @@ func TestUpdateEventGroupSettingsHandler_BadJSON(t *testing.T) {
 func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
-	body := `{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true}`
+	body := `{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"game_mode_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}`
 
 	cases := []struct {
 		name   string
@@ -414,6 +414,8 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 		{"invalid sub_min", store.ErrInvalidSubMin, http.StatusBadRequest},
 		{"invalid sort_logic", store.ErrInvalidSortLogic, http.StatusBadRequest},
 		{"open registration teams", store.ErrOpenRegistrationTeams, http.StatusBadRequest},
+		{"game mode not found", store.ErrGameModeNotFound, http.StatusBadRequest},
+		{"game mode wrong game", store.ErrGameModeWrongGame, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -425,9 +427,10 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, gm uuid.UUID) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
+					assert.Equal(t, uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), gm)
 					return tc.err
 				},
 			}, nil, "")
@@ -440,17 +443,19 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
+	modeID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uid)
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, gm uuid.UUID) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
 			assert.Equal(t, "ranked", sortLogic)
 			assert.False(t, registrationOpen)
+			assert.Equal(t, modeID, gm)
 			return nil
 		},
 	}, nil, "")
@@ -464,6 +469,42 @@ func TestUpdateEventGroupSettingsHandler_MissingRegistrationOpen(t *testing.T) {
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidGameModeID(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"game_mode_id":""}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidGameModeIDMalformed(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"game_mode_id":"not-a-uuid"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidGameModeIDNilUUID(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"game_mode_id":"00000000-0000-0000-0000-000000000000"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)

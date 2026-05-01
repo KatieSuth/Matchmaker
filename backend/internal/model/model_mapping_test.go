@@ -511,6 +511,31 @@ func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_NilDiscordName(
 
 func TestMapDbGetRegistrationDataByEventIdRowsToEventRegistrations_Empty(t *testing.T) {
 	assert.Empty(t, model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations(nil))
+	assert.Empty(t, model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations([]db.GetRegistrationDataByEventIdRow{}))
+}
+
+func TestMapDbGetRegistrationDataByEventIdRowsToEventRegistrations_MultipleRows(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	eid := uuid.New()
+	u1 := uuid.New()
+	u2 := uuid.New()
+	dn := "player"
+	rows := []db.GetRegistrationDataByEventIdRow{
+		{
+			EventID: eid, UserID: u1, CanSubstitute: true, CanLobbyHost: true,
+			DuoRequest: nil, CreatedAt: now, UpdatedAt: now,
+			DiscordName: &dn, Pronouns: "she/her", CurrentRankName: "Silver",
+		},
+		{
+			EventID: eid, UserID: u2, CanSubstitute: false, CanLobbyHost: false,
+			DuoRequest: nil, CreatedAt: now, UpdatedAt: now,
+			DiscordName: nil, Pronouns: "", CurrentRankName: "Iron",
+		},
+	}
+	got := model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations(rows)
+	require.Len(t, got, 2)
+	assert.Equal(t, model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(rows[0]), got[0])
+	assert.Equal(t, model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(rows[1]), got[1])
 }
 
 func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testing.T) {

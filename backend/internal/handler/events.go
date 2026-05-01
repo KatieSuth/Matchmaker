@@ -28,6 +28,7 @@ type updateEventGroupSettingsRequest struct {
 	SubMin           int32  `json:"sub_min"`
 	SortLogic        string `json:"sort_logic"`
 	RegistrationOpen *bool  `json:"registration_open"`
+	GameModeID       string `json:"game_mode_id"`
 }
 
 type updateRegistrationStatusRequest struct {
@@ -247,7 +248,14 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen)
+	gameModeID, err := uuid.Parse(strings.TrimSpace(body.GameModeID))
+	if err != nil || gameModeID == uuid.Nil {
+		slog.WarnContext(c.Request.Context(), "invalid game_mode_id in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "game_mode_id", body.GameModeID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "game_mode_id must be a valid UUID"})
+		return
+	}
+
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, gameModeID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -262,6 +270,12 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrOpenRegistrationTeams):
 			slog.WarnContext(c.Request.Context(), "registration open blocked due to existing teams in settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Delete teams before opening registration"})
+		case errors.Is(err, store.ErrGameModeNotFound):
+			slog.WarnContext(c.Request.Context(), "game mode not found for settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Game mode not found"})
+		case errors.Is(err, store.ErrGameModeWrongGame):
+			slog.WarnContext(c.Request.Context(), "game mode wrong game for settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Game mode must belong to this event's game"})
 		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})

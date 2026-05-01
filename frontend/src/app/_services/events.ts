@@ -31,6 +31,7 @@ export interface UpdateEventGroupRequest {
   sub_min: number;
   sort_logic: EventSortLogic;
   registration_open: boolean;
+  game_mode_id: string;
 }
 
 export interface UpdateRegistrationRequest {

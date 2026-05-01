@@ -118,6 +118,17 @@ func TestUpdateUserFromLogin_UpdatesNameAndAvatar(t *testing.T) {
 	})
 }
 
+func TestUpdateUserFromLogin_NotFound(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		_, err := s.UpdateUserFromLogin(context.Background(), uuid.New(), model.DiscordUser{
+			ID:       "ghost",
+			Username: "nobody",
+			Avatar:   "none",
+		})
+		require.Error(t, err)
+	})
+}
+
 // ============================================================
 // UpdateUser
 // ============================================================

@@ -179,6 +179,17 @@ func firstModeForGame(t *testing.T, ctx context.Context, s *store.PostgresStore,
 	return modes[0]
 }
 
+func insertExtraGameMode(t *testing.T, ctx context.Context, tx db.DBTX, gameID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	_, err := tx.Exec(ctx, `
+		INSERT INTO game_modes (id, game_id, "name", team_size, created_at, updated_at, duration)
+		VALUES ($1, $2, 'Alternate mode', 5, NOW(), NOW(), 60)
+	`, id, gameID)
+	require.NoError(t, err)
+	return id
+}
+
 func createCompleteUserGameForRegistration(t *testing.T, ctx context.Context, tx db.DBTX, s *store.PostgresStore, userID, gameID uuid.UUID) {
 	t.Helper()
 
@@ -464,7 +475,7 @@ func TestUpdateEventGroupSettings_Success(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5, "ranked", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5, "ranked", true, mode.ID)
 	require.NoError(t, err)
 	var region string
 	var subMin int32
@@ -488,7 +499,7 @@ func TestUpdateEventGroupSettings_Forbidden(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0, "", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0, "", true, mode.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
@@ -502,7 +513,7 @@ func TestUpdateEventGroupSettings_Invalid(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0, "", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0, "", true, mode.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -516,7 +527,7 @@ func TestUpdateEventGroupSettings_InvalidNegativeSubMin(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1, "", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1, "", true, mode.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -526,7 +537,7 @@ func TestUpdateEventGroupSettings_NotFound(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 
-	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0, "", false)
+	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0, "", false, uuid.Nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
@@ -540,7 +551,7 @@ func TestUpdateEventGroupSettings_InvalidSortLogic(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "not-a-mode", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "not-a-mode", true, mode.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSortLogic)
 }
@@ -557,7 +568,7 @@ func TestUpdateEventGroupSettings_PreservesSortLogicWhenEmpty(t *testing.T) {
 	_, err = tx.Exec(ctx, `UPDATE event_groups SET sort_logic = 'ranked' WHERE id = $1`, groupID)
 	require.NoError(t, err)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "LATAM", 1, "", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "LATAM", 1, "", true, mode.ID)
 	require.NoError(t, err)
 
 	var region string
@@ -566,6 +577,77 @@ func TestUpdateEventGroupSettings_PreservesSortLogicWhenEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "LATAM", region)
 	assert.Equal(t, "ranked", sortLogic)
+}
+
+func TestUpdateEventGroupSettings_UpdatesGameModeWithinSameGame(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeA := firstModeForGame(t, ctx, s, games[0].ID)
+	modeBID := insertExtraGameMode(t, ctx, tx, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, modeA.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, modeBID)
+	require.NoError(t, err)
+	var stored uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT game_mode_id FROM event_groups WHERE id = $1`, groupID).Scan(&stored)
+	require.NoError(t, err)
+	assert.Equal(t, modeBID, stored)
+}
+
+func TestUpdateEventGroupSettings_RejectsGameModeFromOtherGame(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(games), 2)
+	modeGameA := firstModeForGame(t, ctx, s, games[0].ID)
+	modeGameB := firstModeForGame(t, ctx, s, games[1].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, modeGameA.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, modeGameB.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrGameModeWrongGame)
+}
+
+func TestUpdateEventGroupSettings_NewGameModeNotFound(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, uuid.New())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
+}
+
+// TestUpdateEventGroupSettings_CurrentGameModeNotFound simulates a row whose game_mode_id no longer
+// resolves (e.g. legacy/orphan data). A plain UPDATE to a missing mode_id violates the FK unless the
+// constraint is deferred; this test uses DEFERRABLE so the violation is only checked at commit—cleanup rolls back.
+func TestUpdateEventGroupSettings_CurrentGameModeNotFound(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	missingCurrentModeID := uuid.New()
+	_, err = tx.Exec(ctx, `SET CONSTRAINTS event_groups_game_mode_id_fkey DEFERRED`)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, `UPDATE event_groups SET game_mode_id = $1 WHERE id = $2`, missingCurrentModeID, groupID)
+	require.NoError(t, err)
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, mode.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
 }
 
 func TestUpdateEventGroupSettings_SetsRegistrationClosed(t *testing.T) {
@@ -577,7 +659,7 @@ func TestUpdateEventGroupSettings_SetsRegistrationClosed(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", false)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", false, mode.ID)
 	require.NoError(t, err)
 	var open bool
 	err = tx.QueryRow(ctx, `SELECT registration_open FROM event_groups WHERE id = $1`, groupID).Scan(&open)
@@ -597,7 +679,7 @@ func TestUpdateEventGroupSettings_OpenBlockedByExistingTeams(t *testing.T) {
 	require.NoError(t, err)
 	insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, mode.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrOpenRegistrationTeams)
 }

@@ -33,6 +33,7 @@ var (
 	ErrEventNotFound             = errors.New("event not found")
 	ErrInvalidRegistration       = errors.New("invalid registration payload")
 	ErrGameModeNotFound          = errors.New("game mode not found")
+	ErrGameModeWrongGame         = errors.New("game mode does not belong to this event game")
 	ErrUserGameProfileIncomplete = errors.New("user game profile is incomplete")
 )
 
@@ -272,7 +273,7 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool) error {
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, gameModeID uuid.UUID) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -285,6 +286,25 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 	}
 	if strings.TrimSpace(region) == "" || subMin < 0 {
 		return ErrInvalidSubMin
+	}
+
+	currentMode, err := s.GetGameModeByID(ctx, group.GameModeID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrGameModeNotFound
+		}
+		return fmt.Errorf("get current game mode: %w", err)
+	}
+
+	newMode, err := s.GetGameModeByID(ctx, gameModeID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrGameModeNotFound
+		}
+		return fmt.Errorf("get new game mode: %w", err)
+	}
+	if newMode.GameID != currentMode.GameID {
+		return ErrGameModeWrongGame
 	}
 
 	effectiveSort := strings.TrimSpace(sortLogic)
@@ -311,6 +331,7 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 		SubMin:           subMin,
 		SortLogic:        effectiveSort,
 		RegistrationOpen: registrationOpen,
+		GameModeID:       gameModeID,
 	})
 	if err != nil {
 		return fmt.Errorf("update event group settings: %w", err)

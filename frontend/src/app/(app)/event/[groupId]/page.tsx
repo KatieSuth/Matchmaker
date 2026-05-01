@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
+import { LobbyHostInfoHint } from "@/app/_components/LobbyHostInfoHint";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
 import { EventForm } from "@/app/_components/forms/EventForm";
@@ -908,6 +909,7 @@ export default function EventGroupPage() {
                       />
                       <ToggleRow
                         label="Can lobby host"
+                        labelAccessory={<LobbyHostInfoHint />}
                         checked={settings.can_lobby_host}
                         disabled={!checked}
                         onChange={(val) =>
@@ -1172,7 +1174,10 @@ export default function EventGroupPage() {
               <p className="text-[var(--color-text-soft)]">{formatDateTime(selectedRegistration.created_at)}</p>
             </div>
             <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can lobby host</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can lobby host</p>
+                <LobbyHostInfoHint />
+              </div>
               <p className="text-[var(--color-text-soft)]">{selectedRegistration.can_lobby_host ? "Yes" : "No"}</p>
             </div>
             <div>

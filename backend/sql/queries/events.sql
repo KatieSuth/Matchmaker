@@ -86,7 +86,7 @@ WHERE E.group_id = $1;
 
 -- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, game_mode_id = $6, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 

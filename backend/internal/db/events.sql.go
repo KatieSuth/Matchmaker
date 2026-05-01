@@ -538,7 +538,7 @@ func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEven
 
 const updateEventGroupSettings = `-- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, game_mode_id = $6, updated_at = NOW()
 WHERE id = $1
 RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
@@ -549,6 +549,7 @@ type UpdateEventGroupSettingsParams struct {
 	SubMin           int32
 	SortLogic        string
 	RegistrationOpen bool
+	GameModeID       uuid.UUID
 }
 
 func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventGroupSettingsParams) (EventGroup, error) {
@@ -558,6 +559,7 @@ func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventG
 		arg.SubMin,
 		arg.SortLogic,
 		arg.RegistrationOpen,
+		arg.GameModeID,
 	)
 	var i EventGroup
 	err := row.Scan(
