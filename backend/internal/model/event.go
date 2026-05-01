@@ -58,6 +58,7 @@ type EventGroupDetail struct {
 	SubMin           int               `json:"sub_min"`
 	RegistrationOpen bool              `json:"registration_open"`
 	Region           string            `json:"region"`
+	SortLogic        string            `json:"sort_logic"`
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
 	Events           []EventGroupEvent `json:"events"`
@@ -131,6 +132,7 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		SubMin:           int(row.SubMin),
 		RegistrationOpen: row.RegistrationOpen,
 		Region:           row.Region,
+		SortLogic:        row.SortLogic,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 		Events:           events,

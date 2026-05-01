@@ -1,5 +1,5 @@
 -- name: CreateEventGroup :one
-INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, created_at, updated_at)
+INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
@@ -7,6 +7,7 @@ VALUES (
     $3,
     $4,
     $5,
+    $6,
     NOW(),
     NOW()
 )
@@ -41,6 +42,7 @@ SELECT
     EG.sub_min,
     EG.registration_open,
     EG.region,
+    EG.sort_logic,
     EG.created_at,
     EG.updated_at
 FROM event_groups AS EG
@@ -84,7 +86,7 @@ WHERE E.group_id = $1;
 
 -- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 

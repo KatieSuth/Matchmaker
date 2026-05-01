@@ -41,6 +41,7 @@ type EventGroup struct {
 	Region              string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	SortLogic           string
 }
 
 type Game struct {

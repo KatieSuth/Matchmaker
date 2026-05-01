@@ -1,6 +1,11 @@
 // Client calls for event groups, registration, and host actions (uses axios + auth interceptors).
 import api from "@/app/_lib/axios";
-import { EventGroupDetail, EventsPage, UpsertGroupRegistrationRequest } from "@/app/_types/types";
+import {
+  EventGroupDetail,
+  EventsPage,
+  EventSortLogic,
+  UpsertGroupRegistrationRequest,
+} from "@/app/_types/types";
 
 export interface CreateEventRequest {
   game_mode_id: string;
@@ -9,6 +14,7 @@ export interface CreateEventRequest {
   sub_min: number;
   games_to_run: number;
   registration_open: boolean;
+  sort_logic: EventSortLogic;
 }
 
 export interface CreateEventResponse {
@@ -23,6 +29,7 @@ export async function createEvent(payload: CreateEventRequest): Promise<CreateEv
 export interface UpdateEventGroupRequest {
   region: string;
   sub_min: number;
+  sort_logic: EventSortLogic;
 }
 
 export interface UpdateRegistrationRequest {

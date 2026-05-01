@@ -1412,6 +1412,12 @@ components:
           type: string
           format: date-time
 
+    SortLogic:
+      type: string
+      enum: [balanced, ranked]
+      default: balanced
+      description: Matchmaking mode — balanced mixes skill across lobbies; ranked keeps similar skill together.
+
     CreateEventRequest:
       type: object
       required: [game_mode_id, region, start_time, sub_min, games_to_run]
@@ -1435,6 +1441,8 @@ components:
           minimum: 1
         registration_open:
           type: boolean
+        sort_logic:
+          $ref: "#/components/schemas/SortLogic"
 
     CreateEventResponse:
       type: object
@@ -1454,6 +1462,9 @@ components:
           type: integer
           format: int32
           minimum: 0
+        sort_logic:
+          $ref: "#/components/schemas/SortLogic"
+          description: Omit or send empty string to keep the current value.
 
     UpdateRegistrationStatusRequest:
       type: object
@@ -1565,6 +1576,7 @@ components:
         - sub_min
         - registration_open
         - region
+        - sort_logic
         - created_at
         - updated_at
         - events
@@ -1597,6 +1609,8 @@ components:
           type: boolean
         region:
           type: string
+        sort_logic:
+          $ref: "#/components/schemas/SortLogic"
         created_at:
           type: string
           format: date-time

@@ -1191,6 +1191,7 @@ export default function EventGroupPage() {
             games_to_run: group.events.length,
             start_time_local: firstEventStart ? new Date(firstEventStart).toISOString().slice(0, 16) : "",
             registration_open: group.registration_open,
+            sort_logic: group.sort_logic,
           }}
           onCancel={() => setEditSheetOpen(false)}
           onSubmitted={() => {

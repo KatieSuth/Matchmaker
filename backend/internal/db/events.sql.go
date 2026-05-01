@@ -48,7 +48,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error 
 }
 
 const createEventGroup = `-- name: CreateEventGroup :one
-INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, created_at, updated_at)
+INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
@@ -56,10 +56,11 @@ VALUES (
     $3,
     $4,
     $5,
+    $6,
     NOW(),
     NOW()
 )
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at
+RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type CreateEventGroupParams struct {
@@ -68,6 +69,7 @@ type CreateEventGroupParams struct {
 	SubMin           int32
 	RegistrationOpen bool
 	Region           string
+	SortLogic        string
 }
 
 func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupParams) (EventGroup, error) {
@@ -77,6 +79,7 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 		arg.SubMin,
 		arg.RegistrationOpen,
 		arg.Region,
+		arg.SortLogic,
 	)
 	var i EventGroup
 	err := row.Scan(
@@ -92,6 +95,7 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 		&i.Region,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SortLogic,
 	)
 	return i, err
 }
@@ -179,7 +183,7 @@ func (q *Queries) DeletePlayersByGroupId(ctx context.Context, groupID *uuid.UUID
 }
 
 const getEventGroupById = `-- name: GetEventGroupById :one
-SELECT id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at FROM event_groups WHERE id = $1
+SELECT id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic FROM event_groups WHERE id = $1
 `
 
 func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGroup, error) {
@@ -198,6 +202,7 @@ func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGro
 		&i.Region,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SortLogic,
 	)
 	return i, err
 }
@@ -215,6 +220,7 @@ SELECT
     EG.sub_min,
     EG.registration_open,
     EG.region,
+    EG.sort_logic,
     EG.created_at,
     EG.updated_at
 FROM event_groups AS EG
@@ -236,6 +242,7 @@ type GetEventGroupDetailByIdRow struct {
 	SubMin           int32
 	RegistrationOpen bool
 	Region           string
+	SortLogic        string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -255,6 +262,7 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.SubMin,
 		&i.RegistrationOpen,
 		&i.Region,
+		&i.SortLogic,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -499,7 +507,7 @@ const setEventGroupRegistrationOpen = `-- name: SetEventGroupRegistrationOpen :o
 UPDATE event_groups
 SET registration_open = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at
+RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type SetEventGroupRegistrationOpenParams struct {
@@ -523,25 +531,32 @@ func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEven
 		&i.Region,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SortLogic,
 	)
 	return i, err
 }
 
 const updateEventGroupSettings = `-- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at
+RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type UpdateEventGroupSettingsParams struct {
-	ID     uuid.UUID
-	Region string
-	SubMin int32
+	ID        uuid.UUID
+	Region    string
+	SubMin    int32
+	SortLogic string
 }
 
 func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventGroupSettingsParams) (EventGroup, error) {
-	row := q.db.QueryRow(ctx, updateEventGroupSettings, arg.ID, arg.Region, arg.SubMin)
+	row := q.db.QueryRow(ctx, updateEventGroupSettings,
+		arg.ID,
+		arg.Region,
+		arg.SubMin,
+		arg.SortLogic,
+	)
 	var i EventGroup
 	err := row.Scan(
 		&i.ID,
@@ -556,6 +571,7 @@ func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventG
 		&i.Region,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SortLogic,
 	)
 	return i, err
 }

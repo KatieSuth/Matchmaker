@@ -76,6 +76,8 @@ export interface EventGroupEvent {
   registrations: EventRegistration[];
 }
 
+export type EventSortLogic = "balanced" | "ranked";
+
 export interface EventGroupDetail {
   id: string;
   owner_id: string;
@@ -88,6 +90,7 @@ export interface EventGroupDetail {
   sub_min: number;
   registration_open: boolean;
   region: string;
+  sort_logic: EventSortLogic;
   created_at: string;
   updated_at: string;
   events: EventGroupEvent[];

@@ -91,7 +91,7 @@ func TestCreateEventHandler_StoreError(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			return uuid.Nil, errors.New("db exploded")
 		},
 	}
@@ -111,7 +111,7 @@ func TestCreateEventHandler_GameModeNotFound(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			return uuid.Nil, pgx.ErrNoRows
 		},
 	}
@@ -177,12 +177,13 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			assert.Equal(t, gameModeID, inGameModeID)
 			assert.Equal(t, int32(0), subMin)
 			assert.True(t, registrationOpen)
 			assert.Equal(t, "AMER", region)
+			assert.Equal(t, "balanced", sortLogic)
 			assert.Equal(t, int32(3), gamesToRun)
 			want, err := time.Parse(time.RFC3339, startAt)
 			require.NoError(t, err)
@@ -199,6 +200,103 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	}
 	got := test_util.DecodeJSON[response](t, w)
 	require.Equal(t, groupID.String(), got.GroupID)
+}
+
+func TestCreateEventHandler_SortLogicInvalid(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true,
+	  "sort_logic": "x"
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateEventHandler_SortLogicDefaultsToBalanced(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	groupID := uuid.New()
+	startAt := startTimeHoursFromNow(48)
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startAt + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ms := &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ time.Time, _ int32) (uuid.UUID, error) {
+			assert.Equal(t, "balanced", sortLogic)
+			return groupID, nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestCreateEventHandler_SortLogicRanked(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	groupID := uuid.New()
+	startAt := startTimeHoursFromNow(48)
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startAt + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true,
+	  "sort_logic": "ranked"
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ms := &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ time.Time, _ int32) (uuid.UUID, error) {
+			assert.Equal(t, "ranked", sortLogic)
+			return groupID, nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_SortLogicInvalid(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"bogus"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func sprintf(format string, args ...interface{}) string {
@@ -284,7 +382,7 @@ func TestUpdateEventGroupSettingsHandler_InvalidGroupID(t *testing.T) {
 	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: "bad"}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":0}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":0,"sort_logic":"balanced"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
@@ -305,7 +403,7 @@ func TestUpdateEventGroupSettingsHandler_BadJSON(t *testing.T) {
 func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
-	body := `{"region":"AMER","sub_min":1}`
+	body := `{"region":"AMER","sub_min":1,"sort_logic":"balanced"}`
 
 	cases := []struct {
 		name   string
@@ -313,7 +411,8 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 		status int
 	}{
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
-		{"invalid", store.ErrInvalidSubMin, http.StatusBadRequest},
+		{"invalid sub_min", store.ErrInvalidSubMin, http.StatusBadRequest},
+		{"invalid sort_logic", store.ErrInvalidSortLogic, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -325,7 +424,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
 					return tc.err
@@ -343,12 +442,13 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x")
 	test_util.WithUserIDString(c, uid)
 	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
-	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2}`))
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
+			assert.Equal(t, "ranked", sortLogic)
 			return nil
 		},
 	}, nil, "")

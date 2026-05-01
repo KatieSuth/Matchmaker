@@ -54,6 +54,7 @@ const eventFormSchema = z.object({
     .int()
     .min(1, "Number of games must be greater than 0."),
   registration_open: z.boolean(),
+  sort_logic: z.enum(["balanced", "ranked"]),
 });
 
 type EventFormValues = z.infer<typeof eventFormSchema>;
@@ -138,6 +139,69 @@ function NumberStepper({ label, value, min, onChange, hint, disabled = false }: 
   );
 }
 
+interface MatchmakingModeOption {
+  value: "balanced" | "ranked";
+  title: string;
+  description: string;
+}
+
+const MATCHMAKING_MODE_OPTIONS: readonly MatchmakingModeOption[] = [
+  {
+    value: "balanced",
+    title: "Balanced",
+    description:
+      "Mixes skill levels across lobbies while ensuring teams remain even. Best for casual games.",
+  },
+  {
+    value: "ranked",
+    title: "Rank Grouping",
+    description:
+      "Keeps players of similar skill in the same lobby. Best for serious practice.",
+  },
+];
+
+interface MatchmakingModeFieldProps {
+  value: "balanced" | "ranked";
+  onChange: (next: "balanced" | "ranked") => void;
+}
+
+function MatchmakingModeField({ value, onChange }: MatchmakingModeFieldProps) {
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="radiogroup"
+      aria-labelledby="matchmaking-mode-label"
+    >
+      {MATCHMAKING_MODE_OPTIONS.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <label
+            key={opt.value}
+            className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+              selected
+                ? "border-[var(--color-accent-blue)]/50 bg-[var(--color-accent-blue)]/10"
+                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
+            }`}
+          >
+            <input
+              type="radio"
+              name="sort_logic_form"
+              value={opt.value}
+              checked={selected}
+              onChange={() => onChange(opt.value)}
+              className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-accent-blue)]"
+            />
+            <div className="min-w-0 flex flex-col gap-1">
+              <span className="text-sm font-medium text-[var(--color-text-soft)]">{opt.title}</span>
+              <p className="text-xs leading-relaxed text-[var(--color-text-faint)]">{opt.description}</p>
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmitted }: EventFormProps) {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -153,6 +217,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
       sub_min: initialValues?.sub_min ?? 0,
       games_to_run: initialValues?.games_to_run ?? 1,
       registration_open: initialValues?.registration_open ?? true,
+      sort_logic: initialValues?.sort_logic ?? "balanced",
     }),
     [initialValues, mode]
   );
@@ -278,6 +343,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
           sub_min: data.sub_min,
           games_to_run: data.games_to_run,
           registration_open: data.registration_open,
+          sort_logic: data.sort_logic,
         });
         onCancel();
         router.push(`/event/${result.group_id}`);
@@ -292,6 +358,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
       await updateEventGroup(eventGroupId, {
         region: data.region,
         sub_min: data.sub_min,
+        sort_logic: data.sort_logic,
       });
       onSubmitted?.();
       onCancel();
@@ -398,7 +465,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className={`flex flex-col gap-1.5${mode === "edit" ? " sm:col-span-2" : ""}`}>
             <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
               Region *
             </label>
@@ -419,6 +486,42 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
             )}
           </div>
 
+          {mode !== "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                First game start time *
+              </label>
+              <input
+                type="datetime-local"
+                step={900}
+                className={inputCls}
+                {...register("start_time_local")}
+              />
+              {errors.start_time_local && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <span
+              id="matchmaking-mode-label"
+              className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+            >
+              Matchmaking Mode
+            </span>
+            <Controller
+              name="sort_logic"
+              control={control}
+              render={({ field }) => (
+                <MatchmakingModeField value={field.value} onChange={field.onChange} />
+              )}
+            />
+            {errors.sort_logic && (
+              <p className="text-xs text-[var(--color-text-danger)]">{errors.sort_logic.message}</p>
+            )}
+          </div>
+
           {mode === "edit" && (
             <div className="flex flex-col gap-1.5">
               <Controller
@@ -436,23 +539,6 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
               />
               {errors.sub_min && (
                 <p className="text-xs text-[var(--color-text-danger)]">{errors.sub_min.message}</p>
-              )}
-            </div>
-          )}
-
-          {mode !== "edit" && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-                First game start time *
-              </label>
-              <input
-                type="datetime-local"
-                step={900}
-                className={inputCls}
-                {...register("start_time_local")}
-              />
-              {errors.start_time_local && (
-                <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
               )}
             </div>
           )}

@@ -73,7 +73,7 @@ func TestCreateEventGroupWithEvents_Success(t *testing.T) {
 	gamesToRun := int32(3)
 	subMin := int32(2)
 
-	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, subMin, true, "EMEA", start, gamesToRun)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, subMin, true, "EMEA", "ranked", start, gamesToRun)
 	require.NoError(t, err)
 	require.NotEqual(t, uuid.Nil, groupID)
 
@@ -82,12 +82,14 @@ func TestCreateEventGroupWithEvents_Success(t *testing.T) {
 	var regOpen bool
 	var ownerID uuid.UUID
 	var gameModeID uuid.UUID
+	var gotSort string
 	err = tx.QueryRow(ctx, `
-		SELECT region, sub_min, registration_open, owner_id, game_mode_id
+		SELECT region, sub_min, registration_open, owner_id, game_mode_id, sort_logic
 		FROM event_groups WHERE id = $1`,
 		groupID,
-	).Scan(&region, &gotSubMin, &regOpen, &ownerID, &gameModeID)
+	).Scan(&region, &gotSubMin, &regOpen, &ownerID, &gameModeID, &gotSort)
 	require.NoError(t, err)
+	assert.Equal(t, "ranked", gotSort)
 	assert.Equal(t, "EMEA", region)
 	assert.Equal(t, subMin, gotSubMin)
 	assert.True(t, regOpen)
@@ -122,9 +124,26 @@ func TestCreateEventGroupWithEvents_UnknownGameMode(t *testing.T) {
 
 	user := createTestUser(t, ctx, s)
 
-	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "AMER", time.Now().UTC(), 1)
+	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "AMER", "balanced", time.Now().UTC(), 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
+}
+
+func TestCreateEventGroupWithEvents_InvalidSortLogic(t *testing.T) {
+	s, _ := createEventTestStoreTx(t)
+	ctx := context.Background()
+	user := createTestUser(t, ctx, s)
+
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, games)
+	modes, err := s.GetGameModes(ctx, games[0].ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, modes)
+
+	_, err = s.CreateEventGroupWithEvents(ctx, user.ID, modes[0].ID, 0, true, "AMER", "lobster", time.Now().UTC().Add(24*time.Hour), 1)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidSortLogic)
 }
 
 func TestCreateEventGroupWithEvents_SingleGame(t *testing.T) {
@@ -143,7 +162,7 @@ func TestCreateEventGroupWithEvents_SingleGame(t *testing.T) {
 	mode := modes[0]
 
 	start := time.Date(2026, 5, 1, 9, 30, 0, 0, time.UTC)
-	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, 1, true, "APAC", start, 1)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, 1, true, "APAC", "balanced", start, 1)
 	require.NoError(t, err)
 
 	var n int
@@ -416,6 +435,7 @@ func TestGetEventGroupDetail_Success(t *testing.T) {
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
 	assert.Equal(t, groupID, detail.ID)
+	assert.Equal(t, "balanced", detail.SortLogic)
 	assert.Equal(t, host.ID, detail.OwnerID)
 	assert.Equal(t, mode.ID, detail.GameModeID)
 	assert.Greater(t, len(detail.Events), 0)
@@ -444,14 +464,16 @@ func TestUpdateEventGroupSettings_Success(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5, "ranked")
 	require.NoError(t, err)
 	var region string
 	var subMin int32
-	err = tx.QueryRow(ctx, `SELECT region, sub_min FROM event_groups WHERE id = $1`, groupID).Scan(&region, &subMin)
+	var sortLogic string
+	err = tx.QueryRow(ctx, `SELECT region, sub_min, sort_logic FROM event_groups WHERE id = $1`, groupID).Scan(&region, &subMin, &sortLogic)
 	require.NoError(t, err)
 	assert.Equal(t, "EU-West", region)
 	assert.Equal(t, int32(5), subMin)
+	assert.Equal(t, "ranked", sortLogic)
 }
 
 func TestUpdateEventGroupSettings_Forbidden(t *testing.T) {
@@ -464,7 +486,7 @@ func TestUpdateEventGroupSettings_Forbidden(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0)
+	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0, "")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
@@ -478,7 +500,7 @@ func TestUpdateEventGroupSettings_Invalid(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0, "")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -492,7 +514,7 @@ func TestUpdateEventGroupSettings_InvalidNegativeSubMin(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1, "")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -502,9 +524,46 @@ func TestUpdateEventGroupSettings_NotFound(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 
-	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0)
+	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0, "")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
+}
+
+func TestUpdateEventGroupSettings_InvalidSortLogic(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "not-a-mode")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidSortLogic)
+}
+
+func TestUpdateEventGroupSettings_PreservesSortLogicWhenEmpty(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	mode := firstModeForGame(t, ctx, s, games[0].ID)
+	groupID, _ := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
+
+	_, err = tx.Exec(ctx, `UPDATE event_groups SET sort_logic = 'ranked' WHERE id = $1`, groupID)
+	require.NoError(t, err)
+
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "LATAM", 1, "")
+	require.NoError(t, err)
+
+	var region string
+	var sortLogic string
+	err = tx.QueryRow(ctx, `SELECT region, sort_logic FROM event_groups WHERE id = $1`, groupID).Scan(&region, &sortLogic)
+	require.NoError(t, err)
+	assert.Equal(t, "LATAM", region)
+	assert.Equal(t, "ranked", sortLogic)
 }
 
 func TestDeleteEventGroup_Success(t *testing.T) {

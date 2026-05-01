@@ -20,11 +20,13 @@ type createEventRequest struct {
 	SubMin           int32  `json:"sub_min"`
 	GamesToRun       int32  `json:"games_to_run"`
 	RegistrationOpen bool   `json:"registration_open"`
+	SortLogic        string `json:"sort_logic"`
 }
 
 type updateEventGroupSettingsRequest struct {
-	Region string `json:"region"`
-	SubMin int32  `json:"sub_min"`
+	Region    string `json:"region"`
+	SubMin    int32  `json:"sub_min"`
+	SortLogic string `json:"sort_logic"`
 }
 
 type updateRegistrationStatusRequest struct {
@@ -122,6 +124,19 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		return
 	}
 
+	sortLogic := strings.TrimSpace(body.SortLogic)
+	if sortLogic == "" {
+		sortLogic = "balanced"
+	}
+	if sortLogic != "balanced" && sortLogic != "ranked" {
+		slog.WarnContext(c.Request.Context(), "invalid sort_logic in CreateEventHandler", "user_id", userUUID, "sort_logic", body.SortLogic)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "sort_logic must be 'balanced' or 'ranked'",
+		})
+		return
+	}
+
 	groupID, err := h.store.CreateEventGroupWithEvents(
 		c.Request.Context(),
 		userUUID,
@@ -129,10 +144,19 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		body.SubMin,
 		body.RegistrationOpen,
 		region,
+		sortLogic,
 		startTime,
 		body.GamesToRun,
 	)
 	if err != nil {
+		if errors.Is(err, store.ErrInvalidSortLogic) {
+			slog.WarnContext(c.Request.Context(), "invalid sort_logic from store in CreateEventHandler", "user_id", userUUID, "sort_logic", sortLogic)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "sort_logic must be 'balanced' or 'ranked'",
+			})
+			return
+		}
 		if errors.Is(err, store.ErrGameModeNotFound) || errors.Is(err, pgx.ErrNoRows) {
 			slog.WarnContext(c.Request.Context(), "game mode not found in CreateEventHandler", "user_id", userUUID, "game_mode_id", gameModeID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
@@ -207,12 +231,25 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin)
+	sortLogicInput := strings.TrimSpace(body.SortLogic)
+	if sortLogicInput != "" && sortLogicInput != "balanced" && sortLogicInput != "ranked" {
+		slog.WarnContext(c.Request.Context(), "invalid sort_logic in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "sort_logic", body.SortLogic)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "sort_logic must be 'balanced' or 'ranked'",
+		})
+		return
+	}
+
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
 			slog.WarnContext(c.Request.Context(), "forbidden event group settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can edit this event group"})
+		case errors.Is(err, store.ErrInvalidSortLogic):
+			slog.WarnContext(c.Request.Context(), "invalid sort_logic for event group settings update", "user_id", userUUID, "group_id", groupID, "sort_logic", body.SortLogic)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "sort_logic must be 'balanced' or 'ranked'"})
 		case errors.Is(err, store.ErrInvalidSubMin):
 			slog.WarnContext(c.Request.Context(), "invalid event group settings payload", "user_id", userUUID, "group_id", groupID, "region", body.Region, "sub_min", body.SubMin)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "region is required and sub_min must be >= 0"})

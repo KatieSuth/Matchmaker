@@ -27,6 +27,7 @@ var (
 	ErrTeamsNotCreated           = errors.New("teams not created")
 	ErrRegistrationNotFound      = errors.New("registration not found")
 	ErrInvalidSubMin             = errors.New("invalid sub_min")
+	ErrInvalidSortLogic          = errors.New("invalid sort_logic")
 	ErrOpenRegistrationTeams     = errors.New("cannot open registration while teams exist")
 	ErrEventGroupNotFound        = errors.New("event group not found")
 	ErrEventNotFound             = errors.New("event not found")
@@ -172,7 +173,15 @@ func decodeDashboardCursor(cursor string) (dashboardCursor, error) {
 	return parsed, nil
 }
 
-func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+func isValidSortLogic(s string) bool {
+	return s == "balanced" || s == "ranked"
+}
+
+func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+	if !isValidSortLogic(sortLogic) {
+		return uuid.Nil, ErrInvalidSortLogic
+	}
+
 	var groupID uuid.UUID
 
 	err := s.WithTx(ctx, func(tx Store) error {
@@ -195,6 +204,7 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 			SubMin:           subMin,
 			RegistrationOpen: registrationOpen,
 			Region:           region,
+			SortLogic:        sortLogic,
 		})
 		if err != nil {
 			return fmt.Errorf("create event group: %w", err)
@@ -262,7 +272,7 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32) error {
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -277,10 +287,19 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 		return ErrInvalidSubMin
 	}
 
+	effectiveSort := strings.TrimSpace(sortLogic)
+	if effectiveSort == "" {
+		effectiveSort = group.SortLogic
+	}
+	if !isValidSortLogic(effectiveSort) {
+		return ErrInvalidSortLogic
+	}
+
 	_, err = s.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
-		ID:     groupID,
-		Region: strings.TrimSpace(region),
-		SubMin: subMin,
+		ID:        groupID,
+		Region:    strings.TrimSpace(region),
+		SubMin:    subMin,
+		SortLogic: effectiveSort,
 	})
 	if err != nil {
 		return fmt.Errorf("update event group settings: %w", err)

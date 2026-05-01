@@ -550,6 +550,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 		SubMin:           1,
 		RegistrationOpen: false,
 		Region:           "AMER",
+		SortLogic:        "ranked",
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -566,6 +567,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, 1, result.SubMin)
 	assert.False(t, result.RegistrationOpen)
 	assert.Equal(t, "AMER", result.Region)
+	assert.Equal(t, "ranked", result.SortLogic)
 	assert.Equal(t, now, result.CreatedAt)
 	assert.Equal(t, now, result.UpdatedAt)
 	assert.Equal(t, events, result.Events)
