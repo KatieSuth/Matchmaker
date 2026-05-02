@@ -932,10 +932,10 @@ export default function EventGroupPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-[var(--color-text-soft)]">Duo request (applies to each selected event; cannot be guaranteed)</label>
+              <label className="text-sm text-[var(--color-text-soft)]">Duo Request (They must list you here too. Applies to each selected event. Cannot be guaranteed)</label>
               <input
                 className={inputCls}
-                placeholder="Optional Discord name"
+                placeholder="Discord Name"
                 value={registrationDraft.duo_request}
                 onChange={(event) =>
                   setRegistrationDraft((prev) => ({ ...prev, duo_request: event.target.value }))
