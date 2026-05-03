@@ -34,7 +34,7 @@ export default function CallbackPage() {
                     return;
                 }
 
-                const domain = process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN;
+                const domain = process.env.NEXT_PUBLIC_FRONTEND_DOMAIN;
                 const expire = process.env.NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT;
 
                 const accessToken = response.access_token;

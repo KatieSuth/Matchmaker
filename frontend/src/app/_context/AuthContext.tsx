@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (signal.aborted) return;
                 setIsAuthenticated(false);
                 setUser(null);
-                document.cookie = "auth_session=; Max-Age=0; domain=" + process.env.NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN;
+                document.cookie = "auth_session=; Max-Age=0; domain=" + process.env.NEXT_PUBLIC_FRONTEND_DOMAIN;
             } finally {
                 if (!signal.aborted) {
                     setIsLoading(false);

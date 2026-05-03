@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  allowedDevOrigins: process.env.NEXT_PUBLIC_FRONTEND_DOMAIN
+    ? [process.env.NEXT_PUBLIC_FRONTEND_DOMAIN]
+    : [],
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
   },

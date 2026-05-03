@@ -136,7 +136,7 @@ curl https://matchmaker.localhost/api/health
 | Variable                               | Default                             | Description                                                                       |
 |----------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
 | `NEXT_PUBLIC_API_URL`                  | `https://matchmaker.localhost/api`  | Gin API base URL                                                                  |
-| `NEXT_PUBLIC_FRONTEND_COOKIE_DOMAIN`   | `matchmaker.localhost`              | Domain for setting cookies                                                        |
+| `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `matchmaker.localhost`              | Frontend host or origin (`allowedDevOrigins`, `auth_session` cookie `Domain`)     |
 | `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 
