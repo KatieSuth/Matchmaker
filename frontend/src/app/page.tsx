@@ -1,22 +1,12 @@
 // Public landing: Discord login. With auth_session set, the route guard (see `proxy.ts`) can redirect to the app.
 import Image from "next/image";
 import LoginButton from "@/app/_components/LoginButton";
+import PageBackgroundOrbs from "@/app/_components/PageBackgroundOrbs";
 
 export default function Page() {
   return (
     <main className="bg-page relative overflow-hidden min-h-screen flex flex-col items-center justify-center px-5 py-8">
-
-      {/* Animated glow orb — top-left */}
-      <div
-        className="animate-drift glow-orb-blue pointer-events-none fixed rounded-full w-[600px] h-[600px] -top-[200px] -left-[200px]"
-        aria-hidden
-      />
-
-      {/* Animated glow orb — bottom-right */}
-      <div
-        className="animate-drift-reverse glow-orb-orange pointer-events-none fixed rounded-full w-[500px] h-[500px] -bottom-[150px] -right-[150px]"
-        aria-hidden
-      />
+      <PageBackgroundOrbs />
 
       {/* Card */}
       <div className="animate-rise card relative z-10 flex flex-col items-center w-full max-w-[540px] px-12 py-14 max-sm:px-6 max-sm:py-10">

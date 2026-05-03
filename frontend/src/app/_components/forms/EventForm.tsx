@@ -15,49 +15,76 @@ import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { Game, GameMode } from "@/app/_types/types";
 
+export type EventFormEditScheduleRow = {
+  id: string;
+  start_time: string;
+  game_mode_id: string;
+};
+
 interface EventFormProps {
   mode: "create" | "edit";
   onCancel: () => void;
   eventGroupId?: string;
   initialValues?: Partial<EventFormValues>;
+  /** Edit only: current games from GET /events/:groupId (drives per-game time + mode UI). */
+  editSchedule?: EventFormEditScheduleRow[];
   onSubmitted?: () => void;
 }
 
-const eventFormSchema = z.object({
-  game_id: z.string().min(1, "Game is required."),
-  game_mode_id: z.string().min(1, "Game mode is required."),
-  region: z
-    .string()
-    .min(1, "Region is required.")
-    .refine((s) => (REGIONS as readonly string[]).includes(s), {
-      message: "Please select a valid region.",
-    }),
-  start_time_local: z
-    .string()
-    .min(1, "Start time is required.")
-    .refine((s) => !Number.isNaN(new Date(s).getTime()), {
-      message: "Start time is invalid.",
-    })
-    .refine((s) => {
-      const t = new Date(s).getTime();
-      if (Number.isNaN(t)) return true;
-      return t >= Date.now();
-    }, {
-      message: "Start time cannot be in the past.",
-    }),
-  sub_min: z
-    .number()
-    .int()
-    .min(0, "Minimum subs per lobby cannot be below 0."),
-  games_to_run: z
-    .number()
-    .int()
-    .min(1, "Number of games must be greater than 0."),
-  registration_open: z.boolean(),
-  sort_logic: z.enum(["balanced", "ranked"]),
-});
+type EventFormValues = {
+  game_id: string;
+  game_mode_id: string;
+  region: string;
+  start_time_local: string;
+  sub_min: number;
+  games_to_run: number;
+  registration_open: boolean;
+  sort_logic: "balanced" | "ranked";
+};
 
-type EventFormValues = z.infer<typeof eventFormSchema>;
+function buildEventFormSchema(mode: "create" | "edit") {
+  const startTimeField =
+    mode === "create"
+      ? z
+          .string()
+          .min(1, "Start time is required.")
+          .refine((s) => !Number.isNaN(new Date(s).getTime()), {
+            message: "Start time is invalid.",
+          })
+          .refine((s) => {
+            const t = new Date(s).getTime();
+            if (Number.isNaN(t)) return true;
+            return t >= Date.now();
+          }, {
+            message: "Start time cannot be in the past.",
+          })
+      : z.string().optional();
+
+  return z.object({
+    game_id: z.string().min(1, "Game is required."),
+    game_mode_id:
+      mode === "create"
+        ? z.string().min(1, "Game mode is required.")
+        : z.string().optional(),
+    region: z
+      .string()
+      .min(1, "Region is required.")
+      .refine((s) => (REGIONS as readonly string[]).includes(s), {
+        message: "Please select a valid region.",
+      }),
+    start_time_local: startTimeField,
+    sub_min: z
+      .number()
+      .int()
+      .min(0, "Minimum subs per lobby cannot be below 0."),
+    games_to_run: z
+      .number()
+      .int()
+      .min(1, "Number of games must be greater than 0."),
+    registration_open: z.boolean(),
+    sort_logic: z.enum(["balanced", "ranked"]),
+  });
+}
 
 function toDateTimeLocalValue(date: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -202,11 +229,37 @@ function MatchmakingModeField({ value, onChange }: MatchmakingModeFieldProps) {
   );
 }
 
-export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmitted }: EventFormProps) {
+type PerGameDraftRow = {
+  eventId: string;
+  startLocal: string;
+  modeId: string;
+};
+
+function validateEditScheduleDraft(rows: PerGameDraftRow[]): string | null {
+  const nowMs = Date.now();
+  for (const row of rows) {
+    if (!row.modeId) return "Game mode is required for each scheduled game.";
+    const t = new Date(row.startLocal).getTime();
+    if (Number.isNaN(t)) return "One or more game times are invalid.";
+    if (t < nowMs) return "Start times cannot be in the past.";
+  }
+  return null;
+}
+
+export function EventForm({
+  mode,
+  onCancel,
+  eventGroupId,
+  initialValues,
+  editSchedule,
+  onSubmitted,
+}: EventFormProps) {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const userTz =
     typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+
+  const eventFormSchema = useMemo(() => buildEventFormSchema(mode), [mode]);
 
   const defaultValues = useMemo(
     (): EventFormValues => ({
@@ -249,6 +302,27 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const editScheduleSig =
+    mode === "edit" && editSchedule?.length
+      ? editSchedule.map((row) => `${row.id}:${row.start_time}:${row.game_mode_id}`).join("|")
+      : "";
+
+  const [syncedEditScheduleSig, setSyncedEditScheduleSig] = useState<string | null>(null);
+  const [perGameDraft, setPerGameDraft] = useState<PerGameDraftRow[]>([]);
+
+  if (editScheduleSig !== syncedEditScheduleSig) {
+    setSyncedEditScheduleSig(editScheduleSig);
+    setPerGameDraft(
+      mode === "edit" && editSchedule?.length
+        ? editSchedule.map((row) => ({
+            eventId: row.id,
+            startLocal: toDateTimeLocalValue(new Date(row.start_time)),
+            modeId: row.game_mode_id,
+          }))
+        : []
+    );
+  }
 
   useEffect(() => {
     if (authLoading || !isAuthenticated || !user?.id) return;
@@ -300,7 +374,9 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
         if (signal.aborted) return;
         setModes(data);
         const prevModeId = getValues("game_mode_id");
-        setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
+        if (mode !== "edit") {
+          setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
+        }
       } catch (err) {
         if (
           signal.aborted ||
@@ -324,7 +400,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
     return () => {
       ac.abort();
     };
-  }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated]);
+  }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated, mode]);
 
   const onValidSubmit = async (data: EventFormValues) => {
     setSubmitError(null);
@@ -355,12 +431,27 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
         return;
       }
 
+      if (perGameDraft.length === 0) {
+        setSubmitError("Could not load games for this event.");
+        return;
+      }
+
+      const scheduleErr = validateEditScheduleDraft(perGameDraft);
+      if (scheduleErr) {
+        setSubmitError(scheduleErr);
+        return;
+      }
+
       await updateEventGroup(eventGroupId, {
         region: data.region,
         sub_min: data.sub_min,
         sort_logic: data.sort_logic,
         registration_open: data.registration_open,
-        game_mode_id: data.game_mode_id,
+        events: perGameDraft.map((row) => ({
+          event_id: row.eventId,
+          start_time: new Date(row.startLocal).toISOString(),
+          game_mode_id: row.modeId,
+        })),
       });
       onSubmitted?.();
       onCancel();
@@ -432,7 +523,7 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
             )}
             {mode === "edit" && (
               <p className="text-xs text-[var(--color-text-faint)]">
-                Game cannot be changed; you can pick a different mode for this game below.
+                Game cannot be changed. Adjust date, time, and mode for each scheduled game below.
               </p>
             )}
             {errors.game_id && (
@@ -440,34 +531,36 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-              Game mode *
-            </label>
-            <Controller
-              name="game_mode_id"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={!watchedGameId || modesLoading || !!modesError}
-                  placeholder={
-                    !watchedGameId
-                      ? "Select game first"
-                      : modesLoading
-                        ? "Loading game modes..."
-                        : "Select game mode"
-                  }
-                  options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
-                />
+          {mode !== "edit" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                Game mode *
+              </label>
+              <Controller
+                name="game_mode_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={!watchedGameId || modesLoading || !!modesError}
+                    placeholder={
+                      !watchedGameId
+                        ? "Select game first"
+                        : modesLoading
+                          ? "Loading game modes..."
+                          : "Select game mode"
+                    }
+                    options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
+                  />
+                )}
+              />
+              {modesError && <p className="text-xs text-[var(--color-text-danger)]">{modesError}</p>}
+              {errors.game_mode_id && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.game_mode_id.message}</p>
               )}
-            />
-            {modesError && <p className="text-xs text-[var(--color-text-danger)]">{modesError}</p>}
-            {errors.game_mode_id && (
-              <p className="text-xs text-[var(--color-text-danger)]">{errors.game_mode_id.message}</p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className={`flex flex-col gap-1.5${mode === "edit" ? " sm:col-span-2" : ""}`}>
             <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
@@ -590,6 +683,68 @@ export function EventForm({ mode, onCancel, eventGroupId, initialValues, onSubmi
             </div>
           )}
         </div>
+
+        {mode === "edit" && perGameDraft.length > 0 && (
+          <div className="flex flex-col gap-3 pt-2 border-t border-white/[0.06]">
+            <p className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              Games in this series
+            </p>
+            <p className="text-xs text-[var(--color-text-faint)]">
+              Each row applies to one scheduled game. Times use your local timezone ({userTz}).
+            </p>
+            <div className="flex flex-col gap-4">
+              {perGameDraft.map((row, index) => (
+                <div
+                  key={row.eventId}
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 flex flex-col gap-2"
+                >
+                  <p className="text-xs font-semibold text-[var(--color-text-soft)]">Game {index + 1}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                        Start time *
+                      </label>
+                      <input
+                        type="datetime-local"
+                        step={900}
+                        className={inputCls}
+                        value={row.startLocal}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPerGameDraft((prev) =>
+                            prev.map((r) => (r.eventId === row.eventId ? { ...r, startLocal: v } : r))
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                        Game mode *
+                      </label>
+                      <Select
+                        value={row.modeId}
+                        onChange={(nextMode) => {
+                          setPerGameDraft((prev) =>
+                            prev.map((r) => (r.eventId === row.eventId ? { ...r, modeId: nextMode } : r))
+                          );
+                        }}
+                        disabled={!watchedGameId || modesLoading || !!modesError}
+                        placeholder={
+                          !watchedGameId
+                            ? "Select game first"
+                            : modesLoading
+                              ? "Loading game modes..."
+                              : "Select game mode"
+                        }
+                        options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="pt-1 border-t border-white/[0.06]">
           <Controller

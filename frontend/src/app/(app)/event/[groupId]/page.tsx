@@ -67,6 +67,25 @@ function formatPlayerCount(count: number) {
   return `${count} ${count === 1 ? "Player" : "Players"}`;
 }
 
+function formatGroupTeamSizeLabel(events: EventGroupEvent[]) {
+  const sizes = [...new Set(events.map((e) => e.team_size))];
+  if (sizes.length === 0) return "—";
+  if (sizes.length === 1) return String(sizes[0]);
+  return "Varies";
+}
+
+function formatHostDisplayLabel(isViewerHost: boolean, ownerName: string, ownerPronouns: string) {
+  if (isViewerHost) return "You";
+  const pronouns = ownerPronouns.trim();
+  if (pronouns) return `${ownerName} (${pronouns})`;
+  return ownerName;
+}
+
+/** Compact subtitle fragment for chips / roster rows (game mode · formatted time). */
+function formatGameModeAndTime(modeName: string, startISO: string) {
+  return `${modeName} · ${DATE_TIME_FMT.format(new Date(startISO))}`;
+}
+
 function PlayerCard({
   registration,
   gameNumber,
@@ -731,11 +750,15 @@ export default function EventGroupPage() {
             </div>
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Team Size</p>
-              <p className="text-xs text-[var(--color-text-soft)]">{group.team_size}</p>
+              <p className="text-xs text-[var(--color-text-soft)]">
+                {formatGroupTeamSizeLabel(group.events)}
+              </p>
             </div>
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Host</p>
-              <p className="text-xs text-[var(--color-text-soft)]">{isHost ? "You" : group.owner_name}</p>
+              <p className="text-xs text-[var(--color-text-soft)]">
+                {formatHostDisplayLabel(isHost, group.owner_name, group.owner_pronouns ?? "")}
+              </p>
             </div>
           </div>
         </div>
@@ -772,7 +795,7 @@ export default function EventGroupPage() {
                     : "border-white/10 bg-white/[0.02] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)]",
                 ].join(" ")}
               >
-                Game {index + 1} · {DATE_TIME_FMT.format(new Date(event.start_time))}
+                Game {index + 1} · {formatGameModeAndTime(event.game_mode_name, event.start_time)}
               </button>
             ))}
           </div>
@@ -886,7 +909,7 @@ export default function EventGroupPage() {
                         className="mt-0.5"
                       />
                       <span className="text-sm font-semibold text-[var(--color-text)] leading-snug pt-0.5">
-                        Game {index + 1} · {formatDateTime(event.start_time)}
+                        Game {index + 1} · {event.game_mode_name} · {formatDateTime(event.start_time)}
                       </span>
                     </div>
                     <div className="ml-14 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 flex flex-col gap-2">
@@ -959,12 +982,19 @@ export default function EventGroupPage() {
                 }}
                 className="flex flex-col gap-3 scroll-mt-24"
               >
-                <h2 className="relative flex items-center justify-between text-sm font-semibold text-[var(--color-text)]">
-                  <span className="relative z-[1]">Game {index + 1}</span>
-                  <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
+                <h2 className="relative flex items-center justify-between gap-2 text-sm font-semibold text-[var(--color-text)]">
+                  <span className="relative z-[1] flex min-w-0 shrink flex-wrap items-baseline gap-x-2 gap-y-0">
+                    <span className="shrink-0 whitespace-nowrap">Game {index + 1}</span>
+                    <span className="text-[0.65rem] font-normal uppercase tracking-wide text-[var(--color-text-faint)]">
+                      {event.game_mode_name}
+                    </span>
+                  </span>
+                  <span className="relative z-[1] shrink-0 text-center text-xs font-normal text-[var(--color-text-muted)]">
                     {formatDateTime(event.start_time)}
                   </span>
-                  <span className="relative z-[1] text-right">{formatPlayerCount(event.registrations.length)}</span>
+                  <span className="relative z-[1] shrink-0 text-right text-xs font-normal text-[var(--color-text-soft)]">
+                    {formatPlayerCount(event.registrations.length)}
+                  </span>
                 </h2>
                 {!group.registration_open && event.lobbies_count > 0 ? (
                   <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
@@ -1025,12 +1055,19 @@ export default function EventGroupPage() {
           </div>
         ) : activeEvent ? (
           <div className="flex flex-col gap-3">
-            <h2 className="relative flex items-center justify-between text-sm font-semibold text-[var(--color-text)]">
-              <span className="relative z-[1]">Game {activeEventNumber}</span>
-              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
+            <h2 className="relative flex items-center justify-between gap-2 text-sm font-semibold text-[var(--color-text)]">
+              <span className="relative z-[1] flex min-w-0 shrink flex-wrap items-baseline gap-x-2 gap-y-0">
+                <span className="shrink-0 whitespace-nowrap">Game {activeEventNumber}</span>
+                <span className="text-[0.65rem] font-normal uppercase tracking-wide text-[var(--color-text-faint)]">
+                  {activeEvent.game_mode_name}
+                </span>
+              </span>
+              <span className="relative z-[1] shrink-0 text-center text-xs font-normal text-[var(--color-text-muted)]">
                 {formatDateTime(activeEvent.start_time)}
               </span>
-              <span className="relative z-[1] text-right">{formatPlayerCount(activeEvent.registrations.length)}</span>
+              <span className="relative z-[1] shrink-0 text-right text-xs font-normal text-[var(--color-text-soft)]">
+                {formatPlayerCount(activeEvent.registrations.length)}
+              </span>
             </h2>
             {!group.registration_open && activeEvent.lobbies_count > 0 ? (
               <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
@@ -1128,13 +1165,15 @@ export default function EventGroupPage() {
         <EventForm
           mode="edit"
           eventGroupId={group.id}
+          editSchedule={group.events.map((e) => ({
+            id: e.id,
+            start_time: e.start_time,
+            game_mode_id: e.game_mode_id,
+          }))}
           initialValues={{
             game_id: group.game_id,
-            game_mode_id: group.game_mode_id,
             region: group.region,
             sub_min: group.sub_min,
-            games_to_run: group.events.length,
-            start_time_local: firstEventStart ? new Date(firstEventStart).toISOString().slice(0, 16) : "",
             registration_open: group.registration_open,
             sort_logic: group.sort_logic,
           }}

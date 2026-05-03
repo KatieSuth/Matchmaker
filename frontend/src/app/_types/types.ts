@@ -70,6 +70,9 @@ export interface EventRegistration {
 export interface EventGroupEvent {
   id: string;
   start_time: string;
+  game_mode_id: string;
+  game_mode_name: string;
+  team_size: number;
   registered_count: number;
   lobbies_count: number;
   player_registered: boolean;
@@ -82,6 +85,8 @@ export interface EventGroupDetail {
   id: string;
   owner_id: string;
   owner_name: string;
+  /** Non-empty when the host has enabled public pronouns; otherwise "". */
+  owner_pronouns: string;
   game_mode_id: string;
   game_mode_name: string;
   game_id: string;

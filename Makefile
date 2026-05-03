@@ -98,3 +98,7 @@ seed-registrations:
 
 # Run all local development seeders in required order
 seed-all: seed-users seed-events seed-registrations
+	
+# Generate new secure keys
+gen-keys:
+	cd backend && go run ./cmd/scripts/gen_keys

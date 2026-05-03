@@ -27,28 +27,30 @@ func (q *Queries) CountLobbiesByGroupId(ctx context.Context, groupID *uuid.UUID)
 }
 
 const createEvent = `-- name: CreateEvent :exec
-INSERT INTO events (id, group_id, start_time, created_at, updated_at)
+INSERT INTO events (id, group_id, start_time, game_mode_id, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
     $2,
+    $3,
     NOW(),
     NOW()
 )
 `
 
 type CreateEventParams struct {
-	GroupID   *uuid.UUID
-	StartTime time.Time
+	GroupID    *uuid.UUID
+	StartTime  time.Time
+	GameModeID uuid.UUID
 }
 
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error {
-	_, err := q.db.Exec(ctx, createEvent, arg.GroupID, arg.StartTime)
+	_, err := q.db.Exec(ctx, createEvent, arg.GroupID, arg.StartTime, arg.GameModeID)
 	return err
 }
 
 const createEventGroup = `-- name: CreateEventGroup :one
-INSERT INTO event_groups (id, owner_id, game_mode_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
+INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
@@ -56,16 +58,14 @@ VALUES (
     $3,
     $4,
     $5,
-    $6,
     NOW(),
     NOW()
 )
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
+RETURNING id, owner_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type CreateEventGroupParams struct {
 	OwnerID          uuid.UUID
-	GameModeID       uuid.UUID
 	SubMin           int32
 	RegistrationOpen bool
 	Region           string
@@ -75,7 +75,6 @@ type CreateEventGroupParams struct {
 func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupParams) (EventGroup, error) {
 	row := q.db.QueryRow(ctx, createEventGroup,
 		arg.OwnerID,
-		arg.GameModeID,
 		arg.SubMin,
 		arg.RegistrationOpen,
 		arg.Region,
@@ -85,7 +84,6 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
-		&i.GameModeID,
 		&i.SubMin,
 		&i.RegistrationOpen,
 		&i.IsPublic,
@@ -183,7 +181,7 @@ func (q *Queries) DeletePlayersByGroupId(ctx context.Context, groupID *uuid.UUID
 }
 
 const getEventGroupById = `-- name: GetEventGroupById :one
-SELECT id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic FROM event_groups WHERE id = $1
+SELECT id, owner_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic FROM event_groups WHERE id = $1
 `
 
 func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGroup, error) {
@@ -192,7 +190,6 @@ func (q *Queries) GetEventGroupById(ctx context.Context, id uuid.UUID) (EventGro
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
-		&i.GameModeID,
 		&i.SubMin,
 		&i.RegistrationOpen,
 		&i.IsPublic,
@@ -212,11 +209,62 @@ SELECT
     EG.id,
     EG.owner_id,
     COALESCE(U.discord_name, '') AS owner_name,
-    EG.game_mode_id,
-    GM.name AS game_mode_name,
-    G.id AS game_id,
-    G.name AS game_name,
-    GM.team_size,
+    CAST(
+        CASE
+            WHEN U.show_pronouns = TRUE THEN COALESCE(U.pronouns, '')
+            ELSE ''
+        END
+        AS TEXT
+    ) AS owner_pronouns,
+    CAST(COALESCE(
+        (SELECT STRING_AGG(DISTINCT gm_agg.name, ', ' ORDER BY gm_agg.name)
+         FROM events E_agg
+         JOIN game_modes gm_agg ON gm_agg.id = E_agg.game_mode_id
+         WHERE E_agg.group_id = EG.id),
+        ''
+    ) AS VARCHAR(4096)) AS game_mode_name,
+    CAST(
+        CASE
+            WHEN (SELECT COUNT(DISTINCT E_mid.game_mode_id) FROM events E_mid WHERE E_mid.group_id = EG.id) = 1
+            THEN (SELECT E_mid.game_mode_id FROM events E_mid WHERE E_mid.group_id = EG.id LIMIT 1)
+            ELSE '00000000-0000-0000-0000-000000000000'::uuid
+        END
+        AS UUID
+    ) AS game_mode_id,
+    CAST(
+        COALESCE(
+            (SELECT G_first.id
+             FROM events E_first
+             JOIN game_modes GM_first ON GM_first.id = E_first.game_mode_id
+             JOIN games G_first ON G_first.id = GM_first.game_id
+             WHERE E_first.group_id = EG.id
+             ORDER BY E_first.start_time ASC NULLS LAST
+             LIMIT 1),
+            '00000000-0000-0000-0000-000000000000'::uuid
+        )
+        AS UUID
+    ) AS game_id,
+    CAST(
+        COALESCE(
+            (SELECT G_first.name
+             FROM events E_first
+             JOIN game_modes GM_first ON GM_first.id = E_first.game_mode_id
+             JOIN games G_first ON G_first.id = GM_first.game_id
+             WHERE E_first.group_id = EG.id
+             ORDER BY E_first.start_time ASC NULLS LAST
+             LIMIT 1),
+            ''
+        )
+        AS TEXT
+    ) AS game_name,
+    CAST(
+        CASE
+            WHEN (SELECT COUNT(DISTINCT GM_sz.team_size) FROM events E_sz JOIN game_modes GM_sz ON GM_sz.id = E_sz.game_mode_id WHERE E_sz.group_id = EG.id) = 1
+            THEN (SELECT MIN(GM_sz.team_size) FROM events E_sz JOIN game_modes GM_sz ON GM_sz.id = E_sz.game_mode_id WHERE E_sz.group_id = EG.id)
+            ELSE 0
+        END
+        AS INT
+    ) AS team_size,
     EG.sub_min,
     EG.registration_open,
     EG.region,
@@ -225,8 +273,6 @@ SELECT
     EG.updated_at
 FROM event_groups AS EG
 JOIN users AS U ON U.id = EG.owner_id
-JOIN game_modes AS GM ON GM.id = EG.game_mode_id
-JOIN games AS G ON G.id = GM.game_id
 WHERE EG.id = $1
 `
 
@@ -234,8 +280,9 @@ type GetEventGroupDetailByIdRow struct {
 	ID               uuid.UUID
 	OwnerID          uuid.UUID
 	OwnerName        string
-	GameModeID       uuid.UUID
+	OwnerPronouns    string
 	GameModeName     string
+	GameModeID       uuid.UUID
 	GameID           uuid.UUID
 	GameName         string
 	TeamSize         int32
@@ -254,8 +301,9 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.ID,
 		&i.OwnerID,
 		&i.OwnerName,
-		&i.GameModeID,
+		&i.OwnerPronouns,
 		&i.GameModeName,
+		&i.GameModeID,
 		&i.GameID,
 		&i.GameName,
 		&i.TeamSize,
@@ -278,7 +326,7 @@ SELECT
     EG.registration_open
 FROM events AS E
 JOIN event_groups AS EG ON EG.id = E.group_id
-JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
 JOIN games AS G ON G.id = GM.game_id
 WHERE E.id = $1
 `
@@ -305,7 +353,7 @@ func (q *Queries) GetEventWithGroupById(ctx context.Context, id uuid.UUID) (GetE
 }
 
 const getEventsByGroupId = `-- name: GetEventsByGroupId :many
-SELECT id, group_id, start_time, created_at, updated_at FROM events WHERE group_id = $1 ORDER BY start_time ASC
+SELECT id, group_id, start_time, created_at, updated_at, game_mode_id FROM events WHERE group_id = $1 ORDER BY start_time ASC
 `
 
 func (q *Queries) GetEventsByGroupId(ctx context.Context, groupID *uuid.UUID) ([]Event, error) {
@@ -323,6 +371,7 @@ func (q *Queries) GetEventsByGroupId(ctx context.Context, groupID *uuid.UUID) ([
 			&i.StartTime,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.GameModeID,
 		); err != nil {
 			return nil, err
 		}
@@ -339,7 +388,7 @@ WITH grouped AS (
     SELECT
         EG.id AS id,
         G.name AS game_name,
-        GM.name AS game_mode,
+        CAST(STRING_AGG(DISTINCT GM.name, ', ' ORDER BY GM.name) AS VARCHAR(4096)) AS game_mode,
         MIN(E.start_time)::TIMESTAMPTZ AS event_date,
         H.id AS host_id,
         COALESCE(H.discord_name, '') AS host_name,
@@ -347,7 +396,7 @@ WITH grouped AS (
         EG.registration_open
     FROM events AS E
     JOIN event_groups AS EG ON EG.id = E.group_id
-    JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+    JOIN game_modes AS GM ON GM.id = E.game_mode_id
     JOIN games AS G ON G.id = GM.game_id
     JOIN users AS H ON H.id = EG.owner_id
     LEFT JOIN registrations AS RA ON RA.event_id = E.id
@@ -366,7 +415,7 @@ WITH grouped AS (
         AND (NOT $10::BOOL OR E.start_time >= $11::TIMESTAMPTZ)
         AND (NOT $12::BOOL OR E.start_time < $13::TIMESTAMPTZ)
         AND (NOT $14::BOOL OR G.id = $15::UUID)
-    GROUP BY EG.id, G.name, GM.name, H.id, H.discord_name, EG.registration_open
+    GROUP BY EG.id, G.name, H.id, H.discord_name, EG.registration_open
 )
 SELECT id, game_name, game_mode, event_date, host_id, host_name, registered_count, registration_open
 FROM grouped
@@ -453,14 +502,18 @@ const getGroupEventsSummary = `-- name: GetGroupEventsSummary :many
 SELECT
     E.id,
     E.start_time,
+    E.game_mode_id,
+    GM.name AS game_mode_name,
+    GM.team_size,
     COUNT(DISTINCT R.user_id)::INT AS registered_count,
     COUNT(DISTINCT L.id)::INT AS lobbies_count,
     COALESCE(BOOL_OR(R.user_id = $2), FALSE)::BOOL AS player_registered
 FROM events AS E
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN registrations AS R ON R.event_id = E.id
 LEFT JOIN lobbies AS L ON L.event_id = E.id
 WHERE E.group_id = $1
-GROUP BY E.id
+GROUP BY E.id, E.start_time, E.game_mode_id, GM.name, GM.team_size
 ORDER BY E.start_time ASC
 `
 
@@ -472,6 +525,9 @@ type GetGroupEventsSummaryParams struct {
 type GetGroupEventsSummaryRow struct {
 	ID               uuid.UUID
 	StartTime        time.Time
+	GameModeID       uuid.UUID
+	GameModeName     string
+	TeamSize         int32
 	RegisteredCount  int32
 	LobbiesCount     int32
 	PlayerRegistered bool
@@ -489,6 +545,9 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 		if err := rows.Scan(
 			&i.ID,
 			&i.StartTime,
+			&i.GameModeID,
+			&i.GameModeName,
+			&i.TeamSize,
 			&i.RegisteredCount,
 			&i.LobbiesCount,
 			&i.PlayerRegistered,
@@ -507,7 +566,7 @@ const setEventGroupRegistrationOpen = `-- name: SetEventGroupRegistrationOpen :o
 UPDATE event_groups
 SET registration_open = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
+RETURNING id, owner_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type SetEventGroupRegistrationOpenParams struct {
@@ -521,7 +580,6 @@ func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEven
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
-		&i.GameModeID,
 		&i.SubMin,
 		&i.RegistrationOpen,
 		&i.IsPublic,
@@ -538,9 +596,9 @@ func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEven
 
 const updateEventGroupSettings = `-- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, game_mode_id = $6, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, updated_at = NOW()
 WHERE id = $1
-RETURNING id, owner_id, game_mode_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
+RETURNING id, owner_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic
 `
 
 type UpdateEventGroupSettingsParams struct {
@@ -549,7 +607,6 @@ type UpdateEventGroupSettingsParams struct {
 	SubMin           int32
 	SortLogic        string
 	RegistrationOpen bool
-	GameModeID       uuid.UUID
 }
 
 func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventGroupSettingsParams) (EventGroup, error) {
@@ -559,13 +616,11 @@ func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventG
 		arg.SubMin,
 		arg.SortLogic,
 		arg.RegistrationOpen,
-		arg.GameModeID,
 	)
 	var i EventGroup
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
-		&i.GameModeID,
 		&i.SubMin,
 		&i.RegistrationOpen,
 		&i.IsPublic,
@@ -578,4 +633,30 @@ func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventG
 		&i.SortLogic,
 	)
 	return i, err
+}
+
+const updateEventSchedule = `-- name: UpdateEventSchedule :execrows
+UPDATE events
+SET start_time = $2, game_mode_id = $3, updated_at = NOW()
+WHERE id = $1 AND group_id = $4
+`
+
+type UpdateEventScheduleParams struct {
+	ID         uuid.UUID
+	StartTime  time.Time
+	GameModeID uuid.UUID
+	GroupID    *uuid.UUID
+}
+
+func (q *Queries) UpdateEventSchedule(ctx context.Context, arg UpdateEventScheduleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventSchedule,
+		arg.ID,
+		arg.StartTime,
+		arg.GameModeID,
+		arg.GroupID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

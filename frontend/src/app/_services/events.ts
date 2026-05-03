@@ -26,12 +26,18 @@ export async function createEvent(payload: CreateEventRequest): Promise<CreateEv
   return res.data;
 }
 
+export interface PatchGroupEventScheduleItem {
+  event_id: string;
+  start_time: string;
+  game_mode_id: string;
+}
+
 export interface UpdateEventGroupRequest {
   region: string;
   sub_min: number;
   sort_logic: EventSortLogic;
   registration_open: boolean;
-  game_mode_id: string;
+  events: PatchGroupEventScheduleItem[];
 }
 
 export interface UpdateRegistrationRequest {

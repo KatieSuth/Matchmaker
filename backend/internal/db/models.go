@@ -21,17 +21,17 @@ type ApiLink struct {
 }
 
 type Event struct {
-	ID        uuid.UUID
-	GroupID   *uuid.UUID
-	StartTime time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         uuid.UUID
+	GroupID    *uuid.UUID
+	StartTime  time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	GameModeID uuid.UUID
 }
 
 type EventGroup struct {
 	ID                  uuid.UUID
 	OwnerID             uuid.UUID
-	GameModeID          uuid.UUID
 	SubMin              int32
 	RegistrationOpen    bool
 	IsPublic            bool

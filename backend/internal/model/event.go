@@ -39,6 +39,9 @@ type EventRegistration struct {
 type EventGroupEvent struct {
 	ID               uuid.UUID           `json:"id"`
 	StartTime        time.Time           `json:"start_time"`
+	GameModeID       uuid.UUID           `json:"game_mode_id"`
+	GameModeName     string              `json:"game_mode_name"`
+	TeamSize         int                 `json:"team_size"`
 	RegisteredCount  int                 `json:"registered_count"`
 	LobbiesCount     int                 `json:"lobbies_count"`
 	PlayerRegistered bool                `json:"player_registered"`
@@ -50,6 +53,7 @@ type EventGroupDetail struct {
 	ID               uuid.UUID         `json:"id"`
 	OwnerID          uuid.UUID         `json:"owner_id"`
 	OwnerName        string            `json:"owner_name"`
+	OwnerPronouns    string            `json:"owner_pronouns"`
 	GameModeID       uuid.UUID         `json:"game_mode_id"`
 	GameModeName     string            `json:"game_mode_name"`
 	GameID           uuid.UUID         `json:"game_id"`
@@ -112,6 +116,9 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 	return EventGroupEvent{
 		ID:               row.ID,
 		StartTime:        row.StartTime,
+		GameModeID:       row.GameModeID,
+		GameModeName:     row.GameModeName,
+		TeamSize:         int(row.TeamSize),
 		RegisteredCount:  int(row.RegisteredCount),
 		LobbiesCount:     int(row.LobbiesCount),
 		PlayerRegistered: row.PlayerRegistered,
@@ -124,6 +131,7 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		ID:               row.ID,
 		OwnerID:          row.OwnerID,
 		OwnerName:        row.OwnerName,
+		OwnerPronouns:    row.OwnerPronouns,
 		GameModeID:       row.GameModeID,
 		GameModeName:     row.GameModeName,
 		GameID:           row.GameID,

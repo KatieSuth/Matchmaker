@@ -92,27 +92,27 @@ const getRegistrationDataByEventId = `-- name: GetRegistrationDataByEventId :man
 SELECT r.event_id, r.user_id, r.can_substitute, r.can_lobby_host, r.duo_request, r.created_at, r.updated_at, 
     U.discord_name, 
     CASE 
-		WHEN $2::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
+		WHEN $1::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
 		ELSE ''
 	END AS pronouns,
     CASE
-        WHEN $2::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
+        WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
         ELSE ''
     END AS current_rank_name
 FROM registrations AS R 
 JOIN users AS U ON R.user_id = U.id 
 JOIN events AS E ON R.event_id = E.id
 JOIN event_groups AS EG ON E.group_id = EG.id
-JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN user_games AS UG ON R.user_id = UG.user_id AND UG.game_id = GM.game_id
 LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
-WHERE event_id = $1
+WHERE R.event_id = $2
 ORDER BY U.discord_name ASC
 `
 
 type GetRegistrationDataByEventIdParams struct {
-	EventID      uuid.UUID
 	ViewerIsHost bool
+	EventID      uuid.UUID
 }
 
 type GetRegistrationDataByEventIdRow struct {
@@ -129,7 +129,7 @@ type GetRegistrationDataByEventIdRow struct {
 }
 
 func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, arg GetRegistrationDataByEventIdParams) ([]GetRegistrationDataByEventIdRow, error) {
-	rows, err := q.db.Query(ctx, getRegistrationDataByEventId, arg.EventID, arg.ViewerIsHost)
+	rows, err := q.db.Query(ctx, getRegistrationDataByEventId, arg.ViewerIsHost, arg.EventID)
 	if err != nil {
 		return nil, err
 	}

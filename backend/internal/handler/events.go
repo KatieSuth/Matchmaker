@@ -23,12 +23,18 @@ type createEventRequest struct {
 	SortLogic        string `json:"sort_logic"`
 }
 
+type patchGroupEventItem struct {
+	EventID    string `json:"event_id"`
+	StartTime  string `json:"start_time"`
+	GameModeID string `json:"game_mode_id"`
+}
+
 type updateEventGroupSettingsRequest struct {
-	Region           string `json:"region"`
-	SubMin           int32  `json:"sub_min"`
-	SortLogic        string `json:"sort_logic"`
-	RegistrationOpen *bool  `json:"registration_open"`
-	GameModeID       string `json:"game_mode_id"`
+	Region           string                `json:"region"`
+	SubMin           int32                 `json:"sub_min"`
+	SortLogic        string                `json:"sort_logic"`
+	RegistrationOpen *bool                 `json:"registration_open"`
+	Events           []patchGroupEventItem `json:"events"`
 }
 
 type updateRegistrationStatusRequest struct {
@@ -248,14 +254,40 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	gameModeID, err := uuid.Parse(strings.TrimSpace(body.GameModeID))
-	if err != nil || gameModeID == uuid.Nil {
-		slog.WarnContext(c.Request.Context(), "invalid game_mode_id in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "game_mode_id", body.GameModeID, "error", err)
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "game_mode_id must be a valid UUID"})
+	if len(body.Events) == 0 {
+		slog.WarnContext(c.Request.Context(), "missing events in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "events must include every scheduled game in this group"})
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, gameModeID)
+	eventUpdates := make([]store.GroupEventUpdate, 0, len(body.Events))
+	for _, item := range body.Events {
+		eventID, err := uuid.Parse(strings.TrimSpace(item.EventID))
+		if err != nil || eventID == uuid.Nil {
+			slog.WarnContext(c.Request.Context(), "invalid event_id in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "event_id", item.EventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "each events[].event_id must be a valid UUID"})
+			return
+		}
+		gameModeID, err := uuid.Parse(strings.TrimSpace(item.GameModeID))
+		if err != nil || gameModeID == uuid.Nil {
+			slog.WarnContext(c.Request.Context(), "invalid game_mode_id in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "event_id", eventID, "game_mode_id", item.GameModeID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "each events[].game_mode_id must be a valid UUID"})
+			return
+		}
+		startTime, err := time.Parse(time.RFC3339, item.StartTime)
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "invalid start_time in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "event_id", eventID, "start_time", item.StartTime, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "each events[].start_time must be RFC3339 datetime"})
+			return
+		}
+		eventUpdates = append(eventUpdates, store.GroupEventUpdate{
+			EventID:    eventID,
+			StartTime:  startTime,
+			GameModeID: gameModeID,
+		})
+	}
+
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, eventUpdates)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -276,6 +308,12 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrGameModeWrongGame):
 			slog.WarnContext(c.Request.Context(), "game mode wrong game for settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Game mode must belong to this event's game"})
+		case errors.Is(err, store.ErrInvalidGroupEvents):
+			slog.WarnContext(c.Request.Context(), "invalid events payload for settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "events must include each scheduled game exactly once"})
+		case errors.Is(err, store.ErrEventStartInPast):
+			slog.WarnContext(c.Request.Context(), "event start in past for settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "start_time cannot be in the past"})
 		case errors.Is(err, store.ErrEventGroupNotFound), errors.Is(err, pgx.ErrNoRows):
 			slog.WarnContext(c.Request.Context(), "event group not found for settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event group not found"})

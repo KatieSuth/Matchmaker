@@ -183,10 +183,10 @@ func main() {
 		registrationOpen := i >= pastStartGroups
 		group, err := seed.Queries.CreateEventGroup(seed.Ctx, db.CreateEventGroupParams{
 			OwnerID:          ownerID,
-			GameModeID:       mode.ID,
 			SubMin:           int32(i % 6),
 			RegistrationOpen: registrationOpen,
 			Region:           groupRegion,
+			SortLogic:        "balanced",
 		})
 		if err != nil {
 			common.Fatal("failed creating event group", "index", i, "error", err)
@@ -197,8 +197,9 @@ func main() {
 		for n := int32(0); n < gamesToRun; n++ {
 			groupID := group.ID
 			if err := seed.Queries.CreateEvent(seed.Ctx, db.CreateEventParams{
-				GroupID:   &groupID,
-				StartTime: nextStart,
+				GroupID:    &groupID,
+				StartTime:  nextStart,
+				GameModeID: mode.ID,
 			}); err != nil {
 				common.Fatal("failed creating event", "group_id", group.ID, "event_index", n, "error", err)
 			}
@@ -216,8 +217,8 @@ func main() {
 		SELECT eg.id, gm.duration, e.start_time
 		FROM event_groups eg
 		JOIN users u ON u.id = eg.owner_id
-		JOIN game_modes gm ON gm.id = eg.game_mode_id
 		JOIN events e ON e.group_id = eg.id
+		JOIN game_modes gm ON gm.id = e.game_mode_id
 		WHERE u.discord_id LIKE 'seed_user_%'
 		ORDER BY eg.id, e.start_time
 	`)

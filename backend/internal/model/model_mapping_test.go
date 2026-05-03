@@ -540,10 +540,14 @@ func TestMapDbGetRegistrationDataByEventIdRowsToEventRegistrations_MultipleRows(
 
 func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testing.T) {
 	eid := uuid.New()
+	gmid := uuid.New()
 	now := time.Now().Truncate(time.Millisecond)
 	summary := db.GetGroupEventsSummaryRow{
 		ID:               eid,
 		StartTime:        now,
+		GameModeID:       gmid,
+		GameModeName:     "Competitive",
+		TeamSize:         5,
 		RegisteredCount:  2,
 		LobbiesCount:     0,
 		PlayerRegistered: true,
@@ -552,6 +556,9 @@ func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testin
 	result := model.MapDbGetGroupEventsSummaryRowToEventGroupEvent(summary, regs)
 	assert.Equal(t, eid, result.ID)
 	assert.Equal(t, now, result.StartTime)
+	assert.Equal(t, gmid, result.GameModeID)
+	assert.Equal(t, "Competitive", result.GameModeName)
+	assert.Equal(t, 5, result.TeamSize)
 	assert.Equal(t, 2, result.RegisteredCount)
 	assert.Equal(t, 0, result.LobbiesCount)
 	assert.True(t, result.PlayerRegistered)
@@ -567,6 +574,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 		ID:               uuid.New(),
 		OwnerID:          oid,
 		OwnerName:        "owner",
+		OwnerPronouns:    "they/them",
 		GameModeID:       gmid,
 		GameModeName:     "Mode",
 		GameID:           gid,
@@ -584,6 +592,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, row.ID, result.ID)
 	assert.Equal(t, oid, result.OwnerID)
 	assert.Equal(t, "owner", result.OwnerName)
+	assert.Equal(t, "they/them", result.OwnerPronouns)
 	assert.Equal(t, gmid, result.GameModeID)
 	assert.Equal(t, "Mode", result.GameModeName)
 	assert.Equal(t, gid, result.GameID)

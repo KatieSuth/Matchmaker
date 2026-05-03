@@ -112,16 +112,9 @@
 @utility bg-page {
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(ellipse 70% 45% at 20% 50%, rgba(30, 80, 200, 0.25) 0%, transparent 65%),
-    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(220, 90, 20, 0.18) 0%, transparent 65%),
-    radial-gradient(ellipse 50% 35% at 50% 0%,  rgba(180, 50, 200, 0.15) 0%, transparent 60%);
-}
-
-@utility bg-shell {
-  background-color: var(--color-bg);
-  background-image:
-    radial-gradient(ellipse 70% 45% at 20% 50%, rgba(30, 80, 200, 0.12) 0%, transparent 65%),
-    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(220, 90, 20, 0.09) 0%, transparent 65%);
+    radial-gradient(ellipse 70% 45% at 0% 50%, rgba(30, 80, 200, 0.22) 0%, transparent 65%),
+    radial-gradient(ellipse 70% 45% at 100% 50%, rgba(220, 90, 20, 0.22) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 35% at 50% 0%, rgba(180, 50, 200, 0.15) 0%, transparent 60%);
 }
 
 /* Glow orbs */

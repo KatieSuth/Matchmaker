@@ -13,10 +13,10 @@ FROM registrations AS R
 JOIN users AS U ON R.user_id = U.id 
 JOIN events AS E ON R.event_id = E.id
 JOIN event_groups AS EG ON E.group_id = EG.id
-JOIN game_modes AS GM ON GM.id = EG.game_mode_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN user_games AS UG ON R.user_id = UG.user_id AND UG.game_id = GM.game_id
 LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
-WHERE event_id = $1
+WHERE R.event_id = sqlc.arg(event_id)
 ORDER BY U.discord_name ASC;
 
 -- name: GetRegistrationByEventAndUser :one

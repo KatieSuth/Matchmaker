@@ -35,7 +35,16 @@ var (
 	ErrGameModeNotFound          = errors.New("game mode not found")
 	ErrGameModeWrongGame         = errors.New("game mode does not belong to this event game")
 	ErrUserGameProfileIncomplete = errors.New("user game profile is incomplete")
+	ErrInvalidGroupEvents        = errors.New("events payload does not match this group's schedule")
+	ErrEventStartInPast          = errors.New("event start time cannot be in the past")
 )
+
+// GroupEventUpdate is one row in PATCH /events/:groupId (per-game schedule + mode).
+type GroupEventUpdate struct {
+	EventID    uuid.UUID
+	StartTime  time.Time
+	GameModeID uuid.UUID
+}
 
 type RegistrationUpsertItem struct {
 	EventID       uuid.UUID
@@ -201,7 +210,6 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 
 		group, err := txStore.q.CreateEventGroup(ctx, db.CreateEventGroupParams{
 			OwnerID:          userID,
-			GameModeID:       gameModeID,
 			SubMin:           subMin,
 			RegistrationOpen: registrationOpen,
 			Region:           region,
@@ -216,8 +224,9 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 		for i := int32(0); i < gamesToRun; i++ {
 			eventStart := nextStart
 			err = txStore.q.CreateEvent(ctx, db.CreateEventParams{
-				GroupID:   &groupID,
-				StartTime: eventStart,
+				GroupID:    &groupID,
+				StartTime:  eventStart,
+				GameModeID: gameModeID,
 			})
 			if err != nil {
 				return fmt.Errorf("create event #%d: %w", i+1, err)
@@ -273,70 +282,127 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, gameModeID uuid.UUID) error {
-	group, err := s.q.GetEventGroupById(ctx, groupID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrEventGroupNotFound
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error {
+	if len(eventUpdates) == 0 {
+		return ErrInvalidGroupEvents
+	}
+
+	return s.WithTx(ctx, func(tx Store) error {
+		txStore, ok := tx.(*PostgresStore)
+		if !ok {
+			return fmt.Errorf("unexpected tx store type %T", tx)
 		}
-		return fmt.Errorf("get event group: %w", err)
-	}
-	if group.OwnerID != ownerID {
-		return ErrForbidden
-	}
-	if strings.TrimSpace(region) == "" || subMin < 0 {
-		return ErrInvalidSubMin
-	}
 
-	currentMode, err := s.GetGameModeByID(ctx, group.GameModeID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrGameModeNotFound
-		}
-		return fmt.Errorf("get current game mode: %w", err)
-	}
-
-	newMode, err := s.GetGameModeByID(ctx, gameModeID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrGameModeNotFound
-		}
-		return fmt.Errorf("get new game mode: %w", err)
-	}
-	if newMode.GameID != currentMode.GameID {
-		return ErrGameModeWrongGame
-	}
-
-	effectiveSort := strings.TrimSpace(sortLogic)
-	if effectiveSort == "" {
-		effectiveSort = group.SortLogic
-	}
-	if !isValidSortLogic(effectiveSort) {
-		return ErrInvalidSortLogic
-	}
-
-	if registrationOpen {
-		lobbyCount, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
+		group, err := txStore.q.GetEventGroupById(ctx, groupID)
 		if err != nil {
-			return fmt.Errorf("count lobbies by group: %w", err)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrEventGroupNotFound
+			}
+			return fmt.Errorf("get event group: %w", err)
 		}
-		if lobbyCount > 0 {
-			return ErrOpenRegistrationTeams
+		if group.OwnerID != ownerID {
+			return ErrForbidden
 		}
-	}
+		if strings.TrimSpace(region) == "" || subMin < 0 {
+			return ErrInvalidSubMin
+		}
 
-	_, err = s.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
-		ID:               groupID,
-		Region:           strings.TrimSpace(region),
-		SubMin:           subMin,
-		SortLogic:        effectiveSort,
-		RegistrationOpen: registrationOpen,
-		GameModeID:       gameModeID,
+		effectiveSort := strings.TrimSpace(sortLogic)
+		if effectiveSort == "" {
+			effectiveSort = group.SortLogic
+		}
+		if !isValidSortLogic(effectiveSort) {
+			return ErrInvalidSortLogic
+		}
+
+		if registrationOpen {
+			lobbyCount, err := txStore.q.CountLobbiesByGroupId(ctx, &groupID)
+			if err != nil {
+				return fmt.Errorf("count lobbies by group: %w", err)
+			}
+			if lobbyCount > 0 {
+				return ErrOpenRegistrationTeams
+			}
+		}
+
+		groupDetail, err := txStore.q.GetEventGroupDetailById(ctx, groupID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrEventGroupNotFound
+			}
+			return fmt.Errorf("get event group detail: %w", err)
+		}
+		canonicalGameID := groupDetail.GameID
+
+		dbEvents, err := txStore.q.GetEventsByGroupId(ctx, &groupID)
+		if err != nil {
+			return fmt.Errorf("get events by group: %w", err)
+		}
+		dbByID := make(map[uuid.UUID]db.Event, len(dbEvents))
+		for _, e := range dbEvents {
+			dbByID[e.ID] = e
+		}
+		if len(eventUpdates) != len(dbByID) {
+			return ErrInvalidGroupEvents
+		}
+
+		seenUpdateIDs := make(map[uuid.UUID]struct{}, len(eventUpdates))
+		for _, u := range eventUpdates {
+			if _, dup := seenUpdateIDs[u.EventID]; dup {
+				return ErrInvalidGroupEvents
+			}
+			seenUpdateIDs[u.EventID] = struct{}{}
+		}
+
+		now := time.Now()
+		for _, u := range eventUpdates {
+			if _, ok := dbByID[u.EventID]; !ok {
+				return ErrInvalidGroupEvents
+			}
+			if u.StartTime.Before(now) {
+				return ErrEventStartInPast
+			}
+			newMode, err := txStore.GetGameModeByID(ctx, u.GameModeID)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return ErrGameModeNotFound
+				}
+				return fmt.Errorf("get game mode %s: %w", u.GameModeID.String(), err)
+			}
+			if newMode.GameID != canonicalGameID {
+				return ErrGameModeWrongGame
+			}
+		}
+
+		_, err = txStore.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
+			ID:               groupID,
+			Region:           strings.TrimSpace(region),
+			SubMin:           subMin,
+			SortLogic:        effectiveSort,
+			RegistrationOpen: registrationOpen,
+		})
+		if err != nil {
+			return fmt.Errorf("update event group settings: %w", err)
+		}
+
+		gid := groupID
+		for _, u := range eventUpdates {
+			n, err := txStore.q.UpdateEventSchedule(ctx, db.UpdateEventScheduleParams{
+				ID:         u.EventID,
+				StartTime:  u.StartTime,
+				GameModeID: u.GameModeID,
+				GroupID:    &gid,
+			})
+			if err != nil {
+				return fmt.Errorf("update event schedule %s: %w", u.EventID.String(), err)
+			}
+			if n != 1 {
+				return ErrInvalidGroupEvents
+			}
+		}
+
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("update event group settings: %w", err)
-	}
-	return nil
 }
 
 func (s *PostgresStore) DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {

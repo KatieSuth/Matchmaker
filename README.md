@@ -49,6 +49,14 @@ It's still very much in the early phases but is intended to one day support Valo
 - [Docker](https://docs.docker.com/get-docker/) + Docker Compose v2
 - `make` (optional but handy)
 
+### Environment Setup
+
+For a local setup, create your `.env` files by copying the existing `.env.example` files in the `backend/` and `frontend/` directories, so that you have `backend/.env` and `frontend/.env`. See below for a list of the expected environment variables in each. You can use `make gen-keys` to generate JWT_SECRET, COOKIE_HASH_KEY, and COOKIE_ENCRYPT_KEY values; alternatively, you can use `openssl rand -hex 32`. Your PostgreSQL database will be initialized with whatever values you've provided, so ensure you've replaced each value (including the ones in the Database URLs) with the value you want it to be and that you've picked a strong password.
+
+Update the URLs in the `.env` files. By default your domain is expected to be `matchmaker.localhost` but this can be changed in the Caddyfile.
+
+You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the `backend/.env file`. Add your redirect URI; by default, it should be `https://matchmaker.localhost/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
+
 ### Development (hot reload)
 
 Both services reload on file save.
@@ -160,29 +168,31 @@ curl https://matchmaker.localhost/api/health
 ## Useful Commands
 
 ```bash
-make prod            # Build & start production containers (detached)
-make prod-no-cache   # Build production containers without cache and start
-make prod-build      # Build production images without starting
-make prod-logs       # Stream logs from all production containers
-make prod-ps         # Show running production containers
+make prod               # Build & start production containers (detached)
+make prod-no-cache      # Build production containers without cache and start
+make prod-build         # Build production images without starting
+make prod-logs          # Stream logs from all production containers
+make prod-ps            # Show running production containers
 
-make dev           # Start development containers with hot reload
-make dev-no-cache  # Build development containers without cache and start with hot reload
-make dev-down      # Stop and remove development containers
-make dev-down-v    # Stop and remove development containers and volumes
-make dev-clean     # Remove development containers, images, and volumes
-make dev-build     # Build development containers without running
-make dev-logs      # Stream logs from all development containers
-make dev-ps        # Show running development containers
+make dev                # Start development containers with hot reload
+make dev-no-cache       # Build development containers without cache and start with hot reload
+make dev-down           # Stop and remove development containers
+make dev-down-v         # Stop and remove development containers and volumes
+make dev-clean          # Remove development containers, images, and volumes
+make dev-build          # Build development containers without running
+make dev-logs           # Stream logs from all development containers
+make dev-ps             # Show running development containers
 
-make health        # Quick API health check
-make test          # Run Go tests
-make test-coverage # Run Go tests with coverage percentage output, filtering for test-supporting files
+make health             # Quick API health check
+make test               # Run Go tests
+make test-coverage      # Run Go tests with coverage percentage output, filtering for test-supporting files
 
 make seed-users         # Dev-only: seed 30 users
 make seed-events        # Dev-only: seed 20 groups and adjacent events (run after seed-users)
 make seed-registrations # Dev-only: seed event registrations (run after seed-events)
 make seed-all           # Dev-only: run all seed scripts in required order
+
+make gen-keys           # Generate new JWT, Cookie Hash, and Cookie Encrypt keys
 ```
 
 Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.
