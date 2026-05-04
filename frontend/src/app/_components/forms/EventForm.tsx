@@ -21,27 +21,6 @@ export type EventFormEditScheduleRow = {
   game_mode_id: string;
 };
 
-interface EventFormProps {
-  mode: "create" | "edit";
-  onCancel: () => void;
-  eventGroupId?: string;
-  initialValues?: Partial<EventFormValues>;
-  /** Edit only: current games from GET /events/:groupId (drives per-game time + mode UI). */
-  editSchedule?: EventFormEditScheduleRow[];
-  onSubmitted?: () => void;
-}
-
-type EventFormValues = {
-  game_id: string;
-  game_mode_id: string;
-  region: string;
-  start_time_local: string;
-  sub_min: number;
-  games_to_run: number;
-  registration_open: boolean;
-  sort_logic: "balanced" | "ranked";
-};
-
 function buildEventFormSchema(mode: "create" | "edit") {
   const startTimeField =
     mode === "create"
@@ -84,6 +63,18 @@ function buildEventFormSchema(mode: "create" | "edit") {
     registration_open: z.boolean(),
     sort_logic: z.enum(["balanced", "ranked"]),
   });
+}
+
+export type EventFormValues = z.infer<ReturnType<typeof buildEventFormSchema>>;
+
+interface EventFormProps {
+  mode: "create" | "edit";
+  onCancel: () => void;
+  eventGroupId?: string;
+  initialValues?: Partial<EventFormValues>;
+  /** Edit only: current games from GET /events/:groupId (drives per-game time + mode UI). */
+  editSchedule?: EventFormEditScheduleRow[];
+  onSubmitted?: () => void;
 }
 
 function toDateTimeLocalValue(date: Date): string {
@@ -411,6 +402,10 @@ export function EventForm({
     try {
       setIsSubmitting(true);
       if (mode === "create") {
+        if (!data.game_mode_id || !data.start_time_local) {
+          setSubmitError("Game mode and start time are required.");
+          return;
+        }
         const startDate = new Date(data.start_time_local);
         const result = await createEvent({
           game_mode_id: data.game_mode_id,
@@ -501,7 +496,7 @@ export function EventForm({
               control={control}
               render={({ field }) => (
                 <Select
-                  value={field.value}
+                  value={field.value ?? ""}
                   onChange={(nextId) => {
                     field.onChange(nextId);
                     setValue("game_mode_id", "");
@@ -541,7 +536,7 @@ export function EventForm({
                 control={control}
                 render={({ field }) => (
                   <Select
-                    value={field.value}
+                    value={field.value ?? ""}
                     onChange={field.onChange}
                     disabled={!watchedGameId || modesLoading || !!modesError}
                     placeholder={
@@ -571,7 +566,7 @@ export function EventForm({
               control={control}
               render={({ field }) => (
                 <Select
-                  value={field.value}
+                  value={field.value ?? ""}
                   onChange={field.onChange}
                   placeholder="Select region"
                   options={REGIONS.map((r) => ({ value: r, label: r }))}

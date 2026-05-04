@@ -340,7 +340,7 @@ export default function MyEventsPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [isEventSheetOpen, setIsEventSheetOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<Tab>("hosting");
+  const [activeTab, setActiveTab] = useState<Tab>("registered");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
 
   // Filters: pending = staged in UI, applied = sent to API
@@ -602,14 +602,11 @@ export default function MyEventsPage() {
 
         {/* Tabs */}
         <div
-          className="sticky top-0 z-20 -mx-4 px-4 py-3"
-          style={{
-            background: "linear-gradient(180deg, rgba(6,8,15,0.97) 80%, transparent 100%)",
-            animation: "var(--animate-rise-1)",
-          }}
+          className="sticky top-0 z-20 -mx-4 px-4 py-2"
+          style={{ animation: "var(--animate-rise-1)" }}
         >
           <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.07] w-full">
-            {(["hosting", "registered"] as Tab[]).map((tab) => (
+            {(["registered", "hosting"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 type="button"
