@@ -30,6 +30,8 @@ interface UserGameEditorProps {
   ranksLoading?: boolean;
   hideGameSelector?: boolean;
   gameLabel?: string;
+  /** When true, the game dropdown cannot be changed (e.g. already saved on profile). Name/ranks stay editable. */
+  lockGameSelect?: boolean;
   onChange: (next: UserGameEditorValue) => void;
   onRemove?: () => void;
 }
@@ -43,6 +45,7 @@ export function UserGameEditor({
   ranksLoading = false,
   hideGameSelector = false,
   gameLabel,
+  lockGameSelect = false,
   onChange,
   onRemove,
 }: UserGameEditorProps) {
@@ -64,6 +67,7 @@ export function UserGameEditor({
                 })
               }
               placeholder="— Select a game —"
+              disabled={lockGameSelect}
               options={allGames
                 .filter((game) => game.id === value.game_id || !takenGameIds.includes(game.id))
                 .map((game) => ({ value: game.id, label: game.name }))}
@@ -74,9 +78,11 @@ export function UserGameEditor({
               type="button"
               onClick={onRemove}
               aria-label="Remove game"
-              className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border border-white/10 bg-white/5 text-[var(--color-text-muted)] text-xs hover:border-[var(--color-text-danger)]/40 hover:text-[var(--color-text-danger)] hover:bg-[rgba(255,100,80,0.08)] transition-all duration-150"
+              className="flex-shrink-0 size-9 rounded-lg inline-flex items-center justify-center border border-white/10 bg-white/5 text-[var(--color-text-muted)] hover:border-[var(--color-text-danger)]/40 hover:text-[var(--color-text-danger)] hover:bg-[rgba(255,100,80,0.08)] transition-all duration-150 p-0"
             >
-              x
+              <span className="block text-lg font-semibold leading-none tracking-tight select-none" aria-hidden>
+                ×
+              </span>
             </button>
           )}
         </div>
@@ -97,8 +103,8 @@ export function UserGameEditor({
 
       {value.game_id && ranksLoading && (
         <div className="flex flex-col gap-3 animate-pulse">
+          <div className="h-9 rounded-lg bg-white/5 border border-white/[0.06]" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="h-9 rounded-lg bg-white/5 border border-white/[0.06]" />
             <div className="h-9 rounded-lg bg-white/5 border border-white/[0.06]" />
             <div className="h-9 rounded-lg bg-white/5 border border-white/[0.06]" />
           </div>
@@ -107,7 +113,7 @@ export function UserGameEditor({
 
       {value.game_id && !ranksLoading && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-3">
             <Field label="In-game name *" error={errors?.in_game_name}>
               <input
                 value={value.in_game_name}
@@ -119,25 +125,27 @@ export function UserGameEditor({
 
             {ranks.length > 0 && (
               <>
-                <Field label="Current rank *" error={errors?.current_rank}>
-                  <Select
-                    value={value.current_rank}
-                    onChange={(rankId) => onChange({ ...value, current_rank: rankId })}
-                    placeholder="— Select rank —"
-                    options={ranks.map((rank) => ({ value: rank.id, label: rank.name }))}
-                  />
-                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Current rank *" error={errors?.current_rank}>
+                    <Select
+                      value={value.current_rank}
+                      onChange={(rankId) => onChange({ ...value, current_rank: rankId })}
+                      placeholder="— Select rank —"
+                      options={ranks.map((rank) => ({ value: rank.id, label: rank.name }))}
+                    />
+                  </Field>
 
-                <Field label="Peak rank *" error={errors?.peak_rank}>
-                  <Select
-                    value={value.peak_rank}
-                    onChange={(rankId) => onChange({ ...value, peak_rank: rankId })}
-                    placeholder="— Select rank —"
-                    options={ranks.map((rank) => ({ value: rank.id, label: rank.name }))}
-                  />
-                </Field>
+                  <Field label="Peak rank *" error={errors?.peak_rank}>
+                    <Select
+                      value={value.peak_rank}
+                      onChange={(rankId) => onChange({ ...value, peak_rank: rankId })}
+                      placeholder="— Select rank —"
+                      options={ranks.map((rank) => ({ value: rank.id, label: rank.name }))}
+                    />
+                  </Field>
+                </div>
 
-                <p className="col-span-full text-xs text-[var(--color-text-muted)] leading-relaxed">
+                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
                   If unranked, provide the most recent rank you had or one you believe you would be placed into if you were to play.
                 </p>
               </>

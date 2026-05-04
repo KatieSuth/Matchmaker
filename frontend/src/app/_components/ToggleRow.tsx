@@ -23,7 +23,7 @@ export function ToggleRow({
   return (
     <div
       className={[
-        "flex items-start justify-between gap-4",
+        "flex items-center justify-between gap-4",
         disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer group",
       ].join(" ")}
     >
@@ -45,7 +45,7 @@ export function ToggleRow({
           </p>
         )}
       </div>
-      <div className="shrink-0 pt-0.5">
+      <div className="shrink-0">
         <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} />
       </div>
     </div>

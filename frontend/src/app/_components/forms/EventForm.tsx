@@ -3,14 +3,16 @@
 // Create or edit an event group: zod + react-hook-form, game/mode pickers, and API mutations.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import DatePicker from "react-datepicker";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { REGIONS } from "@/app/_lib/constants";
-import { inputCls } from "@/app/_lib/styles";
+import { DATEPICKER_PORTAL_ID, datepickerStyles, inputCls } from "@/app/_lib/styles";
 import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { Game, GameMode } from "@/app/_types/types";
@@ -97,6 +99,69 @@ function getInitialStartTimeLocal(mode: "create" | "edit"): string {
   if (mode !== "create") return "";
   const now = roundUpToQuarterHour(new Date(Date.now() + 30 * 60 * 1000));
   return toDateTimeLocalValue(now);
+}
+
+function parseLocalDateTimeString(s: string): Date | null {
+  if (!s?.trim()) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Local datetime string (same shape as `datetime-local`) for API + zod; 15-minute steps. */
+function EventFormDateTimePicker({
+  value,
+  onChange,
+  onBlur,
+  name,
+  id,
+  disallowPast,
+  placeholderText = "Select date & time",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur?: () => void;
+  name?: string;
+  id?: string;
+  disallowPast?: boolean;
+  placeholderText?: string;
+}) {
+  const selected = parseLocalDateTimeString(value);
+  const filterTime = (time: Date) => {
+    if (!disallowPast) return true;
+    return time.getTime() > Date.now();
+  };
+
+  return (
+    <DatePicker
+      id={id}
+      name={name}
+      onBlur={onBlur}
+      portalId={DATEPICKER_PORTAL_ID}
+      selected={selected}
+      onChange={(date: Date | null) => {
+        onChange(date ? toDateTimeLocalValue(date) : "");
+      }}
+      showTimeSelect
+      timeIntervals={15}
+      timeCaption="Time"
+      showMonthDropdown
+      showYearDropdown
+      dropdownMode="select"
+      dateFormat="MMM d, yyyy h:mm aa"
+      placeholderText={placeholderText}
+      className={inputCls}
+      minDate={disallowPast ? startOfToday() : undefined}
+      filterTime={disallowPast ? filterTime : undefined}
+      popperPlacement="bottom-start"
+      popperProps={{ strategy: "fixed" }}
+    />
+  );
 }
 
 interface NumberStepperProps {
@@ -268,7 +333,6 @@ export function EventForm({
 
   const {
     control,
-    register,
     handleSubmit,
     setValue,
     getValues,
@@ -580,14 +644,24 @@ export function EventForm({
 
           {mode !== "edit" && (
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              <label
+                htmlFor="event-form-start-time"
+                className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+              >
                 First game start time *
               </label>
-              <input
-                type="datetime-local"
-                step={900}
-                className={inputCls}
-                {...register("start_time_local")}
+              <Controller
+                name="start_time_local"
+                control={control}
+                render={({ field }) => (
+                  <EventFormDateTimePicker
+                    id="event-form-start-time"
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    disallowPast
+                  />
+                )}
               />
               {errors.start_time_local && (
                 <p className="text-xs text-[var(--color-text-danger)]">{errors.start_time_local.message}</p>
@@ -696,20 +770,21 @@ export function EventForm({
                   <p className="text-xs font-semibold text-[var(--color-text-soft)]">Game {index + 1}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+                      <label
+                        htmlFor={`event-form-game-start-${row.eventId}`}
+                        className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+                      >
                         Start time *
                       </label>
-                      <input
-                        type="datetime-local"
-                        step={900}
-                        className={inputCls}
+                      <EventFormDateTimePicker
+                        id={`event-form-game-start-${row.eventId}`}
                         value={row.startLocal}
-                        onChange={(e) => {
-                          const v = e.target.value;
+                        onChange={(v) => {
                           setPerGameDraft((prev) =>
                             prev.map((r) => (r.eventId === row.eventId ? { ...r, startLocal: v } : r))
                           );
                         }}
+                        disallowPast={false}
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -840,6 +915,7 @@ export function EventForm({
           margin: 0;
         }
       `}</style>
+      <style>{datepickerStyles}</style>
     </>
   );
 }

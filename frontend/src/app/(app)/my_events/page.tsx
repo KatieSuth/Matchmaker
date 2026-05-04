@@ -13,7 +13,7 @@ import { SectionDivider } from "@/app/_components/SectionDivider";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { fetchGames } from "@/app/_services/games";
 import { fetchMyEvents } from "@/app/_services/events";
-import { inputCls, datepickerStyles } from "@/app/_lib/styles";
+import { inputCls, datepickerStyles, DATEPICKER_PORTAL_ID } from "@/app/_lib/styles";
 import { EventForm } from "@/app/_components/forms/EventForm";
 
 // ---------------------------------------------------------------------------
@@ -517,7 +517,6 @@ export default function MyEventsPage() {
 
   const gameSelectOptions: GroupBase<SelectOption>[] = [
     {
-      label: "Standard",
       options: systemGames.map((g) => ({ value: g.id, label: g.name })),
     },
     ...(userGames.length > 0
@@ -626,7 +625,7 @@ export default function MyEventsPage() {
 
         {/* Filters card */}
         <div
-          className="card rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden"
+          className="card rounded-xl p-4 flex flex-col gap-3 relative overflow-visible"
           style={{ animation: "var(--animate-rise-2)" }}
         >
           <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-15 rounded-full" />
@@ -680,10 +679,11 @@ export default function MyEventsPage() {
           </div>
 
           {/* Date range row */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
             <div className="flex-1 flex flex-col gap-1.5">
               <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">From</label>
               <DatePicker
+                portalId={DATEPICKER_PORTAL_ID}
                 wrapperClassName="w-full"
                 selected={pendingFrom}
                 onChange={(d: Date | null) => setPendingFrom(d)}
@@ -691,6 +691,9 @@ export default function MyEventsPage() {
                 startDate={pendingFrom}
                 endDate={pendingTo}
                 maxDate={pendingTo ?? undefined}
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
                 dateFormat="MMM d, yyyy"
                 popperPlacement="bottom-end"
                 popperProps={{
@@ -708,6 +711,7 @@ export default function MyEventsPage() {
             <div className="flex-1 flex flex-col gap-1.5">
               <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">To</label>
               <DatePicker
+                portalId={DATEPICKER_PORTAL_ID}
                 wrapperClassName="w-full"
                 selected={pendingTo}
                 onChange={(d: Date | null) => setPendingTo(d)}
@@ -715,6 +719,9 @@ export default function MyEventsPage() {
                 startDate={pendingFrom}
                 endDate={pendingTo}
                 minDate={pendingFrom ?? undefined}
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
                 dateFormat="MMM d, yyyy"
                 popperPlacement="bottom-end"
                 popperProps={{
@@ -729,21 +736,29 @@ export default function MyEventsPage() {
                 }
               />
             </div>
-            <button
-              type="button"
-              onClick={applyFilters}
-              disabled={!dateRangeValid || !filtersAreDirty}
-              title={!dateRangeValid ? "'From' must be before 'To'" : undefined}
-              className={[
-                "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150",
-                "border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]",
-                "hover:bg-[var(--color-accent-blue)]/20 hover:border-[var(--color-accent-blue)]/50",
-                "disabled:opacity-35 disabled:cursor-not-allowed",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-blue)]/40",
-              ].join(" ")}
-            >
-              Apply
-            </button>
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <span
+                className="text-xs font-medium tracking-wide text-transparent select-none"
+                aria-hidden
+              >
+                From
+              </span>
+              <button
+                type="button"
+                onClick={applyFilters}
+                disabled={!dateRangeValid || !filtersAreDirty}
+                title={!dateRangeValid ? "'From' must be before 'To'" : undefined}
+                className={[
+                  "inline-flex h-9 items-center justify-center rounded-lg px-4 text-sm font-medium transition-all duration-150",
+                  "border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]",
+                  "hover:bg-[var(--color-accent-blue)]/20 hover:border-[var(--color-accent-blue)]/50",
+                  "disabled:opacity-35 disabled:cursor-not-allowed",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-blue)]/40",
+                ].join(" ")}
+              >
+                Apply
+              </button>
+            </div>
           </div>
 
           {/* Validation */}

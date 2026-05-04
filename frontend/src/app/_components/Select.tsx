@@ -22,7 +22,7 @@ export const buildSelectStyles = (): StylesConfig<SelectOption, false, GroupBase
   control: (base, state) => ({
     ...base,
     minHeight: "36px",
-    background: "rgba(255,255,255,0.05)",
+    background: state.isDisabled ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.05)",
     border: state.isFocused
       ? "1px solid var(--color-accent-blue)"
       : "1px solid rgba(255,255,255,0.10)",
@@ -30,8 +30,9 @@ export const buildSelectStyles = (): StylesConfig<SelectOption, false, GroupBase
     boxShadow: state.isFocused
       ? "0 0 0 3px rgba(30,120,255,0.18)"
       : "none",
-    cursor: "pointer",
-    transition: "border-color 150ms, box-shadow 150ms",
+    cursor: state.isDisabled ? "not-allowed" : "pointer",
+    opacity: state.isDisabled ? 0.72 : 1,
+    transition: "border-color 150ms, box-shadow 150ms, opacity 150ms",
     "&:hover": {
       borderColor: state.isFocused
         ? "var(--color-accent-blue)"

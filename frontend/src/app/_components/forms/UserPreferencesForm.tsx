@@ -63,6 +63,8 @@ interface GameCardProps {
   setValue: ReturnType<typeof useForm<PreferencesFormValues>>["setValue"];
   errors: ReturnType<typeof useForm<PreferencesFormValues>>["formState"]["errors"];
   takenGameIds: string[];
+  /** Game IDs already saved to the server for this user (dropdown locked for those rows). */
+  persistedGameIds: Set<string>;
   onRemove: () => void;
 }
 
@@ -73,6 +75,7 @@ function GameCard({
   setValue,
   errors,
   takenGameIds,
+  persistedGameIds,
   onRemove,
 }: GameCardProps) {
   const [ranks, setRanks] = useState<GameRank[]>([]);
@@ -114,9 +117,12 @@ function GameCard({
   }, [watchedGameId]);
 
   const gameErrors = errors.games?.[index];
+  const lockGameSelect =
+    Boolean(watchedGameId) && persistedGameIds.has(watchedGameId);
 
   return (
     <UserGameEditor
+      lockGameSelect={lockGameSelect}
       value={{
         game_id: watchedValue?.game_id ?? "",
         in_game_name: watchedValue?.in_game_name ?? "",
@@ -156,6 +162,8 @@ export default function UserPreferencesForm() {
 
   const [allGames, setAllGames] = useState<Game[] | null>(null);
   const [userGames, setUserGames] = useState<UserGame[] | null>(null);
+  /** Game IDs already persisted; game picker stays editable until first successful save for that row. */
+  const [persistedGameIds, setPersistedGameIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -165,6 +173,7 @@ export default function UserPreferencesForm() {
     handleSubmit,
     reset,
     setValue,
+    getValues,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<PreferencesFormValues>({
     resolver: zodResolver(preferencesSchema),
@@ -190,6 +199,7 @@ export default function UserPreferencesForm() {
       .then(([games, ug]) => {
         setAllGames(games);
         setUserGames(ug);
+        setPersistedGameIds(new Set(ug.map((g) => g.game_id)));
       })
       .catch((err) => {
         if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
@@ -198,6 +208,7 @@ export default function UserPreferencesForm() {
         console.error(err);
         setAllGames([]);
         setUserGames([]);
+        setPersistedGameIds(new Set());
       });
     return () => {
       ac.abort();
@@ -242,6 +253,7 @@ export default function UserPreferencesForm() {
         });
       }
       reset(data);
+      setPersistedGameIds(new Set(data.games.map((g) => g.game_id).filter(Boolean)));
       const resolvedUser = await fetchCurrentUser();
       if (resolvedUser) {
         setUser(resolvedUser);
@@ -394,7 +406,18 @@ export default function UserPreferencesForm() {
                 setValue={setValue}
                 errors={errors}
                 takenGameIds={takenGameIds}
-                onRemove={() => remove(index)}
+                persistedGameIds={persistedGameIds}
+                onRemove={() => {
+                  const gid = getValues(`games.${index}.game_id`);
+                  remove(index);
+                  if (gid) {
+                    setPersistedGameIds((prev) => {
+                      const next = new Set(prev);
+                      next.delete(gid);
+                      return next;
+                    });
+                  }
+                }}
               />
             ))}
 
