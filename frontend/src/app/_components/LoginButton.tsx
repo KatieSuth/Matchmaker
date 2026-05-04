@@ -2,11 +2,19 @@
 
 // Discord OAuth: navigates the browser to GET /auth/login on the API.
 import { useState } from "react";
+import { POST_LOGIN_REDIRECT_STORAGE_KEY } from "@/app/_lib/postLoginRedirect";
 
 export default function DiscordLoginButton() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = () => {
+    if (typeof window !== "undefined") {
+      const onLanding = window.location.pathname === "/";
+      const hasNext = new URLSearchParams(window.location.search).get("next");
+      if (onLanding && !hasNext) {
+        sessionStorage.removeItem(POST_LOGIN_REDIRECT_STORAGE_KEY);
+      }
+    }
     setLoading(true);
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     window.location.href = `${apiUrl}/auth/login`;

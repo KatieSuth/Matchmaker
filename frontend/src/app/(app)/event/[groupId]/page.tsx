@@ -227,7 +227,7 @@ function EventPanel({
 // EventGroupPage - loads GET /events/:groupId and drives host vs guest UI, sheets, and mutations.
 export default function EventGroupPage() {
   const params = useParams<{ groupId: string }>();
-  const groupId = params?.groupId;
+  const groupId = Array.isArray(params?.groupId) ? params.groupId[0] : params?.groupId;
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [group, setGroup] = useState<EventGroupDetail | null>(null);

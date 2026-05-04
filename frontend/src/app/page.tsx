@@ -2,10 +2,12 @@
 import Image from "next/image";
 import LoginButton from "@/app/_components/LoginButton";
 import PageBackgroundOrbs from "@/app/_components/PageBackgroundOrbs";
+import { PostLoginRedirectCapture } from "@/app/_components/PostLoginRedirectCapture";
 
 export default function Page() {
   return (
     <main className="bg-page relative overflow-hidden min-h-screen flex flex-col items-center justify-center px-5 py-8">
+      <PostLoginRedirectCapture />
       <PageBackgroundOrbs />
 
       {/* Card */}

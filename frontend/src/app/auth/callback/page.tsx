@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation"
 import { setAccessToken } from "@/app/_lib/auth";
+import { consumePostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { useAuth } from "@/app/_context/AuthContext";
 import { completeAuth } from "@/app/_services/auth";
 import { fetchCurrentUser } from "@/app/_services/users";
@@ -44,12 +45,22 @@ export default function CallbackPage() {
                 const resolvedUser = await fetchCurrentUser(signal);
                 if (signal.aborted) return;
                 if (!resolvedUser) {
-                    router.replace(isNewUser ? "/my_account" : "/my_events");
+                    if (isNewUser) {
+                        router.replace("/my_account");
+                    } else {
+                        const next = consumePostLoginRedirect();
+                        router.replace(next ?? "/my_events");
+                    }
                     return;
                 }
                 setUser(resolvedUser);
                 setIsAuthenticated(true);
-                router.replace(isNewUser ? "/my_account" : "/my_events");
+                if (isNewUser) {
+                    router.replace("/my_account");
+                } else {
+                    const next = consumePostLoginRedirect();
+                    router.replace(next ?? "/my_events");
+                }
             } catch {
                 if (signal.aborted) return;
                 router.replace("/");

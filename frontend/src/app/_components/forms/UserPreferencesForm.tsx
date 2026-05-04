@@ -16,6 +16,7 @@ import { UserGameEditor } from "@/app/_components/forms/UserGameEditor";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { inputCls } from "@/app/_lib/styles";
+import { consumePostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
 import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame } from "@/app/_services/users";
 
@@ -245,7 +246,8 @@ export default function UserPreferencesForm() {
       if (resolvedUser) {
         setUser(resolvedUser);
         if (wasNewUser && !resolvedUser.new_user) {
-          router.push("/my_events");
+          const next = consumePostLoginRedirect();
+          router.push(next ?? "/my_events");
           return;
         }
       }

@@ -1,6 +1,7 @@
 // Route guard: uses the auth_session cookie to redirect; API routes still require a valid JWT.
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isAllowedPostLoginPath } from "@/app/_lib/postLoginRedirect";
 
 export function proxy(request: NextRequest) {
     /* note: "isAuthenticated" is just a lightweight flag set on login & token refresh for the
@@ -11,13 +12,19 @@ export function proxy(request: NextRequest) {
     const isAuthenticated = request.cookies.has("auth_session");
     const { pathname } = request.nextUrl;
 
-    // If no refresh token, always redirect to "/"
+    // Logged-out users only see the landing page; preserve deep links (?next=/event/...)
     if (!isAuthenticated && pathname !== "/") {
-        return NextResponse.redirect(new URL("/", request.url));
+        const loginUrl = new URL("/", request.url);
+        loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
+        return NextResponse.redirect(loginUrl);
     }
 
-    // If refresh token exists and they hit "/", send to "/events"
+    // Logged-in users on "/" go to My Events, or to ?next= when it is a safe in-app path
     if (isAuthenticated && pathname === "/") {
+        const nextParam = request.nextUrl.searchParams.get("next");
+        if (nextParam && isAllowedPostLoginPath(nextParam)) {
+            return NextResponse.redirect(new URL(nextParam, request.url));
+        }
         return NextResponse.redirect(new URL("/my_events", request.url));
     }
 
