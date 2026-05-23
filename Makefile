@@ -9,7 +9,7 @@ prod:
 	@echo "✅  API      → https://localhost:8080\n"
 	
 prod-no-cache:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache --pull
 	docker compose -f docker-compose.yml -f docker-compose.prod.yml up
 	@echo "\n✅  Frontend → https://localhost:3000"
 	@echo "✅  API      → https://localhost:8080\n"
@@ -38,7 +38,7 @@ dev:
 	
 # Start dev environment without cache
 dev-no-cache:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache --pull
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 	@echo "\n🔥  Dev mode — hot reload active"
 	@echo "    Frontend → https://matchmaker.localhost"

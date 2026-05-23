@@ -11,9 +11,11 @@ export function proxy(request: NextRequest) {
      */
     const isAuthenticated = request.cookies.has("auth_session");
     const { pathname } = request.nextUrl;
+    // Static public/health — Docker healthcheck must not 307 to / (wget follows and SSRs landing page).
+    const isDockerHealthPath = pathname === "/health";
 
     // Logged-out users only see the landing page; preserve deep links (?next=/event/...)
-    if (!isAuthenticated && pathname !== "/") {
+    if (!isAuthenticated && pathname !== "/" && !isDockerHealthPath) {
         const loginUrl = new URL("/", request.url);
         loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
         return NextResponse.redirect(loginUrl);
@@ -33,6 +35,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
     // Run middleware on all routes except Next.js internals and static files
-    matcher: ["/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp|.*\\.gif).*)"],
+    matcher: ["/((?!_next/static|_next/image|favicon.ico|auth/callback|health|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp|.*\\.gif).*)"],
     //matcher: ["/:path*"],
 };

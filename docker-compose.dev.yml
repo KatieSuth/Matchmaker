@@ -15,7 +15,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    command: ["npm", "run", "dev"]
+    command: ["sh", "-c", "rm -rf .next && npm run dev"]
     env_file:
       ./frontend/.env
     volumes:
