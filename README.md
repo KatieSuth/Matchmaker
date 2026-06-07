@@ -77,6 +77,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```bash
 # 3a. Copy the CA cert out of the caddy_data volume
 docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+# or run
+make export-ca
 ```
 
 ``` bash
@@ -94,10 +96,10 @@ sudo update-ca-certificates
 
 #### Firefox-specific steps
 
-1. Firefox requires a couple of manual changes to run as expected in a development environment. For SSL to work, Caddy's local CA cert must be exported from the container and imported into browser manually since Firefox has its own cert store separate from the OS. Follow the `docker exec` step in 3a to download the cert. Next, import it directly into Firefox:
+1. Firefox requires a couple of manual changes to run as expected in a development environment. For SSL to work, Caddy's local CA cert must be exported from the container and imported into browser manually since Firefox has its own cert store separate from the OS. Run `make export-ca` (or follow the `docker exec` step in 3a) to download the cert. Next, import it directly into Firefox:
 
 ```
-1. Settings → Privacy & Security → scroll to the bottom → View Certificates
+1. Settings → Privacy & Security → search for Certificates -> Manage certificates
 2. Authorities tab → Import
 3. Select the caddy-root.crt file you exported earlier
 4. Check "Trust this CA to identify websites"
@@ -111,6 +113,17 @@ sudo update-ca-certificates
 3. Set or add the value: matchmaker.localhost
 ```
 
+#### TLS troubleshooting (Firefox "security issue" / expired cert)
+
+Caddy stores dev TLS certificates in a Docker volume. If the stack was stopped for a while, the site certificate can expire. Caddy may then keep serving the expired cert while renewal gets stuck on a stale lock file.
+
+```bash
+make fix-certs    # clears stale lock, restarts Caddy, re-issues cert
+make tls-check    # prints cert dates and verify status
+make export-ca    # re-export root CA if needed (usually unchanged)
+```
+
+If Firefox still warns after `make fix-certs`, confirm `caddy-root.crt` is imported under **Authorities** (not **Your Certificates**) and restart Firefox.
 
 ---
 

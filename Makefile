@@ -72,6 +72,21 @@ dev-clean:
 health:
 	@curl -sk https://matchmaker.localhost/api/health | python3 -m json.tool
 
+# Export Caddy's local root CA for browser trust (see README Firefox steps)
+export-ca:
+	docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+	@echo "✅  Wrote caddy-root.crt — import into Firefox (Authorities tab) if not already trusted"
+
+# Recover from expired/stuck Caddy TLS certs (stale lock or deleted cert files)
+fix-certs:
+	-docker exec matchmaker-caddy rm -f /data/caddy/locks/issue_cert_matchmaker.localhost.lock
+	docker restart matchmaker-caddy
+	@bash scripts/tls-check.sh --wait matchmaker.localhost
+
+# Check TLS certificate served by Caddy
+tls-check:
+	@bash scripts/tls-check.sh matchmaker.localhost
+
 # Test the code
 test:
 	cd backend/internal && go test ./...
