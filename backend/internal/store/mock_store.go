@@ -54,6 +54,8 @@ type MockStore struct {
 	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
 	DeleteTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SwapPlayersForEventFn            func(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error
+	MoveSubToUnplacedForEventFn      func(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
+	MoveUnplacedToSubsForEventFn     func(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
 	SetLobbyHostForEventFn           func(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
 	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
@@ -166,6 +168,14 @@ func (m *MockStore) DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uu
 
 func (m *MockStore) SwapPlayersForEvent(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error {
 	return m.SwapPlayersForEventFn(ctx, eventID, ownerID, userA, userB, settings)
+}
+
+func (m *MockStore) MoveSubToUnplacedForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error {
+	return m.MoveSubToUnplacedForEventFn(ctx, eventID, ownerID, userID, settings)
+}
+
+func (m *MockStore) MoveUnplacedToSubsForEvent(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error {
+	return m.MoveUnplacedToSubsForEventFn(ctx, eventID, ownerID, userID, lobbyID, settings)
 }
 
 func (m *MockStore) SetLobbyHostForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID) error {

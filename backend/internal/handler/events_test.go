@@ -1085,6 +1085,198 @@ func TestSwapPlayersHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
+func TestMoveSubToUnplacedHandler_StoreErrors(t *testing.T) {
+	eventID := uuid.New()
+	uid := uuid.New()
+	targetUser := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `"}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid move", &store.SwapValidationError{Message: "Player is not a substitute"}, http.StatusBadRequest},
+		{"insufficient subs", store.ErrInsufficientSubstitutes, http.StatusBadRequest},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/sub-to-unplaced")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				MoveSubToUnplacedForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ matchmaking.Settings) error {
+					return tc.err
+				},
+			}, nil, "")
+			h.MoveSubToUnplacedHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestMoveSubToUnplacedHandler_Validation(t *testing.T) {
+	validUser := uuid.New()
+	validBody := `{"user_id":"` + validUser.String() + `"}`
+
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/bad/sub-to-unplaced")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(validBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveSubToUnplacedHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/sub-to-unplaced")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveSubToUnplacedHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid user_id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/sub-to-unplaced")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id":"bad"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveSubToUnplacedHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestMoveSubToUnplacedHandler_Success(t *testing.T) {
+	eventID := uuid.New()
+	targetUser := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `"}`
+	c, _ := test_util.NewGinContext(http.MethodPost, "/registrations/x/sub-to-unplaced")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		MoveSubToUnplacedForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ matchmaking.Settings) error { return nil },
+	}, nil, "")
+	h.MoveSubToUnplacedHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestMoveUnplacedToSubsHandler_StoreErrors(t *testing.T) {
+	eventID := uuid.New()
+	uid := uuid.New()
+	targetUser := uuid.New()
+	lobbyID := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `","lobby_id":"` + lobbyID.String() + `"}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid move", &store.SwapValidationError{Message: "Player is not unplaced"}, http.StatusBadRequest},
+		{"insufficient subs", store.ErrInsufficientSubstitutes, http.StatusBadRequest},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/unplaced-to-subs")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				MoveUnplacedToSubsForEventFn: func(_ context.Context, _, _, _, _ uuid.UUID, _ matchmaking.Settings) error {
+					return tc.err
+				},
+			}, nil, "")
+			h.MoveUnplacedToSubsHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestMoveUnplacedToSubsHandler_Validation(t *testing.T) {
+	validUser := uuid.New()
+	validLobby := uuid.New()
+	validBody := `{"user_id":"` + validUser.String() + `","lobby_id":"` + validLobby.String() + `"}`
+
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/bad/unplaced-to-subs")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(validBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveUnplacedToSubsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/unplaced-to-subs")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveUnplacedToSubsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid user_id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/unplaced-to-subs")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id":"bad","lobby_id":"` + validLobby.String() + `"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveUnplacedToSubsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid lobby_id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/unplaced-to-subs")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id":"` + validUser.String() + `","lobby_id":"bad"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.MoveUnplacedToSubsHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestMoveUnplacedToSubsHandler_Success(t *testing.T) {
+	eventID := uuid.New()
+	targetUser := uuid.New()
+	lobbyID := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `","lobby_id":"` + lobbyID.String() + `"}`
+	c, _ := test_util.NewGinContext(http.MethodPost, "/registrations/x/unplaced-to-subs")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		MoveUnplacedToSubsForEventFn: func(_ context.Context, _, _, _, _ uuid.UUID, _ matchmaking.Settings) error { return nil },
+	}, nil, "")
+	h.MoveUnplacedToSubsHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
 func TestUpsertMyRegistrationHandler_Validation(t *testing.T) {
 	t.Run("invalid event id", func(t *testing.T) {
 		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/bad/me")

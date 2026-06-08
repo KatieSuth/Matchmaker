@@ -107,6 +107,9 @@ func (s *PostgresStore) SwapPlayersForEvent(
 	if sameSubPoolPlacement(placeA, placeB) {
 		return &SwapValidationError{Message: "Cannot swap players in the same sub pool"}
 	}
+	if isSubUnplacedSwap(placeA, placeB) {
+		return &SwapValidationError{Message: "Cannot swap between substitutes and unplaced players"}
+	}
 
 	newA := resolveSwapDestination(placeB, regA.canSubstitute)
 	newB := resolveSwapDestination(placeA, regB.canSubstitute)

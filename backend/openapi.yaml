@@ -1080,7 +1080,8 @@ paths:
       operationId: swapPlayersForEvent
       description: >
         Host-only. Atomically exchanges two players' team/sub/unplaced assignments for one game,
-        then recomputes lobby hosts and fairness warnings.
+        then recomputes lobby hosts and fairness warnings. Swaps between substitutes and unplaced
+        players are not allowed; use the placement move endpoints instead.
       security:
         - bearerAuth: []
       parameters:
@@ -1130,6 +1131,127 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Failed to swap players
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /registrations/{eventId}/sub-to-unplaced:
+    post:
+      tags: [registrations]
+      summary: Move a substitute to unplaced
+      operationId: moveSubToUnplacedForEvent
+      description: >
+        Host-only. Removes a substitute from their lobby sub pool and leaves them unplaced
+        for this game, then recomputes lobby fairness warnings.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the game (event row)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+      responses:
+        "204":
+          description: Player moved to unplaced successfully
+        "400":
+          description: Invalid request or move would violate substitute minimums
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can move players
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to move player
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /registrations/{eventId}/unplaced-to-subs:
+    post:
+      tags: [registrations]
+      summary: Move an unplaced player to a lobby sub pool
+      operationId: moveUnplacedToSubsForEvent
+      description: >
+        Host-only. Adds a substitute-eligible unplaced player to the sub pool of the given lobby,
+        then recomputes lobby fairness warnings.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the game (event row)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, lobby_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                lobby_id:
+                  type: string
+                  format: uuid
+      responses:
+        "204":
+          description: Player moved to subs successfully
+        "400":
+          description: Invalid request, player not substitute-eligible, or insufficient substitutes after move
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can move players
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to move player
           content:
             application/json:
               schema:

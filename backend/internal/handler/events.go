@@ -67,6 +67,15 @@ type setLobbyHostRequest struct {
 	UserID string `json:"user_id"`
 }
 
+type movePlacementRequest struct {
+	UserID string `json:"user_id"`
+}
+
+type moveUnplacedToSubsRequest struct {
+	UserID  string `json:"user_id"`
+	LobbyID string `json:"lobby_id"`
+}
+
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -553,6 +562,121 @@ func (h *Handler) SwapPlayersHandler(c *gin.Context) {
 			slog.ErrorContext(c.Request.Context(), "failed to swap players", "event_id", eventID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to swap players"})
 		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) respondPlacementMoveError(c *gin.Context, userUUID, eventID uuid.UUID, err error, action string) {
+	switch {
+	case errors.Is(err, store.ErrForbidden):
+		slog.WarnContext(c.Request.Context(), "forbidden placement move attempt", "user_id", userUUID, "event_id", eventID, "action", action)
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can move players"})
+	case errors.Is(err, store.ErrInsufficientSubstitutes):
+		msg := err.Error()
+		var teamErr *store.TeamCreationError
+		if errors.As(err, &teamErr) {
+			msg = teamErr.Message
+		}
+		slog.WarnContext(c.Request.Context(), "placement move validation failed", "user_id", userUUID, "event_id", eventID, "action", action, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+	case errors.Is(err, store.ErrInvalidPlayerSwap):
+		msg := err.Error()
+		var swapErr *store.SwapValidationError
+		if errors.As(err, &swapErr) {
+			msg = swapErr.Message
+		}
+		slog.WarnContext(c.Request.Context(), "placement move validation failed", "user_id", userUUID, "event_id", eventID, "action", action, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+	case errors.Is(err, store.ErrTeamsNotCreated):
+		slog.WarnContext(c.Request.Context(), "placement move requested but no teams exist", "user_id", userUUID, "event_id", eventID, "action", action)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "No teams exist for this game"})
+	case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
+		slog.WarnContext(c.Request.Context(), "event not found for placement move", "user_id", userUUID, "event_id", eventID, "action", action)
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
+	default:
+		slog.ErrorContext(c.Request.Context(), "failed placement move", "event_id", eventID, "action", action, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to move player"})
+	}
+}
+
+// POST /registrations/:eventId/sub-to-unplaced
+// Host-only. Removes a substitute from their lobby sub pool.
+func (h *Handler) MoveSubToUnplacedHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid eventId in MoveSubToUnplacedHandler", "user_id", userUUID, "event_id", c.Param("eventId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "eventId must be a valid UUID"})
+		return
+	}
+
+	var body movePlacementRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in MoveSubToUnplacedHandler", "user_id", userUUID, "event_id", eventID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+
+	targetUserID, err := uuid.Parse(body.UserID)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id in MoveSubToUnplacedHandler", "user_id", userUUID, "event_id", eventID, "target_user_id", body.UserID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id must be a valid UUID"})
+		return
+	}
+
+	err = h.store.MoveSubToUnplacedForEvent(c.Request.Context(), eventID, userUUID, targetUserID, h.matchmakingSettings)
+	if err != nil {
+		h.respondPlacementMoveError(c, userUUID, eventID, err, "sub-to-unplaced")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// POST /registrations/:eventId/unplaced-to-subs
+// Host-only. Adds an unplaced substitute-eligible player to a lobby sub pool.
+func (h *Handler) MoveUnplacedToSubsHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid eventId in MoveUnplacedToSubsHandler", "user_id", userUUID, "event_id", c.Param("eventId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "eventId must be a valid UUID"})
+		return
+	}
+
+	var body moveUnplacedToSubsRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in MoveUnplacedToSubsHandler", "user_id", userUUID, "event_id", eventID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+
+	targetUserID, err := uuid.Parse(body.UserID)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id in MoveUnplacedToSubsHandler", "user_id", userUUID, "event_id", eventID, "target_user_id", body.UserID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id must be a valid UUID"})
+		return
+	}
+	lobbyID, err := uuid.Parse(body.LobbyID)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid lobby_id in MoveUnplacedToSubsHandler", "user_id", userUUID, "event_id", eventID, "lobby_id", body.LobbyID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "lobby_id must be a valid UUID"})
+		return
+	}
+
+	err = h.store.MoveUnplacedToSubsForEvent(c.Request.Context(), eventID, userUUID, targetUserID, lobbyID, h.matchmakingSettings)
+	if err != nil {
+		h.respondPlacementMoveError(c, userUUID, eventID, err, "unplaced-to-subs")
 		return
 	}
 

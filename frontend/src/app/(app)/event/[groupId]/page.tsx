@@ -21,6 +21,8 @@ import {
   deleteRegistration,
   deleteTeams,
   fetchEventGroup,
+  moveSubToUnplaced,
+  moveUnplacedToSubs,
   setLobbyHost,
   swapPlayers,
   upsertMyGroupRegistrations,
@@ -196,6 +198,16 @@ function isTeamAssignedPlacement(
   return !!placement && placement.lobbyId !== null && typeof placement.teamNumber === "number";
 }
 
+/** True when a player is in a lobby sub pool. */
+function isSubPlacement(placement?: PlayerPlacement): boolean {
+  return !!placement && placement.lobbyId !== null && placement.teamNumber === null;
+}
+
+/** True when a player is registered but not on a team or sub pool. */
+function isUnplacedPlacement(placement?: PlayerPlacement): boolean {
+  return !!placement && placement.teamNumber === undefined;
+}
+
 /** Lists team players in a lobby who volunteered to host, excluding the selected player. */
 function buildLobbyHostVolunteers(
   lobby: EventLobby,
@@ -223,6 +235,8 @@ function buildLobbyHostVolunteers(
 function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): SelectOption[] {
   const options: SelectOption[] = [];
   const lobbies = event.lobbies ?? [];
+  const sourceIsSub = isSubPlacement(source);
+  const sourceIsUnplaced = isUnplacedPlacement(source);
 
   for (let lobbyIndex = 0; lobbyIndex < lobbies.length; lobbyIndex++) {
     const lobby = lobbies[lobbyIndex];
@@ -250,6 +264,9 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
       if (player.user_id === source.userId) {
         continue;
       }
+      if (sourceIsUnplaced) {
+        continue;
+      }
       if (source.teamNumber === null && source.lobbyId === lobby.id) {
         continue;
       }
@@ -263,6 +280,9 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
 
   for (const registration of event.unplaced ?? []) {
     if (registration.user_id === source.userId) {
+      continue;
+    }
+    if (sourceIsSub) {
       continue;
     }
     options.push({
@@ -289,6 +309,8 @@ function PlayerCard({
   onDeleteAllFromUser,
   placement,
   onSwap,
+  onMoveToUnplaced,
+  onMoveToSubs,
   onMakeLobbyHost,
   lobbyHostId,
   showDuoRequest = false,
@@ -306,6 +328,8 @@ function PlayerCard({
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
   placement?: PlayerPlacement;
   onSwap?: (placement: PlayerPlacement) => void;
+  onMoveToUnplaced?: (placement: PlayerPlacement) => void;
+  onMoveToSubs?: (placement: PlayerPlacement) => void;
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
   lobbyHostId?: string | null;
   showDuoRequest?: boolean;
@@ -322,10 +346,28 @@ function PlayerCard({
     label: "Show More Details",
     onSelect: () => onShowDetails(registration),
   });
-  if (isHostView && placement && onSwap) {
+  if (isHostView && isTeamAssignedPlacement(placement) && onSwap) {
     menuOptions.push({
       label: "Swap",
       onSelect: () => onSwap(placement),
+    });
+  }
+  if (isHostView && placement && isSubPlacement(placement) && onMoveToUnplaced) {
+    menuOptions.push({
+      label: "Move to unplaced",
+      onSelect: () => onMoveToUnplaced(placement),
+    });
+  }
+  if (
+    isHostView &&
+    placement &&
+    isUnplacedPlacement(placement) &&
+    registration.can_substitute &&
+    onMoveToSubs
+  ) {
+    menuOptions.push({
+      label: "Move to subs",
+      onSelect: () => onMoveToSubs(placement),
     });
   }
   if (
@@ -460,6 +502,8 @@ function TeamsPanel({
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
   onSwapPlayer,
+  onMoveToUnplaced,
+  onMoveToSubs,
   onMakeLobbyHost,
 }: {
   event: EventGroupEvent;
@@ -473,6 +517,8 @@ function TeamsPanel({
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
   onSwapPlayer?: (placement: PlayerPlacement) => void;
+  onMoveToUnplaced?: (placement: PlayerPlacement) => void;
+  onMoveToSubs?: (placement: PlayerPlacement) => void;
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
 }) {
   const lobbies = event.lobbies ?? [];
@@ -530,6 +576,8 @@ function TeamsPanel({
                     }}
                     lobbyHostId={lobby.host_id}
                     onSwap={onSwapPlayer}
+                    onMoveToUnplaced={onMoveToUnplaced}
+                    onMoveToSubs={onMoveToSubs}
                     onMakeLobbyHost={onMakeLobbyHost}
                   />
                 ))}
@@ -539,7 +587,7 @@ function TeamsPanel({
           </div>
           {lobby.subs.length > 0 && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Subs</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Substitutes</p>
               {lobby.subs.map((player) => (
                 <PlayerCard
                   key={player.user_id}
@@ -564,6 +612,8 @@ function TeamsPanel({
                     teamNumber: null,
                   }}
                   onSwap={onSwapPlayer}
+                  onMoveToUnplaced={onMoveToUnplaced}
+                  onMoveToSubs={onMoveToSubs}
                 />
               ))}
             </div>
@@ -600,6 +650,8 @@ function TeamsPanel({
                 teamNumber: undefined,
               }}
               onSwap={onSwapPlayer}
+              onMoveToUnplaced={onMoveToUnplaced}
+              onMoveToSubs={onMoveToSubs}
             />
           ))}
         </div>
@@ -681,6 +733,9 @@ export default function EventGroupPage() {
   const [pendingSwap, setPendingSwap] = useState<PlayerPlacement | null>(null);
   const [pendingLobbyHostChange, setPendingLobbyHostChange] = useState<PendingLobbyHostChange | null>(null);
   const [swapTargetUserId, setSwapTargetUserId] = useState("");
+  const [moveToSubsSheetOpen, setMoveToSubsSheetOpen] = useState(false);
+  const [pendingMoveToSubs, setPendingMoveToSubs] = useState<PlayerPlacement | null>(null);
+  const [moveToSubsLobbyId, setMoveToSubsLobbyId] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
     selected_event_ids: [],
@@ -704,7 +759,14 @@ export default function EventGroupPage() {
 
   const loadGroup = useCallback(async (signal?: AbortSignal) => {
     if (!groupId) return;
-    setLoading(true);
+    let showFullPageLoading = false;
+    setGroup((current) => {
+      showFullPageLoading = current === null;
+      return current;
+    });
+    if (showFullPageLoading) {
+      setLoading(true);
+    }
     setPageError(null);
     try {
       const data = await fetchEventGroup(groupId, signal);
@@ -728,7 +790,7 @@ export default function EventGroupPage() {
       if (canceled) return;
       setPageError("Could not load this event group.");
     } finally {
-      if (!signal?.aborted) {
+      if (!signal?.aborted && showFullPageLoading) {
         setLoading(false);
       }
     }
@@ -919,6 +981,46 @@ export default function EventGroupPage() {
     }
   };
 
+  const closeMoveToSubsSheet = useCallback(() => {
+    setMoveToSubsSheetOpen(false);
+    setPendingMoveToSubs(null);
+    setMoveToSubsLobbyId("");
+  }, []);
+
+  const handleMoveToUnplaced = (placement: PlayerPlacement) => {
+    void withHostAction(() => moveSubToUnplaced(placement.eventId, placement.userId));
+  };
+
+  const handleMoveToSubs = (placement: PlayerPlacement) => {
+    if (!group) return;
+    const event = group.events.find((item) => item.id === placement.eventId);
+    if (!event) return;
+    const lobbies = event.lobbies ?? [];
+    if (lobbies.length === 1) {
+      void withHostAction(() =>
+        moveUnplacedToSubs(placement.eventId, placement.userId, lobbies[0].id),
+      );
+      return;
+    }
+    setPendingMoveToSubs(placement);
+    setMoveToSubsLobbyId("");
+    setMoveToSubsSheetOpen(true);
+  };
+
+  const handleMoveToSubsSubmit = async () => {
+    if (!pendingMoveToSubs || !moveToSubsLobbyId) return;
+    try {
+      setWorking(true);
+      await moveUnplacedToSubs(pendingMoveToSubs.eventId, pendingMoveToSubs.userId, moveToSubsLobbyId);
+      await loadGroup();
+      closeMoveToSubsSheet();
+    } catch (err) {
+      setPageError(extractApiError(err, "Could not complete that action."));
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const swapEvent = useMemo(() => {
     if (!group || !pendingSwap) return null;
     return group.events.find((event) => event.id === pendingSwap.eventId) ?? null;
@@ -928,6 +1030,19 @@ export default function EventGroupPage() {
     if (!swapEvent || !pendingSwap) return [];
     return buildSwapCandidates(swapEvent, pendingSwap);
   }, [swapEvent, pendingSwap]);
+
+  const moveToSubsEvent = useMemo(() => {
+    if (!group || !pendingMoveToSubs) return null;
+    return group.events.find((event) => event.id === pendingMoveToSubs.eventId) ?? null;
+  }, [group, pendingMoveToSubs]);
+
+  const moveToSubsLobbyOptions = useMemo((): SelectOption[] => {
+    if (!moveToSubsEvent) return [];
+    return (moveToSubsEvent.lobbies ?? []).map((lobby, lobbyIndex) => ({
+      value: lobby.id,
+      label: `Lobby ${lobbyIndex + 1}`,
+    }));
+  }, [moveToSubsEvent]);
 
   const handleShare = async () => {
     const shareUrl = typeof window !== "undefined" ? window.location.href : "";
@@ -1558,6 +1673,8 @@ export default function EventGroupPage() {
                       openDeleteConfirmation(registration, gameNumber, "all")
                     }
                     onSwapPlayer={isHost ? openSwapSheet : undefined}
+                    onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
+                    onMoveToSubs={isHost ? handleMoveToSubs : undefined}
                     onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
                   />
                 ) : (
@@ -1628,6 +1745,8 @@ export default function EventGroupPage() {
                   openDeleteConfirmation(registration, gameNumber, "all")
                 }
                 onSwapPlayer={isHost ? openSwapSheet : undefined}
+                onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
+                onMoveToSubs={isHost ? handleMoveToSubs : undefined}
                 onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
               />
             ) : (
@@ -1888,6 +2007,7 @@ export default function EventGroupPage() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--color-text-soft)]">
             Choose a player from another team, lobby, sub pool, or unplaced list to swap with.
+            Use Move to unplaced or Move to subs for substitute and unplaced players.
           </p>
           <Select
             value={swapTargetUserId}
@@ -1913,6 +2033,44 @@ export default function EventGroupPage() {
               className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
             >
               {working ? "Swapping..." : "Submit"}
+            </button>
+          </div>
+        </div>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        isOpen={moveToSubsSheetOpen}
+        onClose={closeMoveToSubsSheet}
+        title={pendingMoveToSubs ? `Move ${pendingMoveToSubs.discordName} to subs` : "Move to subs"}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--color-text-soft)]">
+            Choose which lobby sub pool this player should join.
+          </p>
+          <Select
+            value={moveToSubsLobbyId}
+            onChange={setMoveToSubsLobbyId}
+            options={moveToSubsLobbyOptions}
+            placeholder={moveToSubsLobbyOptions.length === 0 ? "No lobbies" : "— Select lobby —"}
+            disabled={working || moveToSubsLobbyOptions.length === 0}
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeMoveToSubsSheet}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void handleMoveToSubsSubmit();
+              }}
+              disabled={working || !pendingMoveToSubs || !moveToSubsLobbyId}
+              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+            >
+              {working ? "Moving..." : "Submit"}
             </button>
           </div>
         </div>

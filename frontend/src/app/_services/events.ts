@@ -77,6 +77,16 @@ export async function setLobbyHost(eventId: string, userId: string): Promise<voi
   await api.post(`/registrations/${eventId}/lobby-host`, { user_id: userId });
 }
 
+/** Host-only. Removes a substitute from their lobby sub pool. */
+export async function moveSubToUnplaced(eventId: string, userId: string): Promise<void> {
+  await api.post(`/registrations/${eventId}/sub-to-unplaced`, { user_id: userId });
+}
+
+/** Host-only. Adds an unplaced substitute-eligible player to a lobby sub pool. */
+export async function moveUnplacedToSubs(eventId: string, userId: string, lobbyId: string): Promise<void> {
+  await api.post(`/registrations/${eventId}/unplaced-to-subs`, { user_id: userId, lobby_id: lobbyId });
+}
+
 export async function deleteEventGroup(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}`);
 }
