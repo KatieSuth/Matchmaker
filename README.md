@@ -15,8 +15,8 @@ It's still very much in the early phases but is intended to one day support Valo
 - [x] User preferences
 - [x] One-off event admin configuration
 - [x] One-off event sign-up for players
-- [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [x] One-off event admin team creation
+- [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [ ] 1.0 web hosting with public availability
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Discord server membership requirement as host option
