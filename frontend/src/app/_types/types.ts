@@ -76,6 +76,7 @@ export interface LobbyPlayer {
   peak_rank_order: number;
   can_substitute: boolean;
   can_lobby_host: boolean;
+  duo_request: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +90,7 @@ export interface EventLobby {
   id: string;
   host_id: string | null;
   fairness_warning: boolean;
+  fairness_warning_at_lock: boolean;
   teams: EventTeam[];
   subs: LobbyPlayer[];
 }

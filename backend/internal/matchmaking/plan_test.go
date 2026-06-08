@@ -128,8 +128,57 @@ func TestPlanEvent_InsufficientPlayers(t *testing.T) {
 	}
 	players := []matchmaking.Player{{UserID: uuid.New(), AvgRank: 10, CreatedAt: time.Now()}}
 
-	_, err := matchmaking.PlanEvent(players, cfg, matchmaking.Settings{FairnessOutlierGap: 8, FairnessTeamSeparation: 4, FairnessReferenceTierCount: 25})
+	_, err := matchmaking.PlanEvent(players, cfg, matchmaking.Settings{
+		FairnessOutlierGap:         8,
+		FairnessTeamSeparation:     4,
+		FairnessReferenceTierCount: 25,
+	})
 	require.Error(t, err)
 	var valErr *matchmaking.ValidationError
 	require.ErrorAs(t, err, &valErr)
+}
+
+func TestPlanEvent_PreservesMutualDuoOnSameTeamWhenSnakeAllows(t *testing.T) {
+	now := time.Now()
+	a := uuid.New()
+	b := uuid.New()
+	c := uuid.New()
+	d := uuid.New()
+
+	players := []matchmaking.Player{
+		{UserID: a, DiscordName: "A", AvgRank: 20, CreatedAt: now},
+		{UserID: b, DiscordName: "B", DuoRequest: duoRequest("C"), AvgRank: 18, CreatedAt: now.Add(time.Minute)},
+		{UserID: c, DiscordName: "C", DuoRequest: duoRequest("B"), AvgRank: 17, CreatedAt: now.Add(2 * time.Minute)},
+		{UserID: d, DiscordName: "D", AvgRank: 10, CreatedAt: now.Add(3 * time.Minute)},
+	}
+
+	cfg := matchmaking.Config{
+		EventID:   uuid.New(),
+		TeamSize:  2,
+		SubMin:    0,
+		SortLogic: "balanced",
+		TierCount: 25,
+		GameLabel: "Game 1 (2v2)",
+		Slots:     4,
+	}
+	settings := matchmaking.Settings{
+		FairnessOutlierGap:         8,
+		FairnessTeamSeparation:     4,
+		FairnessReferenceTierCount: 25,
+	}
+
+	plan, err := matchmaking.PlanEvent(players, cfg, settings)
+	require.NoError(t, err)
+	require.Len(t, plan.Lobbies, 1)
+
+	teamFor := func(id uuid.UUID) int {
+		for _, p := range plan.Lobbies[0].Roster {
+			if p.UserID != id || p.TeamNumber == nil {
+				continue
+			}
+			return *p.TeamNumber
+		}
+		return 0
+	}
+	assert.Equal(t, teamFor(b), teamFor(c))
 }

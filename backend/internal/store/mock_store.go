@@ -53,6 +53,7 @@ type MockStore struct {
 	SetEventGroupRegistrationOpenFn  func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
 	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
 	DeleteTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	SwapPlayersForEventFn            func(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error
 	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
 	DeleteRegistrationForEventFn     func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
@@ -160,6 +161,10 @@ func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uu
 
 func (m *MockStore) DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
 	return m.DeleteTeamsForGroupFn(ctx, groupID, ownerID)
+}
+
+func (m *MockStore) SwapPlayersForEvent(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error {
+	return m.SwapPlayersForEventFn(ctx, eventID, ownerID, userA, userB, settings)
 }
 
 func (m *MockStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {

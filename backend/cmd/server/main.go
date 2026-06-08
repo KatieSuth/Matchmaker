@@ -274,6 +274,7 @@ func main() {
 		{
 			registrations.PUT("/group/:groupId/me", h.UpsertMyGroupRegistrationsHandler)
 			registrations.PUT("/:eventId/me", h.UpsertMyRegistrationHandler)
+			registrations.POST("/:eventId/player-swap", h.SwapPlayersHandler)
 			registrations.DELETE("/:eventId/:userId", h.DeleteRegistrationHandler)
 			registrations.DELETE("/:eventId/me", h.DeleteRegistrationHandler)
 		}

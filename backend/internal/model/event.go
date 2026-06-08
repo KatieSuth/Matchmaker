@@ -43,8 +43,9 @@ type LobbyPlayer struct {
 	CurrentRankName  string `json:"current_rank_name"`
 	CurrentRankOrder int    `json:"current_rank_order"`
 	PeakRankOrder    int    `json:"peak_rank_order"`
-	CanSubstitute    bool   `json:"can_substitute"`
+	CanSubstitute    bool      `json:"can_substitute"`
 	CanLobbyHost     bool      `json:"can_lobby_host"`
+	DuoRequest       *string   `json:"duo_request"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -57,11 +58,12 @@ type EventTeam struct {
 
 // EventLobby is one match lobby for a game after lock-in.
 type EventLobby struct {
-	ID              uuid.UUID   `json:"id"`
-	HostID          *uuid.UUID  `json:"host_id"`
-	FairnessWarning bool        `json:"fairness_warning"`
-	Teams           []EventTeam `json:"teams"`
-	Subs            []LobbyPlayer `json:"subs"`
+	ID                    uuid.UUID   `json:"id"`
+	HostID                *uuid.UUID  `json:"host_id"`
+	FairnessWarning       bool        `json:"fairness_warning"`
+	FairnessWarningAtLock bool        `json:"fairness_warning_at_lock"`
+	Teams                 []EventTeam `json:"teams"`
+	Subs                  []LobbyPlayer `json:"subs"`
 }
 
 // EventGroupEvent is one scheduled game within a group, with optional registration rows.
@@ -161,11 +163,12 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 
 func MapDbGetLobbiesForEventRowToEventLobby(row db.GetLobbiesForEventRow) EventLobby {
 	return EventLobby{
-		ID:              row.ID,
-		HostID:          row.Host,
-		FairnessWarning: row.FairnessWarning,
-		Teams:           []EventTeam{},
-		Subs:            []LobbyPlayer{},
+		ID:                    row.ID,
+		HostID:                row.Host,
+		FairnessWarning:       row.FairnessWarning,
+		FairnessWarningAtLock: row.FairnessWarningAtLock,
+		Teams:                 []EventTeam{},
+		Subs:                  []LobbyPlayer{},
 	}
 }
 
@@ -183,6 +186,7 @@ func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) Lobby
 		PeakRankOrder:    int(row.PeakRankOrder),
 		CanSubstitute:    row.CanSubstitute,
 		CanLobbyHost:     row.CanLobbyHost,
+		DuoRequest:       row.DuoRequest,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

@@ -1,7 +1,6 @@
 package matchmaking
 
 import (
-	"math"
 	"sort"
 )
 
@@ -52,28 +51,26 @@ func outlierExceeds(roster []Player, gap float64) bool {
 
 // teamSeparationExceeds is true when the two teams' average skill differs beyond the threshold.
 func teamSeparationExceeds(lobby LobbyPlan, separation float64) bool {
-	var team1Sum, team2Sum float64
-	var team1Count, team2Count int
+	team1, team2 := splitRosterByTeamNumber(lobby.Roster)
+	if len(team1) == 0 || len(team2) == 0 {
+		return false
+	}
+	return teamAverageSeparation(team1, team2) > separation
+}
 
-	for _, p := range lobby.Roster {
+// splitRosterByTeamNumber partitions a lobby roster into team 1 and team 2 players.
+func splitRosterByTeamNumber(roster []Player) ([]Player, []Player) {
+	var team1, team2 []Player
+	for _, p := range roster {
 		if p.TeamNumber == nil {
 			continue
 		}
 		switch *p.TeamNumber {
 		case 1:
-			team1Sum += p.AvgRank
-			team1Count++
+			team1 = append(team1, p)
 		case 2:
-			team2Sum += p.AvgRank
-			team2Count++
+			team2 = append(team2, p)
 		}
 	}
-
-	if team1Count == 0 || team2Count == 0 {
-		return false
-	}
-
-	team1Avg := team1Sum / float64(team1Count)
-	team2Avg := team2Sum / float64(team2Count)
-	return math.Abs(team1Avg-team2Avg) > separation
+	return team1, team2
 }

@@ -26,6 +26,19 @@ func (q *Queries) CountLobbiesByGroupId(ctx context.Context, groupID *uuid.UUID)
 	return column_1, err
 }
 
+const countLobbiesForEvent = `-- name: CountLobbiesForEvent :one
+SELECT COUNT(*)::INT
+FROM lobbies
+WHERE event_id = $1
+`
+
+func (q *Queries) CountLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countLobbiesForEvent, eventID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createEvent = `-- name: CreateEvent :exec
 INSERT INTO events (id, group_id, start_time, game_mode_id, created_at, updated_at)
 VALUES (
@@ -99,9 +112,9 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 }
 
 const createLobby = `-- name: CreateLobby :one
-INSERT INTO lobbies (id, event_id, host, fairness_warning, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-RETURNING id, event_id, host, created_at, updated_at, fairness_warning
+INSERT INTO lobbies (id, event_id, host, fairness_warning, fairness_warning_at_lock, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, $3, NOW(), NOW())
+RETURNING id, event_id, host, created_at, updated_at, fairness_warning, fairness_warning_at_lock
 `
 
 type CreateLobbyParams struct {
@@ -120,6 +133,7 @@ func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.FairnessWarning,
+		&i.FairnessWarningAtLock,
 	)
 	return i, err
 }
@@ -164,6 +178,21 @@ WHERE event_id IN (
 
 func (q *Queries) DeleteLobbiesByGroupId(ctx context.Context, groupID *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteLobbiesByGroupId, groupID)
+	return err
+}
+
+const deletePlayer = `-- name: DeletePlayer :exec
+DELETE FROM players
+WHERE lobby_id = $1 AND user_id = $2
+`
+
+type DeletePlayerParams struct {
+	LobbyID uuid.UUID
+	UserID  uuid.UUID
+}
+
+func (q *Queries) DeletePlayer(ctx context.Context, arg DeletePlayerParams) error {
+	_, err := q.db.Exec(ctx, deletePlayer, arg.LobbyID, arg.UserID)
 	return err
 }
 
@@ -315,6 +344,35 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.SortLogic,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getEventGroupMetaByEventId = `-- name: GetEventGroupMetaByEventId :one
+SELECT EG.id AS group_id,
+       EG.owner_id,
+       EG.sub_min,
+       E.game_mode_id
+FROM events AS E
+JOIN event_groups AS EG ON EG.id = E.group_id
+WHERE E.id = $1
+`
+
+type GetEventGroupMetaByEventIdRow struct {
+	GroupID    uuid.UUID
+	OwnerID    uuid.UUID
+	SubMin     int32
+	GameModeID uuid.UUID
+}
+
+func (q *Queries) GetEventGroupMetaByEventId(ctx context.Context, id uuid.UUID) (GetEventGroupMetaByEventIdRow, error) {
+	row := q.db.QueryRow(ctx, getEventGroupMetaByEventId, id)
+	var i GetEventGroupMetaByEventIdRow
+	err := row.Scan(
+		&i.GroupID,
+		&i.OwnerID,
+		&i.SubMin,
+		&i.GameModeID,
 	)
 	return i, err
 }
@@ -565,17 +623,18 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 }
 
 const getLobbiesForEvent = `-- name: GetLobbiesForEvent :many
-SELECT id, event_id, host, fairness_warning
+SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock
 FROM lobbies
 WHERE event_id = $1
-ORDER BY created_at ASC
+ORDER BY created_at ASC, id ASC
 `
 
 type GetLobbiesForEventRow struct {
-	ID              uuid.UUID
-	EventID         *uuid.UUID
-	Host            *uuid.UUID
-	FairnessWarning bool
+	ID                    uuid.UUID
+	EventID               *uuid.UUID
+	Host                  *uuid.UUID
+	FairnessWarning       bool
+	FairnessWarningAtLock bool
 }
 
 func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([]GetLobbiesForEventRow, error) {
@@ -592,7 +651,41 @@ func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([
 			&i.EventID,
 			&i.Host,
 			&i.FairnessWarning,
+			&i.FairnessWarningAtLock,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayerPlacementsForEvent = `-- name: GetPlayerPlacementsForEvent :many
+SELECT P.user_id, P.lobby_id, P.team_number
+FROM players AS P
+JOIN lobbies AS L ON L.id = P.lobby_id
+WHERE L.event_id = $1
+`
+
+type GetPlayerPlacementsForEventRow struct {
+	UserID     uuid.UUID
+	LobbyID    uuid.UUID
+	TeamNumber *int32
+}
+
+func (q *Queries) GetPlayerPlacementsForEvent(ctx context.Context, eventID *uuid.UUID) ([]GetPlayerPlacementsForEventRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerPlacementsForEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPlayerPlacementsForEventRow
+	for rows.Next() {
+		var i GetPlayerPlacementsForEventRow
+		if err := rows.Scan(&i.UserID, &i.LobbyID, &i.TeamNumber); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -625,6 +718,7 @@ SELECT P.user_id,
        END::INT AS peak_rank_order,
        R.can_substitute,
        R.can_lobby_host,
+       R.duo_request,
        R.created_at,
        R.updated_at
 FROM players AS P
@@ -655,6 +749,7 @@ type GetPlayersForLobbyRow struct {
 	PeakRankOrder    int32
 	CanSubstitute    bool
 	CanLobbyHost     bool
+	DuoRequest       *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -678,6 +773,7 @@ func (q *Queries) GetPlayersForLobby(ctx context.Context, arg GetPlayersForLobby
 			&i.PeakRankOrder,
 			&i.CanSubstitute,
 			&i.CanLobbyHost,
+			&i.DuoRequest,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -788,4 +884,36 @@ func (q *Queries) UpdateEventSchedule(ctx context.Context, arg UpdateEventSchedu
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateLobbyFairnessWarning = `-- name: UpdateLobbyFairnessWarning :exec
+UPDATE lobbies
+SET fairness_warning = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateLobbyFairnessWarningParams struct {
+	ID              uuid.UUID
+	FairnessWarning bool
+}
+
+func (q *Queries) UpdateLobbyFairnessWarning(ctx context.Context, arg UpdateLobbyFairnessWarningParams) error {
+	_, err := q.db.Exec(ctx, updateLobbyFairnessWarning, arg.ID, arg.FairnessWarning)
+	return err
+}
+
+const updateLobbyHost = `-- name: UpdateLobbyHost :exec
+UPDATE lobbies
+SET host = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateLobbyHostParams struct {
+	ID   uuid.UUID
+	Host *uuid.UUID
+}
+
+func (q *Queries) UpdateLobbyHost(ctx context.Context, arg UpdateLobbyHostParams) error {
+	_, err := q.db.Exec(ctx, updateLobbyHost, arg.ID, arg.Host)
+	return err
 }

@@ -793,7 +793,7 @@ paths:
       tags: [events]
       summary: Create teams for event group
       operationId: createTeamsForEventGroup
-      description: Creates teams for the event group and closes registration.
+      description: Creates teams for the event group and closes registration. Best-effort honors mutual duo requests (same Discord name on both registrations) by grouping partners into the same lobby and team when doing so would not worsen skill balance.
       security:
         - bearerAuth: []
       parameters:
@@ -1007,6 +1007,68 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Failed to delete registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /registrations/{eventId}/player-swap:
+    post:
+      tags: [registrations]
+      summary: Swap two players' placements for a game
+      operationId: swapPlayersForEvent
+      description: >
+        Host-only. Atomically exchanges two players' team/sub/unplaced assignments for one game,
+        then recomputes lobby hosts and fairness warnings.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the game (event row)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id_a, user_id_b]
+              properties:
+                user_id_a:
+                  type: string
+                  format: uuid
+                user_id_b:
+                  type: string
+                  format: uuid
+      responses:
+        "204":
+          description: Players swapped successfully
+        "400":
+          description: Invalid request, invalid swap, or insufficient substitutes after swap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can swap players
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to swap players
           content:
             application/json:
               schema:
@@ -1625,6 +1687,9 @@ components:
           type: boolean
         can_lobby_host:
           type: boolean
+        duo_request:
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1646,7 +1711,7 @@ components:
 
     EventLobby:
       type: object
-      required: [id, fairness_warning, teams, subs]
+      required: [id, fairness_warning, fairness_warning_at_lock, teams, subs]
       properties:
         id:
           type: string
@@ -1657,6 +1722,9 @@ components:
           nullable: true
         fairness_warning:
           type: boolean
+        fairness_warning_at_lock:
+          type: boolean
+          description: Whether the lobby was flagged unfair when teams were locked in (unchanged by manual roster edits).
         teams:
           type: array
           items:

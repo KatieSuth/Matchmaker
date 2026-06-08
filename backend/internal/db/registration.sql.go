@@ -63,10 +63,12 @@ func (q *Queries) DeleteRegistration(ctx context.Context, arg DeleteRegistration
 }
 
 const getMatchmakingRegistrationsForEvent = `-- name: GetMatchmakingRegistrationsForEvent :many
-SELECT r.user_id, r.can_substitute, r.can_lobby_host, r.created_at,
+SELECT r.user_id, r.can_substitute, r.can_lobby_host, r.duo_request, r.created_at,
+       u.discord_name,
        cr."order" AS current_rank_order,
        pr."order" AS peak_rank_order
 FROM registrations r
+JOIN users u ON u.id = r.user_id
 JOIN events e ON e.id = r.event_id
 JOIN game_modes gm ON gm.id = e.game_mode_id
 JOIN user_games ug ON ug.user_id = r.user_id AND ug.game_id = gm.game_id
@@ -80,7 +82,9 @@ type GetMatchmakingRegistrationsForEventRow struct {
 	UserID           uuid.UUID
 	CanSubstitute    bool
 	CanLobbyHost     bool
+	DuoRequest       *string
 	CreatedAt        time.Time
+	DiscordName      *string
 	CurrentRankOrder int32
 	PeakRankOrder    int32
 }
@@ -98,7 +102,9 @@ func (q *Queries) GetMatchmakingRegistrationsForEvent(ctx context.Context, event
 			&i.UserID,
 			&i.CanSubstitute,
 			&i.CanLobbyHost,
+			&i.DuoRequest,
 			&i.CreatedAt,
+			&i.DiscordName,
 			&i.CurrentRankOrder,
 			&i.PeakRankOrder,
 		); err != nil {

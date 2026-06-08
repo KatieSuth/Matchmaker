@@ -15,11 +15,11 @@ It's still very much in the early phases but is intended to one day support Valo
 - [x] User preferences
 - [x] One-off event admin configuration
 - [x] One-off event sign-up for players
+- [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [ ] One-off event admin team creation
 - [ ] 1.0 web hosting with public availability
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Discord server membership requirement as host option
-- [ ] Player duo requests
 - [ ] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Opt-in notifications for updates regarding events
 - [ ] Allow hosts to ban users from their events
@@ -241,6 +241,7 @@ After teams are formed, a few other things happen automatically:
 - Players who did **not** mark **Can substitute** and did not make a team stay signed up but are listed as unplaced for that game.
 - If enough players signed up, multiple lobbies can be created so more than one game can run at once.
 - One player per lobby is assigned as lobby host (whoever volunteered first, or the earliest sign-up if no one volunteered).
+- **Duo requests** — If two players list each other's Discord name as their duo partner, Matchmaker tries to put them in the same lobby and on the same team. Balance comes first; duos are not guaranteed if fairness requires otherwise. Only one duo pair per team is attempted.
 
 The host can still review the results and make manual changes afterward.
 
@@ -260,3 +261,34 @@ A warning usually means one of two things:
 If you are the event host, you can also see each team's average rank on the team headers to judge balance yourself.
 
 Fairness warnings are a heads-up, not a failure — the teams are still playable. The host can always adjust rosters manually if something looks off.
+
+### How can teams be edited?
+
+After you click **Lock In & Create Teams**, the host can adjust rosters without deleting and recreating everything. Edits are done **one game at a time** (each scheduled match in the group has its own teams).
+
+To move players around:
+
+1. Open the event group page and select the game you want to change.
+2. On any player card in a **team**, **subs**, or **unplaced** list, open the **⋯** menu.
+3. Choose **Swap**.
+4. Pick another player from the dropdown — anyone on a different team, in another lobby, in the sub pool, or on the unplaced list — and click **Submit**.
+
+A swap exchanges the two players' spots. Each player takes the other's exact placement (lobby, team, sub slot, or unplaced status). You can use this to rebalance teams, move someone into or out of subs, pull an unplaced player onto a roster, or send a rostered player to unplaced.
+
+A few rules to be aware of:
+
+- You **cannot** swap two players already in the **same group**. You can't swap two players on the same team; you can't swap two substitutes in the same lobby with each other; you can't swap two unplaced players with each other. They won't appear as options for your swap.
+- If a rostered player who did **not** sign up as a substitute is swapped into a sub slot, they become **unplaced** instead — only substitute volunteers can fill sub spots.
+- If your event requires a minimum number of substitutes **and** has more than one lobby, a swap is blocked when it would leave any lobby below that minimum.
+
+After each swap, Matchmaker refreshes lobby hosts and fairness warnings for the affected lobbies so you can see whether balance changed. The original warning from lock-in is kept separately so you can still tell what the auto-generated teams looked like.
+
+If you want to undo many changes at once, see the next FAQ entry about **Delete teams**.
+
+### I've edited a team, but I don't like what I've done. How do I get back to where it started?
+
+To get back to the default teams that were created, simply click "Delete teams" in the event header. Doing this will reset the event back to registrations-only from before teams were created, but registrations will remain closed. To regenerate the teams, click "Create Teams" in the event header and the teams will be created again the same way they were before.
+
+### I've closed registrations and created teams, but a new player wants to join. How do I add them?
+
+As the host, you can't manually add players; all players must register themselves. To let the new player in, click "Delete teams" in the event header. This will reset the event back to the registrations, but registrations will remain closed. To reopen them, click "Edit" in the event header. At the bottom of the modal, there is a "Registration Status" toggle. Toggle it on and click "Save Settings" to allow new players to register.

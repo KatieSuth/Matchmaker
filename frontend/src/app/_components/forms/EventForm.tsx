@@ -822,7 +822,7 @@ export function EventForm({
             control={control}
             render={({ field }) => (
               <ToggleRow
-                label="Registration is open"
+                label="Registration Status"
                 description={
                   field.value
                     ? "Players can register for this event."

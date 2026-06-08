@@ -765,6 +765,107 @@ func TestDeleteTeamsHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
+func TestSwapPlayersHandler_StoreErrors(t *testing.T) {
+	eventID := uuid.New()
+	uid := uuid.New()
+	userA := uuid.New()
+	userB := uuid.New()
+	body := `{"user_id_a":"` + userA.String() + `","user_id_b":"` + userB.String() + `"}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid swap", &store.SwapValidationError{Message: "Cannot swap players on the same team"}, http.StatusBadRequest},
+		{"insufficient subs", &store.TeamCreationError{Sentinel: store.ErrInsufficientSubstitutes, Message: "This swap would leave fewer than the required substitutes in a lobby"}, http.StatusBadRequest},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/player-swap")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				SwapPlayersForEventFn: func(_ context.Context, _, _, _, _ uuid.UUID, _ matchmaking.Settings) error { return tc.err },
+			}, nil, "")
+			h.SwapPlayersHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestSwapPlayersHandler_Validation(t *testing.T) {
+	validUserA := uuid.New()
+	validUserB := uuid.New()
+	validBody := `{"user_id_a":"` + validUserA.String() + `","user_id_b":"` + validUserB.String() + `"}`
+
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/bad/player-swap")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(validBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SwapPlayersHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/player-swap")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SwapPlayersHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid user_id_a", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/player-swap")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id_a":"bad","user_id_b":"` + validUserB.String() + `"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SwapPlayersHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid user_id_b", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/player-swap")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id_a":"` + validUserA.String() + `","user_id_b":"bad"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SwapPlayersHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestSwapPlayersHandler_Success(t *testing.T) {
+	eventID := uuid.New()
+	userA := uuid.New()
+	userB := uuid.New()
+	body := `{"user_id_a":"` + userA.String() + `","user_id_b":"` + userB.String() + `"}`
+	c, _ := test_util.NewGinContext(http.MethodPost, "/registrations/x/player-swap")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		SwapPlayersForEventFn: func(_ context.Context, _, _, _, _ uuid.UUID, _ matchmaking.Settings) error { return nil },
+	}, nil, "")
+	h.SwapPlayersHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
 func TestUpsertMyRegistrationHandler_Validation(t *testing.T) {
 	t.Run("invalid event id", func(t *testing.T) {
 		c, w := test_util.NewGinContext(http.MethodPut, "/registrations/bad/me")

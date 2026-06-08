@@ -58,6 +58,11 @@ type upsertGroupRegistrationRequest struct {
 	Events     []bulkRegistrationEventRequest `json:"events"`
 }
 
+type swapPlayersRequest struct {
+	UserIDA string `json:"user_id_a"`
+	UserIDB string `json:"user_id_b"`
+}
+
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -474,6 +479,79 @@ func (h *Handler) DeleteTeamsHandler(c *gin.Context) {
 		}
 		return
 	}
+	c.Status(http.StatusNoContent)
+}
+
+// POST /registrations/:eventId/player-swap
+// Host-only. Atomically exchanges two players' placements for one game.
+func (h *Handler) SwapPlayersHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid eventId in SwapPlayersHandler", "user_id", userUUID, "event_id", c.Param("eventId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "eventId must be a valid UUID"})
+		return
+	}
+
+	var body swapPlayersRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in SwapPlayersHandler", "user_id", userUUID, "event_id", eventID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+
+	userA, err := uuid.Parse(body.UserIDA)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id_a in SwapPlayersHandler", "user_id", userUUID, "event_id", eventID, "user_id_a", body.UserIDA, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id_a must be a valid UUID"})
+		return
+	}
+	userB, err := uuid.Parse(body.UserIDB)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id_b in SwapPlayersHandler", "user_id", userUUID, "event_id", eventID, "user_id_b", body.UserIDB, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id_b must be a valid UUID"})
+		return
+	}
+
+	err = h.store.SwapPlayersForEvent(c.Request.Context(), eventID, userUUID, userA, userB, h.matchmakingSettings)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrForbidden):
+			slog.WarnContext(c.Request.Context(), "forbidden swap players attempt", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can swap players"})
+		case errors.Is(err, store.ErrInsufficientSubstitutes):
+			msg := err.Error()
+			var teamErr *store.TeamCreationError
+			if errors.As(err, &teamErr) {
+				msg = teamErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "swap players validation failed", "user_id", userUUID, "event_id", eventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+		case errors.Is(err, store.ErrInvalidPlayerSwap):
+			msg := err.Error()
+			var swapErr *store.SwapValidationError
+			if errors.As(err, &swapErr) {
+				msg = swapErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "swap players validation failed", "user_id", userUUID, "event_id", eventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+		case errors.Is(err, store.ErrTeamsNotCreated):
+			slog.WarnContext(c.Request.Context(), "swap players requested but no teams exist", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "No teams exist for this game"})
+		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
+			slog.WarnContext(c.Request.Context(), "event not found for swap players", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
+		default:
+			slog.ErrorContext(c.Request.Context(), "failed to swap players", "event_id", eventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to swap players"})
+		}
+		return
+	}
+
 	c.Status(http.StatusNoContent)
 }
 

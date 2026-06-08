@@ -6,6 +6,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestScaledFairnessThresholds(t *testing.T) {
@@ -54,6 +55,58 @@ func TestIsLobbyUnfair_TeamSeparation(t *testing.T) {
 		},
 	}
 	assert.True(t, matchmaking.IsLobbyUnfair(lobby, settings, 25))
+}
+
+func TestIsLobbyUnfair_BalancedTeamsNotFlagged(t *testing.T) {
+	settings := matchmaking.Settings{
+		FairnessOutlierGap:         100,
+		FairnessTeamSeparation:     4,
+		FairnessReferenceTierCount: 25,
+	}
+	t1 := intPtr(1)
+	t2 := intPtr(2)
+	lobby := matchmaking.LobbyPlan{
+		Roster: []matchmaking.Player{
+			{UserID: uuid.New(), AvgRank: 12, TeamNumber: t1},
+			{UserID: uuid.New(), AvgRank: 12, TeamNumber: t1},
+			{UserID: uuid.New(), AvgRank: 12, TeamNumber: t2},
+			{UserID: uuid.New(), AvgRank: 12, TeamNumber: t2},
+		},
+	}
+	assert.False(t, matchmaking.IsLobbyUnfair(lobby, settings, 25))
+}
+
+func TestIsLobbyUnfair_SkipsTeamSeparationWithSingleTeam(t *testing.T) {
+	settings := matchmaking.Settings{
+		FairnessOutlierGap:         100,
+		FairnessTeamSeparation:     0,
+		FairnessReferenceTierCount: 25,
+	}
+	t1 := intPtr(1)
+	lobby := matchmaking.LobbyPlan{
+		Roster: []matchmaking.Player{
+			{UserID: uuid.New(), AvgRank: 20, TeamNumber: t1},
+			{UserID: uuid.New(), AvgRank: 5, TeamNumber: t1},
+		},
+	}
+	assert.False(t, matchmaking.IsLobbyUnfair(lobby, settings, 25))
+}
+
+func TestTeamAverageSeparationForTest_EmptyTeam(t *testing.T) {
+	sep := matchmaking.TeamAverageSeparationForTest(nil, []matchmaking.Player{{AvgRank: 10}})
+	assert.Equal(t, 0.0, sep)
+}
+
+func TestSplitRosterByTeamNumberForTest(t *testing.T) {
+	t1 := intPtr(1)
+	t2 := intPtr(2)
+	team1, team2 := matchmaking.SplitRosterByTeamNumberForTest([]matchmaking.Player{
+		{UserID: uuid.New(), TeamNumber: t1, AvgRank: 10},
+		{UserID: uuid.New(), TeamNumber: t2, AvgRank: 8},
+		{UserID: uuid.New(), TeamNumber: nil, AvgRank: 5},
+	})
+	require.Len(t, team1, 1)
+	require.Len(t, team2, 1)
 }
 
 func TestScaledFairnessThresholds_ZeroTierCountUsesBaseline(t *testing.T) {

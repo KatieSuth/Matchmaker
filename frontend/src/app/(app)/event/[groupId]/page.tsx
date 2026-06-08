@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
+import { Select, SelectOption } from "@/app/_components/Select";
 import { LobbyHostInfoHint } from "@/app/_components/LobbyHostInfoHint";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
@@ -20,6 +21,7 @@ import {
   deleteRegistration,
   deleteTeams,
   fetchEventGroup,
+  swapPlayers,
   upsertMyGroupRegistrations,
 } from "@/app/_services/events";
 import { fetchCurrentUserGames, upsertCurrentUserGame } from "@/app/_services/users";
@@ -54,6 +56,16 @@ interface PendingDeleteAction {
   eventId: string;
   gameNumber: number;
   registrationsInGroup: number;
+}
+
+/** Identifies a roster/sub/unplaced player within a locked-in game for host swap actions. */
+interface PlayerPlacement {
+  eventId: string;
+  userId: string;
+  discordName: string;
+  lobbyId: string | null;
+  sourceLobbyIndex: number | null;
+  teamNumber: number | null | undefined;
 }
 
 function emptyUserGameDraft(gameId: string): UserGameEditorValue {
@@ -132,6 +144,94 @@ function formatGameModeAndTime(modeName: string, startISO: string) {
   return `${modeName} · ${formatDateTime(startISO)}`;
 }
 
+/** Human-readable placement label for swap candidates (team, subs, or unplaced). */
+function formatPlacementCategory(
+  sourceLobbyIndex: number | null,
+  targetLobbyIndex: number,
+  teamNumber: number | null | undefined,
+): string {
+  if (teamNumber === undefined) {
+    return "Unplaced";
+  }
+  if (teamNumber === null) {
+    if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
+      return "Subs";
+    }
+    return `Lobby ${targetLobbyIndex + 1} · Subs`;
+  }
+  if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
+    return `Team ${teamNumber}`;
+  }
+  return `Lobby ${targetLobbyIndex + 1} · Team ${teamNumber}`;
+}
+
+/** Formats a swap dropdown option as "Name (Category) · Rank". */
+function formatSwapCandidateLabel(
+  discordName: string,
+  category: string,
+  currentRankName?: string,
+): string {
+  const name = discordName || "Unknown user";
+  const rank = currentRankName?.trim() || EMPTY_VALUE;
+  return `${name} (${category}) · ${rank}`;
+}
+
+/** Lists eligible swap targets for a player, excluding same-team roster mates and same-lobby subs. */
+function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): SelectOption[] {
+  const options: SelectOption[] = [];
+  const lobbies = event.lobbies ?? [];
+
+  for (let lobbyIndex = 0; lobbyIndex < lobbies.length; lobbyIndex++) {
+    const lobby = lobbies[lobbyIndex];
+    for (const team of lobby.teams) {
+      for (const player of team.players) {
+        if (player.user_id === source.userId) {
+          continue;
+        }
+        if (
+          source.teamNumber !== undefined &&
+          source.teamNumber !== null &&
+          source.lobbyId === lobby.id &&
+          source.teamNumber === team.team_number
+        ) {
+          continue;
+        }
+        const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, team.team_number);
+        options.push({
+          value: player.user_id,
+          label: formatSwapCandidateLabel(player.discord_name, category, player.current_rank_name),
+        });
+      }
+    }
+    for (const player of lobby.subs) {
+      if (player.user_id === source.userId) {
+        continue;
+      }
+      if (source.teamNumber === null && source.lobbyId === lobby.id) {
+        continue;
+      }
+      const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, null);
+      options.push({
+        value: player.user_id,
+        label: formatSwapCandidateLabel(player.discord_name, category, player.current_rank_name),
+      });
+    }
+  }
+
+  for (const registration of event.unplaced ?? []) {
+    if (registration.user_id === source.userId) {
+      continue;
+    }
+    options.push({
+      value: registration.user_id,
+      label: formatSwapCandidateLabel(registration.discord_name, "Unplaced", registration.current_rank_name),
+    });
+  }
+
+  options.sort((a, b) => a.label.localeCompare(b.label));
+  return options;
+}
+
 function PlayerCard({
   registration,
   gameNumber,
@@ -143,6 +243,9 @@ function PlayerCard({
   onShowDetails,
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
+  placement,
+  onSwap,
+  showDuoRequest = false,
 }: {
   registration: EventRegistration;
   gameNumber: number;
@@ -154,6 +257,9 @@ function PlayerCard({
   onShowDetails: (registration: EventRegistration) => void;
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
+  placement?: PlayerPlacement;
+  onSwap?: (placement: PlayerPlacement) => void;
+  showDuoRequest?: boolean;
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
   const canDelete = isHostView || registration.user_id === currentUserId;
@@ -166,6 +272,12 @@ function PlayerCard({
     label: "Show More Details",
     onSelect: () => onShowDetails(registration),
   });
+  if (isHostView && placement && onSwap) {
+    menuOptions.push({
+      label: "Swap",
+      onSelect: () => onSwap(placement),
+    });
+  }
   if (canDelete) {
     menuOptions.push({
       label: `Delete for Game ${gameNumber}`,
@@ -221,14 +333,30 @@ function PlayerCard({
           <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
           <p className="text-xs text-[var(--color-text-soft)]">{registration.can_substitute ? "Yes" : "No"}</p>
         </div>
+        {showDuoRequest && (
+          <div>
+            <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Duo request</p>
+            <p className="text-xs text-[var(--color-text-soft)] truncate" title={registration.duo_request || undefined}>
+              {registration.duo_request || EMPTY_VALUE}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/** True when any lobby in the game received a fairness warning at lock-in. */
+/** True when any lobby in the game is currently flagged unfair. */
 function eventHasUnfairLobby(event: EventGroupEvent): boolean {
   return (event.lobbies ?? []).some((lobby) => lobby.fairness_warning);
+}
+
+/** Returns the lobby fairness banner copy for lock-in vs post-edit warnings. */
+function lobbyFairnessWarningMessage(lobby: EventLobby): string {
+  if (lobby.fairness_warning_at_lock) {
+    return "Teams were formed with the best available balance, but rank spread was too wide for fully fair teams in this lobby.";
+  }
+  return "This lobby was fair when teams were locked in, but a manual roster change has made the rank spread too wide for fully fair teams.";
 }
 
 /** Adapts a lobby player row so TeamsPanel can reuse PlayerCard and registration actions. */
@@ -241,7 +369,7 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
     current_rank_name: player.current_rank_name,
     can_substitute: player.can_substitute,
     can_lobby_host: player.can_lobby_host,
-    duo_request: null,
+    duo_request: player.duo_request,
     created_at: player.created_at,
     updated_at: player.updated_at,
   };
@@ -270,6 +398,7 @@ function TeamsPanel({
   onShowDetails,
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
+  onSwapPlayer,
 }: {
   event: EventGroupEvent;
   gameNumber: number;
@@ -281,6 +410,7 @@ function TeamsPanel({
   onShowDetails: (registration: EventRegistration) => void;
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
+  onSwapPlayer?: (placement: PlayerPlacement) => void;
 }) {
   const lobbies = event.lobbies ?? [];
   if (lobbies.length === 0) {
@@ -293,8 +423,7 @@ function TeamsPanel({
         <div key={lobby.id} className="flex flex-col gap-3">
           {lobby.fairness_warning && (
             <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-              Teams were formed with the best available balance, but rank spread was too wide for fully fair teams in
-              this lobby.
+              {lobbyFairnessWarningMessage(lobby)}
             </div>
           )}
           <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
@@ -326,6 +455,16 @@ function TeamsPanel({
                     onShowDetails={onShowDetails}
                     onDeleteRegistrationForGame={onDeleteRegistrationForGame}
                     onDeleteAllFromUser={onDeleteAllFromUser}
+                    showDuoRequest
+                    placement={{
+                      eventId: event.id,
+                      userId: player.user_id,
+                      discordName: player.discord_name || "Unknown user",
+                      lobbyId: lobby.id,
+                      sourceLobbyIndex: lobbyIndex,
+                      teamNumber: team.team_number,
+                    }}
+                    onSwap={onSwapPlayer}
                   />
                 ))}
               </div>
@@ -348,6 +487,16 @@ function TeamsPanel({
                   onShowDetails={onShowDetails}
                   onDeleteRegistrationForGame={onDeleteRegistrationForGame}
                   onDeleteAllFromUser={onDeleteAllFromUser}
+                  showDuoRequest
+                  placement={{
+                    eventId: event.id,
+                    userId: player.user_id,
+                    discordName: player.discord_name || "Unknown user",
+                    lobbyId: lobby.id,
+                    sourceLobbyIndex: lobbyIndex,
+                    teamNumber: null,
+                  }}
+                  onSwap={onSwapPlayer}
                 />
               ))}
             </div>
@@ -373,6 +522,16 @@ function TeamsPanel({
               onShowDetails={onShowDetails}
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
+              showDuoRequest
+              placement={{
+                eventId: event.id,
+                userId: registration.user_id,
+                discordName: registration.discord_name || "Unknown user",
+                lobbyId: null,
+                sourceLobbyIndex: null,
+                teamNumber: undefined,
+              }}
+              onSwap={onSwapPlayer}
             />
           ))}
         </div>
@@ -446,8 +605,11 @@ export default function EventGroupPage() {
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
   const [warningSheetOpen, setWarningSheetOpen] = useState(false);
   const [deleteWarningSheetOpen, setDeleteWarningSheetOpen] = useState(false);
+  const [swapSheetOpen, setSwapSheetOpen] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState<EventRegistration | null>(null);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<PendingDeleteAction | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<PlayerPlacement | null>(null);
+  const [swapTargetUserId, setSwapTargetUserId] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
     selected_event_ids: [],
@@ -608,6 +770,42 @@ export default function EventGroupPage() {
       setWorking(false);
     }
   };
+
+  const openSwapSheet = useCallback((placement: PlayerPlacement) => {
+    setPendingSwap(placement);
+    setSwapTargetUserId("");
+    setSwapSheetOpen(true);
+  }, []);
+
+  const closeSwapSheet = useCallback(() => {
+    setSwapSheetOpen(false);
+    setPendingSwap(null);
+    setSwapTargetUserId("");
+  }, []);
+
+  const handleSwapSubmit = async () => {
+    if (!pendingSwap || !swapTargetUserId) return;
+    try {
+      setWorking(true);
+      await swapPlayers(pendingSwap.eventId, pendingSwap.userId, swapTargetUserId);
+      await loadGroup();
+      closeSwapSheet();
+    } catch (err) {
+      setPageError(extractApiError(err, "Could not complete that action."));
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const swapEvent = useMemo(() => {
+    if (!group || !pendingSwap) return null;
+    return group.events.find((event) => event.id === pendingSwap.eventId) ?? null;
+  }, [group, pendingSwap]);
+
+  const swapCandidateOptions = useMemo(() => {
+    if (!swapEvent || !pendingSwap) return [];
+    return buildSwapCandidates(swapEvent, pendingSwap);
+  }, [swapEvent, pendingSwap]);
 
   const handleShare = async () => {
     const shareUrl = typeof window !== "undefined" ? window.location.href : "";
@@ -1237,6 +1435,7 @@ export default function EventGroupPage() {
                     onDeleteAllFromUser={(registration, gameNumber) =>
                       openDeleteConfirmation(registration, gameNumber, "all")
                     }
+                    onSwapPlayer={isHost ? openSwapSheet : undefined}
                   />
                 ) : (
                   <EventPanel
@@ -1305,6 +1504,7 @@ export default function EventGroupPage() {
                 onDeleteAllFromUser={(registration, gameNumber) =>
                   openDeleteConfirmation(registration, gameNumber, "all")
                 }
+                onSwapPlayer={isHost ? openSwapSheet : undefined}
               />
             ) : (
               <EventPanel
@@ -1490,6 +1690,44 @@ export default function EventGroupPage() {
                 : pendingDeleteAction?.mode === "all"
                   ? "Delete All Registrations"
                   : "Delete Registration"}
+            </button>
+          </div>
+        </div>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        isOpen={swapSheetOpen}
+        onClose={closeSwapSheet}
+        title={pendingSwap ? `Swap ${pendingSwap.discordName}` : "Swap player"}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--color-text-soft)]">
+            Choose a player from another team, lobby, sub pool, or unplaced list to swap with.
+          </p>
+          <Select
+            value={swapTargetUserId}
+            onChange={setSwapTargetUserId}
+            options={swapCandidateOptions}
+            placeholder={swapCandidateOptions.length === 0 ? "No swap candidates" : "— Select player —"}
+            disabled={working || swapCandidateOptions.length === 0}
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeSwapSheet}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void handleSwapSubmit();
+              }}
+              disabled={working || !pendingSwap || !swapTargetUserId}
+              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+            >
+              {working ? "Swapping..." : "Submit"}
             </button>
           </div>
         </div>

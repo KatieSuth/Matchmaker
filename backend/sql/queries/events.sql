@@ -159,10 +159,10 @@ DELETE FROM event_groups
 WHERE id = $1;
 
 -- name: GetLobbiesForEvent :many
-SELECT id, event_id, host, fairness_warning
+SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock
 FROM lobbies
 WHERE event_id = $1
-ORDER BY created_at ASC;
+ORDER BY created_at ASC, id ASC;
 
 -- name: GetPlayersForLobby :many
 SELECT P.user_id,
@@ -186,6 +186,7 @@ SELECT P.user_id,
        END::INT AS peak_rank_order,
        R.can_substitute,
        R.can_lobby_host,
+       R.duo_request,
        R.created_at,
        R.updated_at
 FROM players AS P
@@ -201,13 +202,47 @@ WHERE P.lobby_id = sqlc.arg(lobby_id)
 ORDER BY P.team_number ASC NULLS LAST, U.discord_name ASC;
 
 -- name: CreateLobby :one
-INSERT INTO lobbies (id, event_id, host, fairness_warning, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+INSERT INTO lobbies (id, event_id, host, fairness_warning, fairness_warning_at_lock, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, $3, NOW(), NOW())
 RETURNING *;
 
 -- name: CreatePlayer :exec
 INSERT INTO players (lobby_id, user_id, team_number, created_at, updated_at)
 VALUES ($1, $2, $3, NOW(), NOW());
+
+-- name: GetPlayerPlacementsForEvent :many
+SELECT P.user_id, P.lobby_id, P.team_number
+FROM players AS P
+JOIN lobbies AS L ON L.id = P.lobby_id
+WHERE L.event_id = $1;
+
+-- name: DeletePlayer :exec
+DELETE FROM players
+WHERE lobby_id = $1 AND user_id = $2;
+
+-- name: UpdateLobbyHost :exec
+UPDATE lobbies
+SET host = $2, updated_at = NOW()
+WHERE id = $1;
+
+-- name: UpdateLobbyFairnessWarning :exec
+UPDATE lobbies
+SET fairness_warning = $2, updated_at = NOW()
+WHERE id = $1;
+
+-- name: CountLobbiesForEvent :one
+SELECT COUNT(*)::INT
+FROM lobbies
+WHERE event_id = $1;
+
+-- name: GetEventGroupMetaByEventId :one
+SELECT EG.id AS group_id,
+       EG.owner_id,
+       EG.sub_min,
+       E.game_mode_id
+FROM events AS E
+JOIN event_groups AS EG ON EG.id = E.group_id
+WHERE E.id = $1;
 
 -- name: DeletePlayersByGroupId :exec
 DELETE FROM players

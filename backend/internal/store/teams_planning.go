@@ -74,8 +74,14 @@ func (s *PostgresStore) buildGroupRegistrationCounts(ctx context.Context, groupI
 func mapRegistrationsToPlayers(rows []db.GetMatchmakingRegistrationsForEventRow, regCounts map[uuid.UUID]int) []matchmaking.Player {
 	players := make([]matchmaking.Player, 0, len(rows))
 	for _, row := range rows {
+		discordName := ""
+		if row.DiscordName != nil {
+			discordName = *row.DiscordName
+		}
 		players = append(players, matchmaking.Player{
 			UserID:              row.UserID,
+			DiscordName:         discordName,
+			DuoRequest:          row.DuoRequest,
 			AvgRank:             matchmaking.AverageRankOrder(int(row.CurrentRankOrder), int(row.PeakRankOrder)),
 			CanSubstitute:       row.CanSubstitute,
 			CanLobbyHost:        row.CanLobbyHost,

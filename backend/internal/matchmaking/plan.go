@@ -27,6 +27,7 @@ func PlanEvent(players []Player, cfg Config, settings Settings) (GamePlan, error
 
 	lobbies := strategy(players, lobbyCount, cfg.Slots)
 	lobbies = ApplySubCapacityRosterConstraint(lobbies, players, lobbyCount, cfg.SubMin)
+	lobbies = ApplyDuoLobbyGrouping(lobbies)
 
 	for i := range lobbies {
 		team1, team2 := SplitIntoTeams(lobbies[i].Roster, cfg.TeamSize)

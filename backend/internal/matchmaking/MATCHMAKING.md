@@ -14,7 +14,8 @@ Matchmaking runs **independently per game** in a group. Group-level settings (`s
 ValidateCapacity
   → strategy (balanced | ranked)
   → ApplySubCapacityRosterConstraint   (n ≥ 2 only)
-  → SplitIntoTeams                     (per lobby)
+  → ApplyDuoLobbyGrouping              (n ≥ 2 only; best-effort)
+  → SplitIntoTeams                     (per lobby; best-effort duo pass)
   → AssignMandatorySubs                (n ≥ 2 only)
   → AssignRemainingAsSubs
   → PickLobbyHost                      (per lobby)
@@ -33,6 +34,8 @@ Built by `mapRegistrationsToPlayers` in `store/teams_planning.go` from `GetMatch
 
 | Field | Source | Used for |
 |-------|--------|----------|
+| `DiscordName` | `users.discord_name` | Mutual duo matching |
+| `DuoRequest` | `registrations.duo_request` | Mutual duo matching |
 | `AvgRank` | `(current_rank_order + peak_rank_order) / 2` | All skill comparisons |
 | `CanSubstitute` | `registrations.can_substitute` | Sub pool eligibility; roster cap when n ≥ 2 |
 | `CanLobbyHost` | `registrations.can_lobby_host` | Lobby host selection |
@@ -212,9 +215,28 @@ Lobby 1: players [slots .. 2×slots-1]
 
 ## Shared post-processing
 
+### Duo requests (`ApplyDuoLobbyGrouping` + team pass in `SplitIntoTeams`)
+
+Players may list a **duo request** (Discord name) at registration. Matchmaking attempts to honor **mutual** pairs — both players must list each other's Discord name (case-insensitive, trimmed).
+
+**Balance always wins.** Duo swaps are only applied when they do not worsen the baseline balance metric from the preceding step:
+
+| Stage | When | Baseline metric |
+|-------|------|-----------------|
+| Lobby grouping | After sub-capacity constraint; skipped when `n = 1` | Cross-lobby average spread (`max lobby avg − min lobby avg`) |
+| Team split | After snake draft within each lobby | Team average separation (`|avg(team1) − avg(team2)|`) |
+
+Rules:
+
+- Invalid or one-sided requests are ignored.
+- At most **one honored duo per team** (team split only).
+- Multiple mutual pairs may share a lobby; there is no per-lobby duo cap.
+- Partners who are not both rostered (sub or unplaced) cannot be united.
+- Duo placement is best-effort; fairness may require partners to stay in different lobbies or on opposite teams.
+
 ### Team split (`SplitIntoTeams`)
 
-Within each lobby, roster players are sorted by skill descending and split into Team 1 and Team 2 via a **snake draft** (same alternating pattern as lobby snake). Each player gets `team_number = 1` or `2`.
+Within each lobby, roster players are sorted by skill descending and split into Team 1 and Team 2 via a **snake draft** (same alternating pattern as lobby snake). Each player gets `team_number = 1` or `2`. A duo post-pass then attempts to place mutual pairs on the same team without worsening the snake-draft separation baseline.
 
 Subs are not assigned a team number.
 
@@ -336,21 +358,22 @@ All three must be positive if set; invalid values cause startup failure.
 
 ## Source file map
 
-| File          | Responsibility                              |
-|---------------|---------------------------------------------|
-| `plan.go`     | `PlanEvent` orchestrator                    |
-| `balanced.go` | Balanced lobby snake draft                  |
-| `ranked.go`   | Ranked sequential lobby packing             |
-| `roster.go`   | Balanced/ranked roster pool selection       |
-| `capacity.go` | Lobby count math                            |
-| `subs.go`     | Sub-capacity swaps, mandatory/overflow subs |
-| `teams.go`    | Within-lobby team snake draft               |
-| `tiebreak.go` | `CompareByRankThenAvailability`             |
-| `rank.go`     | `AverageRankOrder`                          |
-| `host.go`     | `PickLobbyHost`                             |
-| `fairness.go` | Threshold scaling and `IsLobbyUnfair`       |
-| `types.go`    | Domain types                                |
-| `errors.go`   | `ValidationError`                           |
+| File          | Responsibility                                      |
+|---------------|-----------------------------------------------------|
+| `duos.go`     | Mutual duo detection, lobby grouping, team grouping |
+| `plan.go`     | `PlanEvent` orchestrator                            |
+| `balanced.go` | Balanced lobby snake draft                          |
+| `ranked.go`   | Ranked sequential lobby packing                     |
+| `roster.go`   | Balanced/ranked roster pool selection               |
+| `capacity.go` | Lobby count math                                    |
+| `subs.go`     | Sub-capacity swaps, mandatory/overflow subs         |
+| `teams.go`    | Within-lobby team snake draft                       |
+| `tiebreak.go` | `CompareByRankThenAvailability`                     |
+| `rank.go`     | `AverageRankOrder`                                  |
+| `host.go`     | `PickLobbyHost`                                     |
+| `fairness.go` | Threshold scaling and `IsLobbyUnfair`               |
+| `types.go`    | Domain types                                        |
+| `errors.go`   | `ValidationError`                                   |
 
 Tests live in `*_test.go` alongside each file (`package matchmaking_test`).
 

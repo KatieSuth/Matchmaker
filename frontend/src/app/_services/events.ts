@@ -67,6 +67,11 @@ export async function deleteTeams(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}/teams`);
 }
 
+/** Host-only. Exchanges two players' placements for one locked-in game. */
+export async function swapPlayers(eventId: string, userIdA: string, userIdB: string): Promise<void> {
+  await api.post(`/registrations/${eventId}/player-swap`, { user_id_a: userIdA, user_id_b: userIdB });
+}
+
 export async function deleteEventGroup(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}`);
 }

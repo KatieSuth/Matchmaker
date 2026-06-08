@@ -1,7 +1,20 @@
 package matchmaking
 
-// SplitIntoTeams assigns team_number 1 or 2 via snake draft within a lobby roster.
+// SplitIntoTeams assigns team_number 1 or 2 via snake draft within a lobby roster,
+// then attempts to honor mutual duo requests without worsening team balance.
 func SplitIntoTeams(roster []Player, teamSize int) ([]Player, []Player) {
+	team1, team2 := snakeDraftIntoTeams(roster, teamSize)
+	if len(team1) == 0 && len(team2) == 0 {
+		return team1, team2
+	}
+
+	baselineSep := teamAverageSeparation(team1, team2)
+	team1, team2 = applyDuoTeamGrouping(team1, team2, baselineSep)
+	return team1, team2
+}
+
+// snakeDraftIntoTeams assigns team_number 1 or 2 via snake draft without duo adjustments.
+func snakeDraftIntoTeams(roster []Player, teamSize int) ([]Player, []Player) {
 	if len(roster) == 0 {
 		return nil, nil
 	}

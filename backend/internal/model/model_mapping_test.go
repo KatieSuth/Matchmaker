@@ -611,15 +611,17 @@ func TestMapDbGetLobbiesForEventRowToEventLobby(t *testing.T) {
 	hostID := uuid.New()
 	eventID := uuid.New()
 	row := db.GetLobbiesForEventRow{
-		ID:              uuid.New(),
-		EventID:         &eventID,
-		Host:            &hostID,
-		FairnessWarning: true,
+		ID:                    uuid.New(),
+		EventID:               &eventID,
+		Host:                  &hostID,
+		FairnessWarning:       true,
+		FairnessWarningAtLock: true,
 	}
 	result := model.MapDbGetLobbiesForEventRowToEventLobby(row)
 	assert.Equal(t, row.ID, result.ID)
 	assert.Equal(t, &hostID, result.HostID)
 	assert.True(t, result.FairnessWarning)
+	assert.True(t, result.FairnessWarningAtLock)
 	assert.Empty(t, result.Teams)
 	assert.Empty(t, result.Subs)
 }
@@ -628,6 +630,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	name := "player-one"
 	createdAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, 6, 2, 8, 30, 0, 0, time.UTC)
+	duo := "TeammateName"
 	row := db.GetPlayersForLobbyRow{
 		UserID:          uuid.New(),
 		TeamNumber:      ptrInt32(1),
@@ -638,6 +641,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 		PeakRankOrder:    15,
 		CanSubstitute:    true,
 		CanLobbyHost:     false,
+		DuoRequest:       &duo,
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
 	}
@@ -650,6 +654,8 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	assert.Equal(t, 15, result.PeakRankOrder)
 	assert.True(t, result.CanSubstitute)
 	assert.False(t, result.CanLobbyHost)
+	require.NotNil(t, result.DuoRequest)
+	assert.Equal(t, duo, *result.DuoRequest)
 	assert.Equal(t, createdAt, result.CreatedAt)
 	assert.Equal(t, updatedAt, result.UpdatedAt)
 }

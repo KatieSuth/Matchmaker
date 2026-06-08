@@ -28,6 +28,8 @@ type Config struct {
 // Player is one registrant eligible for matchmaking (complete rank profile required).
 type Player struct {
 	UserID              uuid.UUID
+	DiscordName         string
+	DuoRequest          *string
 	AvgRank             float64
 	CanSubstitute       bool
 	CanLobbyHost        bool
