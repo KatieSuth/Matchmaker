@@ -62,6 +62,56 @@ func (q *Queries) DeleteRegistration(ctx context.Context, arg DeleteRegistration
 	return err
 }
 
+const getMatchmakingRegistrationsForEvent = `-- name: GetMatchmakingRegistrationsForEvent :many
+SELECT r.user_id, r.can_substitute, r.can_lobby_host, r.created_at,
+       cr."order" AS current_rank_order,
+       pr."order" AS peak_rank_order
+FROM registrations r
+JOIN events e ON e.id = r.event_id
+JOIN game_modes gm ON gm.id = e.game_mode_id
+JOIN user_games ug ON ug.user_id = r.user_id AND ug.game_id = gm.game_id
+JOIN game_ranks cr ON cr.id = ug.current_rank
+JOIN game_ranks pr ON pr.id = ug.peak_rank
+WHERE r.event_id = $1
+ORDER BY r.created_at ASC
+`
+
+type GetMatchmakingRegistrationsForEventRow struct {
+	UserID           uuid.UUID
+	CanSubstitute    bool
+	CanLobbyHost     bool
+	CreatedAt        time.Time
+	CurrentRankOrder int32
+	PeakRankOrder    int32
+}
+
+func (q *Queries) GetMatchmakingRegistrationsForEvent(ctx context.Context, eventID uuid.UUID) ([]GetMatchmakingRegistrationsForEventRow, error) {
+	rows, err := q.db.Query(ctx, getMatchmakingRegistrationsForEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMatchmakingRegistrationsForEventRow
+	for rows.Next() {
+		var i GetMatchmakingRegistrationsForEventRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.CanSubstitute,
+			&i.CanLobbyHost,
+			&i.CreatedAt,
+			&i.CurrentRankOrder,
+			&i.PeakRankOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRegistrationByEventAndUser = `-- name: GetRegistrationByEventAndUser :one
 SELECT event_id, user_id, can_substitute, can_lobby_host, duo_request, created_at, updated_at
 FROM registrations

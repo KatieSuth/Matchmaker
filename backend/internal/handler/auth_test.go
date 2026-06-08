@@ -23,6 +23,48 @@ import (
 	"golang.org/x/oauth2"
 )
 
+func TestSessionCookieDomains_Empty(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	assert.Equal(t, []string{""}, handler.SessionCookieDomainsForTest(h))
+}
+
+func TestSessionCookieDomains_WithConfiguredDomain(t *testing.T) {
+	h := newTestHandlerWithCookieDomain(t, &store.MockStore{}, nil, "", "matchmaker.localhost")
+	assert.Equal(t, []string{"matchmaker.localhost", ""}, handler.SessionCookieDomainsForTest(h))
+}
+
+func TestWriteSessionCookie_HostOnly(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/refresh")
+
+	handler.WriteSessionCookieForTest(h, c, "refresh_token", "token-value", 3600, true, "")
+
+	cookies := w.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, "refresh_token", cookies[0].Name)
+	assert.Equal(t, "token-value", cookies[0].Value)
+	assert.Equal(t, "/", cookies[0].Path)
+	assert.Equal(t, 3600, cookies[0].MaxAge)
+	assert.True(t, cookies[0].Secure)
+	assert.True(t, cookies[0].HttpOnly)
+	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
+	assert.Empty(t, cookies[0].Domain)
+}
+
+func TestWriteSessionCookie_WithDomain(t *testing.T) {
+	h := newTestHandlerWithCookieDomain(t, &store.MockStore{}, nil, "", "matchmaker.localhost")
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/refresh")
+
+	handler.WriteSessionCookieForTest(h, c, "auth_session", "1", 3600, false, "matchmaker.localhost")
+
+	cookies := w.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, "auth_session", cookies[0].Name)
+	assert.Equal(t, "1", cookies[0].Value)
+	assert.False(t, cookies[0].HttpOnly)
+	assert.Equal(t, "matchmaker.localhost", cookies[0].Domain)
+}
+
 func TestGenerateState(t *testing.T) {
 	//Test basic functionality and length
 	state, err := handler.GenerateState()
@@ -441,7 +483,8 @@ func TestRefreshHandler_TokenExpired(t *testing.T) {
 
 func TestRefreshHandler_Success(t *testing.T) {
 	userID := uuid.New()
-	var deletedHash string
+	createCalled := false
+	deleteCalled := false
 
 	ms := &store.MockStore{
 		GetRefreshTokenFn: func(_ context.Context, _ string) (model.RefreshToken, error) {
@@ -451,10 +494,11 @@ func TestRefreshHandler_Success(t *testing.T) {
 			}, nil
 		},
 		CreateNewRefreshTokenFn: func(_ context.Context, _ string, _ uuid.UUID, _ time.Time) (model.RefreshToken, error) {
+			createCalled = true
 			return model.RefreshToken{}, nil
 		},
-		DeleteRefreshTokenFn: func(_ context.Context, hash string) error {
-			deletedHash = hash
+		DeleteRefreshTokenFn: func(_ context.Context, _ string) error {
+			deleteCalled = true
 			return nil
 		},
 	}
@@ -465,33 +509,21 @@ func TestRefreshHandler_Success(t *testing.T) {
 	h.RefreshHandler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.NotEmpty(t, deletedHash, "old refresh token should have been deleted")
+	assert.False(t, createCalled, "refresh should not rotate the stored refresh token")
+	assert.False(t, deleteCalled, "refresh should not delete the stored refresh token")
 
 	body := test_util.DecodeJSON[map[string]string](t, w)
 	assert.NotEmpty(t, body["access_token"])
-}
 
-func TestRefreshHandler_DeleteOldTokenFails(t *testing.T) {
-	userID := uuid.New()
-	ms := &store.MockStore{
-		GetRefreshTokenFn: func(_ context.Context, _ string) (model.RefreshToken, error) {
-			return model.RefreshToken{UserID: userID, ExpiresAt: time.Now().Add(time.Hour)}, nil
-		},
-		CreateNewRefreshTokenFn: func(_ context.Context, _ string, _ uuid.UUID, _ time.Time) (model.RefreshToken, error) {
-			return model.RefreshToken{}, nil
-		},
-		DeleteRefreshTokenFn: func(_ context.Context, _ string) error {
-			return errors.New("db error")
-		},
+	cookies := w.Result().Cookies()
+	var refreshCookie *http.Cookie
+	for _, ck := range cookies {
+		if ck.Name == "refresh_token" {
+			refreshCookie = ck
+		}
 	}
-	h := newTestHandler(t, ms, nil, "")
-
-	c, w := test_util.NewGinContext(http.MethodPost, "/auth/refresh")
-	test_util.SetCookie(c, "refresh_token", "valid-token")
-	h.RefreshHandler(c)
-
-	// Deletion failure of the old token aborts with 500 per the handler.
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	require.NotNil(t, refreshCookie)
+	assert.Equal(t, "valid-token", refreshCookie.Value)
 }
 
 // ============================================================
@@ -533,6 +565,26 @@ func TestCompleteAuthHandler_InvalidOTC(t *testing.T) {
 	h.CompleteAuthHandler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestCompleteAuthHandler_RefreshTokenStoreError(t *testing.T) {
+	userID := uuid.New()
+	ms := &store.MockStore{
+		ConsumeOneTimeCodeFn: func(_ context.Context, _ string) (uuid.UUID, error) {
+			return userID, nil
+		},
+		CreateNewRefreshTokenFn: func(_ context.Context, _ string, _ uuid.UUID, _ time.Time) (model.RefreshToken, error) {
+			return model.RefreshToken{}, errors.New("db down")
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/complete")
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"otc":"valid-code"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h.CompleteAuthHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestCompleteAuthHandler_Success(t *testing.T) {

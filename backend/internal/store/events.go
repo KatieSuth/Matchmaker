@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -145,24 +146,17 @@ func (s *PostgresStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, 
 		return events, false, "", nil
 	}
 
-	nextCursor, err := encodeDashboardCursor(dashboardCursor{
+	nextCursor := encodeDashboardCursor(dashboardCursor{
 		EventDate: events[len(events)-1].EventDate.UTC(),
 		ID:        events[len(events)-1].ID,
 	})
-	if err != nil {
-		return nil, false, "", fmt.Errorf("encoding dashboard cursor: %w", err)
-	}
 
 	return events, true, nextCursor, nil
 }
 
-func encodeDashboardCursor(cursor dashboardCursor) (string, error) {
-	payload, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-
-	return base64.RawURLEncoding.EncodeToString(payload), nil
+func encodeDashboardCursor(cursor dashboardCursor) string {
+	payload, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func decodeDashboardCursor(cursor string) (dashboardCursor, error) {
@@ -276,7 +270,16 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 
 		registrations := model.MapDbGetRegistrationDataByEventIdRowsToEventRegistrations(regRows)
 
-		events = append(events, model.MapDbGetGroupEventsSummaryRowToEventGroupEvent(summary, registrations))
+		eventOut := model.MapDbGetGroupEventsSummaryRowToEventGroupEvent(summary, registrations)
+		if summary.LobbiesCount > 0 {
+			lobbies, unplaced, err := s.loadEventLobbiesAndUnplaced(ctx, summary.ID, viewerIsHost, registrations)
+			if err != nil {
+				return model.EventGroupDetail{}, fmt.Errorf("load lobbies for event %s: %w", summary.ID.String(), err)
+			}
+			eventOut.Lobbies = lobbies
+			eventOut.Unplaced = unplaced
+		}
+		events = append(events, eventOut)
 	}
 
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
@@ -455,9 +458,8 @@ func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, group
 	return nil
 }
 
-// CreateTeamsForGroup closes registration, then for each event with signups creates a lobby
-// and assigns the first "can lobby host" registrant as host when available.
-func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
+// CreateTeamsForGroup validates matchmaking per game, then atomically closes registration and persists teams.
+func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -477,6 +479,11 @@ func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerI
 		return ErrTeamsAlreadyCreated
 	}
 
+	plans, err := s.planTeamsForGroup(ctx, group, settings)
+	if err != nil {
+		return err
+	}
+
 	return s.WithTx(ctx, func(tx Store) error {
 		txStore, ok := tx.(*PostgresStore)
 		if !ok {
@@ -491,49 +498,7 @@ func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerI
 			return fmt.Errorf("close registration for group: %w", err)
 		}
 
-		events, err := txStore.q.GetEventsByGroupId(ctx, &groupID)
-		if err != nil {
-			return fmt.Errorf("get events by group: %w", err)
-		}
-
-		for _, eventRow := range events {
-			regs, err := txStore.q.GetRegistrationsForEvent(ctx, eventRow.ID)
-			if err != nil {
-				return fmt.Errorf("get registrations for event %s: %w", eventRow.ID.String(), err)
-			}
-			if len(regs) == 0 {
-				continue
-			}
-
-			var lobbyHost *uuid.UUID
-			for _, reg := range regs {
-				if reg.CanLobbyHost {
-					hostID := reg.UserID
-					lobbyHost = &hostID
-					break
-				}
-			}
-
-			lobby, err := txStore.q.CreateLobby(ctx, db.CreateLobbyParams{
-				EventID: &eventRow.ID,
-				Host:    lobbyHost,
-			})
-			if err != nil {
-				return fmt.Errorf("create lobby for event %s: %w", eventRow.ID.String(), err)
-			}
-
-			for _, reg := range regs {
-				err = txStore.q.CreatePlayer(ctx, db.CreatePlayerParams{
-					LobbyID: lobby.ID,
-					UserID:  reg.UserID,
-				})
-				if err != nil {
-					return fmt.Errorf("create player for event %s: %w", eventRow.ID.String(), err)
-				}
-			}
-		}
-
-		return nil
+		return txStore.persistTeamPlans(ctx, plans)
 	})
 }
 

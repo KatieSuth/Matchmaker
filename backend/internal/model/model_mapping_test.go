@@ -606,3 +606,54 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, now, result.UpdatedAt)
 	assert.Equal(t, events, result.Events)
 }
+
+func TestMapDbGetLobbiesForEventRowToEventLobby(t *testing.T) {
+	hostID := uuid.New()
+	eventID := uuid.New()
+	row := db.GetLobbiesForEventRow{
+		ID:              uuid.New(),
+		EventID:         &eventID,
+		Host:            &hostID,
+		FairnessWarning: true,
+	}
+	result := model.MapDbGetLobbiesForEventRowToEventLobby(row)
+	assert.Equal(t, row.ID, result.ID)
+	assert.Equal(t, &hostID, result.HostID)
+	assert.True(t, result.FairnessWarning)
+	assert.Empty(t, result.Teams)
+	assert.Empty(t, result.Subs)
+}
+
+func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
+	name := "player-one"
+	createdAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 6, 2, 8, 30, 0, 0, time.UTC)
+	row := db.GetPlayersForLobbyRow{
+		UserID:          uuid.New(),
+		TeamNumber:      ptrInt32(1),
+		DiscordName:     &name,
+		Pronouns:        "they/them",
+		CurrentRankName:  "Gold 1",
+		CurrentRankOrder: 12,
+		PeakRankOrder:    15,
+		CanSubstitute:    true,
+		CanLobbyHost:     false,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
+	}
+	result := model.MapDbGetPlayersForLobbyRowToLobbyPlayer(row)
+	assert.Equal(t, row.UserID, result.UserID)
+	assert.Equal(t, "player-one", result.DiscordName)
+	assert.Equal(t, "they/them", result.Pronouns)
+	assert.Equal(t, "Gold 1", result.CurrentRankName)
+	assert.Equal(t, 12, result.CurrentRankOrder)
+	assert.Equal(t, 15, result.PeakRankOrder)
+	assert.True(t, result.CanSubstitute)
+	assert.False(t, result.CanLobbyHost)
+	assert.Equal(t, createdAt, result.CreatedAt)
+	assert.Equal(t, updatedAt, result.UpdatedAt)
+}
+
+func ptrInt32(v int32) *int32 {
+	return &v
+}

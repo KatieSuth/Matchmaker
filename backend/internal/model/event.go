@@ -35,6 +35,35 @@ type EventRegistration struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+// LobbyPlayer is a player shown on a formed team or sub list.
+type LobbyPlayer struct {
+	UserID           uuid.UUID `json:"user_id"`
+	DiscordName      string    `json:"discord_name"`
+	Pronouns         string    `json:"pronouns"`
+	CurrentRankName  string `json:"current_rank_name"`
+	CurrentRankOrder int    `json:"current_rank_order"`
+	PeakRankOrder    int    `json:"peak_rank_order"`
+	CanSubstitute    bool   `json:"can_substitute"`
+	CanLobbyHost     bool      `json:"can_lobby_host"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// EventTeam is one side within a lobby.
+type EventTeam struct {
+	TeamNumber int           `json:"team_number"`
+	Players    []LobbyPlayer `json:"players"`
+}
+
+// EventLobby is one match lobby for a game after lock-in.
+type EventLobby struct {
+	ID              uuid.UUID   `json:"id"`
+	HostID          *uuid.UUID  `json:"host_id"`
+	FairnessWarning bool        `json:"fairness_warning"`
+	Teams           []EventTeam `json:"teams"`
+	Subs            []LobbyPlayer `json:"subs"`
+}
+
 // EventGroupEvent is one scheduled game within a group, with optional registration rows.
 type EventGroupEvent struct {
 	ID               uuid.UUID           `json:"id"`
@@ -46,6 +75,8 @@ type EventGroupEvent struct {
 	LobbiesCount     int                 `json:"lobbies_count"`
 	PlayerRegistered bool                `json:"player_registered"`
 	Registrations    []EventRegistration `json:"registrations"`
+	Lobbies          []EventLobby        `json:"lobbies"`
+	Unplaced         []EventRegistration `json:"unplaced"`
 }
 
 // EventGroupDetail is the full host/participant view for a group: header plus each game.
@@ -123,6 +154,37 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 		LobbiesCount:     int(row.LobbiesCount),
 		PlayerRegistered: row.PlayerRegistered,
 		Registrations:    registrations,
+		Lobbies:          []EventLobby{},
+		Unplaced:         []EventRegistration{},
+	}
+}
+
+func MapDbGetLobbiesForEventRowToEventLobby(row db.GetLobbiesForEventRow) EventLobby {
+	return EventLobby{
+		ID:              row.ID,
+		HostID:          row.Host,
+		FairnessWarning: row.FairnessWarning,
+		Teams:           []EventTeam{},
+		Subs:            []LobbyPlayer{},
+	}
+}
+
+func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) LobbyPlayer {
+	discordName := ""
+	if row.DiscordName != nil {
+		discordName = *row.DiscordName
+	}
+	return LobbyPlayer{
+		UserID:           row.UserID,
+		DiscordName:      discordName,
+		Pronouns:         row.Pronouns,
+		CurrentRankName:  row.CurrentRankName,
+		CurrentRankOrder: int(row.CurrentRankOrder),
+		PeakRankOrder:    int(row.PeakRankOrder),
+		CanSubstitute:    row.CanSubstitute,
+		CanLobbyHost:     row.CanLobbyHost,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}
 }
 

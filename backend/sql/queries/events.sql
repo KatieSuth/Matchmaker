@@ -158,9 +158,51 @@ RETURNING *;
 DELETE FROM event_groups
 WHERE id = $1;
 
+-- name: GetLobbiesForEvent :many
+SELECT id, event_id, host, fairness_warning
+FROM lobbies
+WHERE event_id = $1
+ORDER BY created_at ASC;
+
+-- name: GetPlayersForLobby :many
+SELECT P.user_id,
+       P.team_number,
+       U.discord_name,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
+           ELSE ''
+       END AS pronouns,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
+           ELSE ''
+       END AS current_rank_name,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR."order", 0)
+           ELSE 0
+       END::INT AS current_rank_order,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR."order", 0)
+           ELSE 0
+       END::INT AS peak_rank_order,
+       R.can_substitute,
+       R.can_lobby_host,
+       R.created_at,
+       R.updated_at
+FROM players AS P
+JOIN users AS U ON U.id = P.user_id
+JOIN lobbies AS L ON L.id = P.lobby_id
+JOIN events AS E ON E.id = L.event_id
+JOIN registrations AS R ON R.event_id = E.id AND R.user_id = P.user_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
+LEFT JOIN user_games AS UG ON P.user_id = UG.user_id AND UG.game_id = GM.game_id
+LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
+LEFT JOIN game_ranks AS PR ON UG.peak_rank = PR.id
+WHERE P.lobby_id = sqlc.arg(lobby_id)
+ORDER BY P.team_number ASC NULLS LAST, U.discord_name ASC;
+
 -- name: CreateLobby :one
-INSERT INTO lobbies (id, event_id, host, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
+INSERT INTO lobbies (id, event_id, host, fairness_warning, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
 RETURNING *;
 
 -- name: CreatePlayer :exec

@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
@@ -178,8 +179,38 @@ func main() {
 		cookieDomain = "matchmaker.localhost"
 	}
 
+	fairnessOutlierGap := 8
+	if v := os.Getenv("FAIRNESS_OUTLIER_GAP"); v != "" {
+		fairnessOutlierGap, err = strconv.Atoi(v)
+		if err != nil || fairnessOutlierGap <= 0 {
+			fatalExit("invalid FAIRNESS_OUTLIER_GAP", "error", err)
+		}
+	}
+
+	fairnessTeamSeparation := 4.0
+	if v := os.Getenv("FAIRNESS_TEAM_SEPARATION"); v != "" {
+		fairnessTeamSeparation, err = strconv.ParseFloat(v, 64)
+		if err != nil || fairnessTeamSeparation <= 0 {
+			fatalExit("invalid FAIRNESS_TEAM_SEPARATION", "error", err)
+		}
+	}
+
+	fairnessReferenceTierCount := 25
+	if v := os.Getenv("FAIRNESS_REFERENCE_TIER_COUNT"); v != "" {
+		fairnessReferenceTierCount, err = strconv.Atoi(v)
+		if err != nil || fairnessReferenceTierCount <= 0 {
+			fatalExit("invalid FAIRNESS_REFERENCE_TIER_COUNT", "error", err)
+		}
+	}
+
+	mmSettings := matchmaking.Settings{
+		FairnessOutlierGap:         fairnessOutlierGap,
+		FairnessTeamSeparation:     fairnessTeamSeparation,
+		FairnessReferenceTierCount: fairnessReferenceTierCount,
+	}
+
 	// Handlers
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings)
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())

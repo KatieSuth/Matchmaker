@@ -107,6 +107,27 @@ func TestUpsertGameForUser_UuidNilCurrentRank(t *testing.T) {
 	})
 }
 
+func TestUpsertGameForUser_InvalidPeakRank(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug5b", "uguser5b")
+		game := seedGame(t, q)
+		ranks, err := q.GetRanksForGame(context.Background(), &game.ID)
+		require.NoError(t, err)
+		require.NotEmpty(t, ranks)
+		validRank := ranks[0].ID
+		invalidPeak := uuid.New()
+		inGameName := "player5b"
+
+		_, err = s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+			GameID:      game.ID,
+			CurrentRank: &validRank,
+			PeakRank:    &invalidPeak,
+			InGameName:  &inGameName,
+		})
+		assert.ErrorIs(t, err, store.ErrInvalidPeakRank)
+	})
+}
+
 func TestUpsertGameForUser_InvalidCurrentRank(t *testing.T) {
 	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
 		seeded := seedUser(t, q, "discord-ug5", "uguser5")

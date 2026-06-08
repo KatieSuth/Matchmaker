@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
@@ -27,26 +28,28 @@ type Handler struct {
 	frontendURL       string
 	jwtSecret         []byte
 	refreshExpiration int
-	discordApiUrl     string
+	discordApiUrl        string
+	matchmakingSettings  matchmaking.Settings
 }
 
 // New builds a Handler.
 // gm is the Gin run mode; s is the persistence layer; sc signs/encrypts auth cookies;
 // o2c is the Discord OAuth2 config; cd is the cookie domain; fURL is the frontend base URL;
 // jwt is the JWT signing key; refExp is refresh-token Max-Age in seconds; dApi is Discord's API base URL.
-func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string) *Handler {
+func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string, mmSettings matchmaking.Settings) *Handler {
 	return &Handler{
-		ginMode:           gm,
-		store:             s,
-		secureCookie:      sc,
-		oauth2Config:      o2c,
-		generateState:     GenerateState,
-		encodeStateCookie: sc.Encode,
-		cookieDomain:      cd,
-		frontendURL:       fURL,
-		jwtSecret:         jwt,
-		refreshExpiration: refExp,
-		discordApiUrl:     dApi,
+		ginMode:             gm,
+		store:               s,
+		secureCookie:        sc,
+		oauth2Config:        o2c,
+		generateState:       GenerateState,
+		encodeStateCookie:   sc.Encode,
+		cookieDomain:        cd,
+		frontendURL:         fURL,
+		jwtSecret:           jwt,
+		refreshExpiration:   refExp,
+		discordApiUrl:       dApi,
+		matchmakingSettings: mmSettings,
 	}
 }
 

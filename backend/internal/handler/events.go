@@ -414,9 +414,17 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.CreateTeamsForGroup(c.Request.Context(), groupID, userUUID)
+	err = h.store.CreateTeamsForGroup(c.Request.Context(), groupID, userUUID, h.matchmakingSettings)
 	if err != nil {
 		switch {
+		case errors.Is(err, store.ErrInsufficientPlayers), errors.Is(err, store.ErrInsufficientSubstitutes):
+			msg := err.Error()
+			var teamErr *store.TeamCreationError
+			if errors.As(err, &teamErr) {
+				msg = teamErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "create teams validation failed", "user_id", userUUID, "group_id", groupID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
 		case errors.Is(err, store.ErrForbidden):
 			slog.WarnContext(c.Request.Context(), "forbidden create teams attempt", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can create teams"})

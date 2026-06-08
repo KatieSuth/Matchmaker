@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation"
 import { setAccessToken } from "@/app/_lib/auth";
+import { setAuthSessionFlag } from "@/app/_lib/session";
 import { consumePostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { useAuth } from "@/app/_context/AuthContext";
 import { completeAuth } from "@/app/_services/auth";
@@ -35,12 +36,9 @@ export default function CallbackPage() {
                     return;
                 }
 
-                const domain = process.env.NEXT_PUBLIC_FRONTEND_DOMAIN;
-                const expire = process.env.NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT;
-
                 const accessToken = response.access_token;
                 setAccessToken(accessToken);
-                document.cookie = `auth_session=1; domain=${domain}; path=/; secure; max-age=${expire}`;
+                setAuthSessionFlag();
 
                 const resolvedUser = await fetchCurrentUser(signal);
                 if (signal.aborted) return;

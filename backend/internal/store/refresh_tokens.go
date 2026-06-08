@@ -2,14 +2,12 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 func (s *PostgresStore) CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error) {
@@ -27,7 +25,7 @@ func (s *PostgresStore) CreateNewRefreshToken(ctx context.Context, refreshTokenH
 
 func (s *PostgresStore) GetRefreshToken(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error) {
 	dbRefresh, err := s.q.GetRefreshToken(ctx, refreshTokenHash)
-	if err != nil || errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		return model.RefreshToken{}, fmt.Errorf("locating refresh token: %w", err)
 	}
 

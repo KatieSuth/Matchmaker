@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,7 +61,7 @@ type Store interface {
 	UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error
 	DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SetEventGroupRegistrationOpen(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
-	CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error
+	CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
 	DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error
 	UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroup(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error

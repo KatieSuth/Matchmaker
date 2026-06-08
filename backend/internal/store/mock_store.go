@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
 )
@@ -50,7 +51,7 @@ type MockStore struct {
 	UpdateEventGroupSettingsFn       func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error
 	DeleteEventGroupFn               func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SetEventGroupRegistrationOpenFn  func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
-	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
 	DeleteTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
@@ -153,8 +154,8 @@ func (m *MockStore) SetEventGroupRegistrationOpen(ctx context.Context, groupID, 
 	return m.SetEventGroupRegistrationOpenFn(ctx, groupID, ownerID, open)
 }
 
-func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {
-	return m.CreateTeamsForGroupFn(ctx, groupID, ownerID)
+func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error {
+	return m.CreateTeamsForGroupFn(ctx, groupID, ownerID, settings)
 }
 
 func (m *MockStore) DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {

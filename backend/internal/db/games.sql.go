@@ -81,6 +81,19 @@ func (q *Queries) GetGameModes(ctx context.Context, gameID uuid.UUID) ([]GameMod
 	return items, nil
 }
 
+const getMaxRankOrderForGame = `-- name: GetMaxRankOrderForGame :one
+SELECT COALESCE(MAX("order"), 0)::INT AS max_rank_order
+FROM game_ranks
+WHERE game_id = $1
+`
+
+func (q *Queries) GetMaxRankOrderForGame(ctx context.Context, gameID *uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getMaxRankOrderForGame, gameID)
+	var max_rank_order int32
+	err := row.Scan(&max_rank_order)
+	return max_rank_order, err
+}
+
 const getSystemGames = `-- name: GetSystemGames :many
 SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL
 `

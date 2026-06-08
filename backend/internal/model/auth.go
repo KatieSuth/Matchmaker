@@ -14,14 +14,12 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateTokens returns a short-lived signed JWT and a long opaque refresh token (the raw
-// refresh is returned to the client; only its hash is stored in the database).
-func GenerateTokens(userID string, jwtSecret []byte) (accessToken, refreshToken string, err error) {
+// GenerateAccessToken returns a short-lived signed JWT for the given user.
+func GenerateAccessToken(userID string, jwtSecret []byte) (string, error) {
 	if userID == "" {
-		err = errors.New("userID must not be empty")
-		return
+		return "", errors.New("userID must not be empty")
 	}
-	//access token
+
 	accessClaims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -30,7 +28,13 @@ func GenerateTokens(userID string, jwtSecret []byte) (accessToken, refreshToken 
 		},
 	}
 
-	accessToken, err = jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(jwtSecret)
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(jwtSecret)
+}
+
+// GenerateTokens returns a short-lived signed JWT and a long opaque refresh token (the raw
+// refresh is returned to the client; only its hash is stored in the database).
+func GenerateTokens(userID string, jwtSecret []byte) (accessToken, refreshToken string, err error) {
+	accessToken, err = GenerateAccessToken(userID, jwtSecret)
 	if err != nil {
 		return
 	}

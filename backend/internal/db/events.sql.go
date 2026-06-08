@@ -99,18 +99,19 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 }
 
 const createLobby = `-- name: CreateLobby :one
-INSERT INTO lobbies (id, event_id, host, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
-RETURNING id, event_id, host, created_at, updated_at
+INSERT INTO lobbies (id, event_id, host, fairness_warning, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+RETURNING id, event_id, host, created_at, updated_at, fairness_warning
 `
 
 type CreateLobbyParams struct {
-	EventID *uuid.UUID
-	Host    *uuid.UUID
+	EventID         *uuid.UUID
+	Host            *uuid.UUID
+	FairnessWarning bool
 }
 
 func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby, error) {
-	row := q.db.QueryRow(ctx, createLobby, arg.EventID, arg.Host)
+	row := q.db.QueryRow(ctx, createLobby, arg.EventID, arg.Host, arg.FairnessWarning)
 	var i Lobby
 	err := row.Scan(
 		&i.ID,
@@ -118,6 +119,7 @@ func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby
 		&i.Host,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FairnessWarning,
 	)
 	return i, err
 }
@@ -551,6 +553,133 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 			&i.RegisteredCount,
 			&i.LobbiesCount,
 			&i.PlayerRegistered,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLobbiesForEvent = `-- name: GetLobbiesForEvent :many
+SELECT id, event_id, host, fairness_warning
+FROM lobbies
+WHERE event_id = $1
+ORDER BY created_at ASC
+`
+
+type GetLobbiesForEventRow struct {
+	ID              uuid.UUID
+	EventID         *uuid.UUID
+	Host            *uuid.UUID
+	FairnessWarning bool
+}
+
+func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([]GetLobbiesForEventRow, error) {
+	rows, err := q.db.Query(ctx, getLobbiesForEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetLobbiesForEventRow
+	for rows.Next() {
+		var i GetLobbiesForEventRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.Host,
+			&i.FairnessWarning,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayersForLobby = `-- name: GetPlayersForLobby :many
+SELECT P.user_id,
+       P.team_number,
+       U.discord_name,
+       CASE
+           WHEN $1::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
+           ELSE ''
+       END AS pronouns,
+       CASE
+           WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
+           ELSE ''
+       END AS current_rank_name,
+       CASE
+           WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR."order", 0)
+           ELSE 0
+       END::INT AS current_rank_order,
+       CASE
+           WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR."order", 0)
+           ELSE 0
+       END::INT AS peak_rank_order,
+       R.can_substitute,
+       R.can_lobby_host,
+       R.created_at,
+       R.updated_at
+FROM players AS P
+JOIN users AS U ON U.id = P.user_id
+JOIN lobbies AS L ON L.id = P.lobby_id
+JOIN events AS E ON E.id = L.event_id
+JOIN registrations AS R ON R.event_id = E.id AND R.user_id = P.user_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
+LEFT JOIN user_games AS UG ON P.user_id = UG.user_id AND UG.game_id = GM.game_id
+LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
+LEFT JOIN game_ranks AS PR ON UG.peak_rank = PR.id
+WHERE P.lobby_id = $2
+ORDER BY P.team_number ASC NULLS LAST, U.discord_name ASC
+`
+
+type GetPlayersForLobbyParams struct {
+	ViewerIsHost bool
+	LobbyID      uuid.UUID
+}
+
+type GetPlayersForLobbyRow struct {
+	UserID           uuid.UUID
+	TeamNumber       *int32
+	DiscordName      *string
+	Pronouns         string
+	CurrentRankName  string
+	CurrentRankOrder int32
+	PeakRankOrder    int32
+	CanSubstitute    bool
+	CanLobbyHost     bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+func (q *Queries) GetPlayersForLobby(ctx context.Context, arg GetPlayersForLobbyParams) ([]GetPlayersForLobbyRow, error) {
+	rows, err := q.db.Query(ctx, getPlayersForLobby, arg.ViewerIsHost, arg.LobbyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPlayersForLobbyRow
+	for rows.Next() {
+		var i GetPlayersForLobbyRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.TeamNumber,
+			&i.DiscordName,
+			&i.Pronouns,
+			&i.CurrentRankName,
+			&i.CurrentRankOrder,
+			&i.PeakRankOrder,
+			&i.CanSubstitute,
+			&i.CanLobbyHost,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

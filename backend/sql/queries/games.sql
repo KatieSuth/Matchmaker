@@ -12,3 +12,8 @@ SELECT * FROM game_modes WHERE game_id = $1;
 
 -- name: GetGameModeById :one
 SELECT * FROM game_modes WHERE id = $1;
+
+-- name: GetMaxRankOrderForGame :one
+SELECT COALESCE(MAX("order"), 0)::INT AS max_rank_order
+FROM game_ranks
+WHERE game_id = $1;

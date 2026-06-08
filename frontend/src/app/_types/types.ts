@@ -67,6 +67,32 @@ export interface EventRegistration {
   updated_at: string;
 }
 
+export interface LobbyPlayer {
+  user_id: string;
+  discord_name: string;
+  pronouns: string;
+  current_rank_name: string;
+  current_rank_order: number;
+  peak_rank_order: number;
+  can_substitute: boolean;
+  can_lobby_host: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventTeam {
+  team_number: number;
+  players: LobbyPlayer[];
+}
+
+export interface EventLobby {
+  id: string;
+  host_id: string | null;
+  fairness_warning: boolean;
+  teams: EventTeam[];
+  subs: LobbyPlayer[];
+}
+
 export interface EventGroupEvent {
   id: string;
   start_time: string;
@@ -77,6 +103,8 @@ export interface EventGroupEvent {
   lobbies_count: number;
   player_registered: boolean;
   registrations: EventRegistration[];
+  lobbies: EventLobby[];
+  unplaced: EventRegistration[];
 }
 
 export type EventSortLogic = "balanced" | "ranked";

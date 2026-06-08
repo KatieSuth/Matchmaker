@@ -23,7 +23,14 @@ import {
   upsertMyGroupRegistrations,
 } from "@/app/_services/events";
 import { fetchCurrentUserGames, upsertCurrentUserGame } from "@/app/_services/users";
-import { EventGroupDetail, EventGroupEvent, EventRegistration, GameRank } from "@/app/_types/types";
+import {
+  EventGroupDetail,
+  EventGroupEvent,
+  EventLobby,
+  EventRegistration,
+  GameRank,
+  LobbyPlayer,
+} from "@/app/_types/types";
 
 const DATE_TIME_FMT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -60,11 +67,50 @@ function emptyUserGameDraft(gameId: string): UserGameEditorValue {
 }
 
 function formatDateTime(value: string) {
-  return DATE_TIME_FMT.format(new Date(value));
+  if (!value.trim()) return EMPTY_VALUE;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return EMPTY_VALUE;
+  return DATE_TIME_FMT.format(date);
 }
 
 function formatPlayerCount(count: number) {
   return `${count} ${count === 1 ? "Player" : "Players"}`;
+}
+
+/** Per-player skill value used for team averages — mirrors backend (current + peak) / 2. */
+function playerSkillOrder(player: LobbyPlayer): number | null {
+  if (player.current_rank_order <= 0 || player.peak_rank_order <= 0) {
+    return null;
+  }
+  return (player.current_rank_order + player.peak_rank_order) / 2;
+}
+
+/** Maps a numeric skill value to the closest game rank name by order distance. */
+function nearestRankName(ranks: GameRank[], skillOrder: number): string {
+  if (ranks.length === 0) return EMPTY_VALUE;
+  let nearest = ranks[0];
+  let bestDistance = Math.abs(nearest.order - skillOrder);
+  for (const rank of ranks) {
+    const distance = Math.abs(rank.order - skillOrder);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = rank;
+    }
+  }
+  return nearest.name;
+}
+
+/** Returns the nearest rank name for a team's mean skill, or EMPTY_VALUE when no rank data exists. */
+function teamAverageRankLabel(players: LobbyPlayer[], ranks: GameRank[]): string {
+  const skillOrders = players
+    .map(playerSkillOrder)
+    .filter((order): order is number => order !== null);
+  if (skillOrders.length === 0) {
+    return EMPTY_VALUE;
+  }
+  const average =
+    skillOrders.reduce((sum, order) => sum + order, 0) / skillOrders.length;
+  return nearestRankName(ranks, average);
 }
 
 function formatGroupTeamSizeLabel(events: EventGroupEvent[]) {
@@ -83,7 +129,7 @@ function formatHostDisplayLabel(isViewerHost: boolean, ownerName: string, ownerP
 
 /** Compact subtitle fragment for chips / roster rows (game mode · formatted time). */
 function formatGameModeAndTime(modeName: string, startISO: string) {
-  return `${modeName} · ${DATE_TIME_FMT.format(new Date(startISO))}`;
+  return `${modeName} · ${formatDateTime(startISO)}`;
 }
 
 function PlayerCard({
@@ -171,7 +217,166 @@ function PlayerCard({
           <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Signed up</p>
           <p className="text-xs text-[var(--color-text-soft)]">{formatDateTime(registration.created_at)}</p>
         </div>
+        <div>
+          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
+          <p className="text-xs text-[var(--color-text-soft)]">{registration.can_substitute ? "Yes" : "No"}</p>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** True when any lobby in the game received a fairness warning at lock-in. */
+function eventHasUnfairLobby(event: EventGroupEvent): boolean {
+  return (event.lobbies ?? []).some((lobby) => lobby.fairness_warning);
+}
+
+/** Adapts a lobby player row so TeamsPanel can reuse PlayerCard and registration actions. */
+function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventRegistration {
+  return {
+    event_id: eventId,
+    user_id: player.user_id,
+    discord_name: player.discord_name,
+    pronouns: player.pronouns,
+    current_rank_name: player.current_rank_name,
+    can_substitute: player.can_substitute,
+    can_lobby_host: player.can_lobby_host,
+    duo_request: null,
+    created_at: player.created_at,
+    updated_at: player.updated_at,
+  };
+}
+
+/** Resolves the lobby host's display name from roster, subs, or unplaced players. */
+function lobbyHostName(lobby: EventLobby, event: EventGroupEvent): string | null {
+  if (!lobby.host_id) return null;
+  const allPlayers = [
+    ...lobby.teams.flatMap((team) => team.players),
+    ...lobby.subs,
+    ...event.unplaced,
+  ];
+  const host = allPlayers.find((p) => p.user_id === lobby.host_id);
+  return host?.discord_name ?? null;
+}
+
+function TeamsPanel({
+  event,
+  gameNumber,
+  eventRegion,
+  currentUserRegion,
+  isHostView,
+  currentUserId,
+  gameRanks,
+  onShowDetails,
+  onDeleteRegistrationForGame,
+  onDeleteAllFromUser,
+}: {
+  event: EventGroupEvent;
+  gameNumber: number;
+  eventRegion: string;
+  currentUserRegion?: string | null;
+  isHostView: boolean;
+  currentUserId?: string;
+  gameRanks: GameRank[];
+  onShowDetails: (registration: EventRegistration) => void;
+  onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
+  onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
+}) {
+  const lobbies = event.lobbies ?? [];
+  if (lobbies.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {lobbies.map((lobby, lobbyIndex) => (
+        <div key={lobby.id} className="flex flex-col gap-3">
+          {lobby.fairness_warning && (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+              Teams were formed with the best available balance, but rank spread was too wide for fully fair teams in
+              this lobby.
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+            <span>
+              Lobby {lobbyIndex + 1}
+              {lobbyHostName(lobby, event) ? ` · Host: ${lobbyHostName(lobby, event)}` : ""}
+            </span>
+            {lobby.fairness_warning && <span className="text-amber-400" aria-label="Unfair lobby">⚠</span>}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {lobby.teams.map((team) => {
+              const averageRank = isHostView ? teamAverageRankLabel(team.players, gameRanks) : EMPTY_VALUE;
+              return (
+              <div key={team.team_number} className="flex flex-col gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">
+                  Team {team.team_number}
+                  {averageRank !== EMPTY_VALUE ? ` · Average: ${averageRank}` : ""}
+                </p>
+                {team.players.map((player) => (
+                  <PlayerCard
+                    key={player.user_id}
+                    registration={lobbyPlayerAsRegistration(player, event.id)}
+                    gameNumber={gameNumber}
+                    eventRegion={eventRegion}
+                    currentUserRegion={currentUserRegion}
+                    isHostView={isHostView}
+                    currentUserId={currentUserId}
+                    canEditRegistration={false}
+                    onShowDetails={onShowDetails}
+                    onDeleteRegistrationForGame={onDeleteRegistrationForGame}
+                    onDeleteAllFromUser={onDeleteAllFromUser}
+                  />
+                ))}
+              </div>
+            );
+            })}
+          </div>
+          {lobby.subs.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Subs</p>
+              {lobby.subs.map((player) => (
+                <PlayerCard
+                  key={player.user_id}
+                  registration={lobbyPlayerAsRegistration(player, event.id)}
+                  gameNumber={gameNumber}
+                  eventRegion={eventRegion}
+                  currentUserRegion={currentUserRegion}
+                  isHostView={isHostView}
+                  currentUserId={currentUserId}
+                  canEditRegistration={false}
+                  onShowDetails={onShowDetails}
+                  onDeleteRegistrationForGame={onDeleteRegistrationForGame}
+                  onDeleteAllFromUser={onDeleteAllFromUser}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      {(event.unplaced ?? []).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Unplaced</p>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Registered but not assigned to a team or sub pool for this game.
+          </p>
+          {event.unplaced.map((registration) => (
+            <PlayerCard
+              key={registration.user_id}
+              registration={registration}
+              gameNumber={gameNumber}
+              eventRegion={eventRegion}
+              currentUserRegion={currentUserRegion}
+              isHostView={isHostView}
+              currentUserId={currentUserId}
+              canEditRegistration={false}
+              onShowDetails={onShowDetails}
+              onDeleteRegistrationForGame={onDeleteRegistrationForGame}
+              onDeleteAllFromUser={onDeleteAllFromUser}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -257,6 +462,7 @@ export default function EventGroupPage() {
     show_rank: false,
   });
   const [userGameRanks, setUserGameRanks] = useState<GameRank[]>([]);
+  const [gameRanks, setGameRanks] = useState<GameRank[]>([]);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [registrationLoading, setRegistrationLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -271,6 +477,13 @@ export default function EventGroupPage() {
       const data = await fetchEventGroup(groupId, signal);
       if (signal?.aborted) return;
       setGroup(data);
+      if (user?.id === data.owner_id) {
+        const ranks = await fetchGameRanks(data.game_id, signal);
+        if (signal?.aborted) return;
+        setGameRanks(ranks);
+      } else {
+        setGameRanks([]);
+      }
       if (!activeEventId || !data.events.some((event) => event.id === activeEventId)) {
         setActiveEventId(data.events[0]?.id ?? null);
       }
@@ -286,7 +499,7 @@ export default function EventGroupPage() {
         setLoading(false);
       }
     }
-  }, [activeEventId, groupId]);
+  }, [activeEventId, groupId, user]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -797,7 +1010,14 @@ export default function EventGroupPage() {
                     : "border-white/10 bg-white/[0.02] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)]",
                 ].join(" ")}
               >
-                Game {index + 1} · {formatGameModeAndTime(event.game_mode_name, event.start_time)}
+                <span className="inline-flex items-center gap-1">
+                  Game {index + 1} · {formatGameModeAndTime(event.game_mode_name, event.start_time)}
+                  {eventHasUnfairLobby(event) && (
+                    <span className="text-amber-400" aria-label="Contains unfair lobby">
+                      ⚠
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -999,30 +1219,25 @@ export default function EventGroupPage() {
                   </span>
                 </h2>
                 {!group.registration_open && event.lobbies_count > 0 ? (
-                  <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
-                    Teams display placeholder. Team assignment UI is coming next, but this section already uses the same
-                    registration cards for consistency.
-                    <div className="mt-3">
-                      <EventPanel
-                        event={event}
-                        gameNumber={index + 1}
-                        eventRegion={group.region}
-                        currentUserRegion={user?.region}
-                        isHostView={isHost}
-                        currentUserId={user?.id}
-                        onShowDetails={(registration) => {
-                          setSelectedRegistration(registration);
-                          setDetailsSheetOpen(true);
-                        }}
-                        onDeleteRegistrationForGame={(registration, gameNumber) =>
-                          openDeleteConfirmation(registration, gameNumber, "single")
-                        }
-                        onDeleteAllFromUser={(registration, gameNumber) =>
-                          openDeleteConfirmation(registration, gameNumber, "all")
-                        }
-                      />
-                    </div>
-                  </div>
+                  <TeamsPanel
+                    event={event}
+                    gameNumber={index + 1}
+                    eventRegion={group.region}
+                    currentUserRegion={user?.region}
+                    isHostView={isHost}
+                    currentUserId={user?.id}
+                    gameRanks={gameRanks}
+                    onShowDetails={(registration) => {
+                      setSelectedRegistration(registration);
+                      setDetailsSheetOpen(true);
+                    }}
+                    onDeleteRegistrationForGame={(registration, gameNumber) =>
+                      openDeleteConfirmation(registration, gameNumber, "single")
+                    }
+                    onDeleteAllFromUser={(registration, gameNumber) =>
+                      openDeleteConfirmation(registration, gameNumber, "all")
+                    }
+                  />
                 ) : (
                   <EventPanel
                     event={event}
@@ -1072,29 +1287,25 @@ export default function EventGroupPage() {
               </span>
             </h2>
             {!group.registration_open && activeEvent.lobbies_count > 0 ? (
-              <div className="rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-[var(--color-text-muted)]">
-                Teams display placeholder. Team assignment UI is coming next, but player cards are reused here.
-                <div className="mt-3">
-                  <EventPanel
-                    event={activeEvent}
-                    gameNumber={activeEventNumber}
-                    eventRegion={group.region}
-                    currentUserRegion={user?.region}
-                    isHostView={isHost}
-                    currentUserId={user?.id}
-                    onShowDetails={(registration) => {
-                      setSelectedRegistration(registration);
-                      setDetailsSheetOpen(true);
-                    }}
-                    onDeleteRegistrationForGame={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "single")
-                    }
-                    onDeleteAllFromUser={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "all")
-                    }
-                  />
-                </div>
-              </div>
+              <TeamsPanel
+                event={activeEvent}
+                gameNumber={activeEventNumber}
+                eventRegion={group.region}
+                currentUserRegion={user?.region}
+                isHostView={isHost}
+                currentUserId={user?.id}
+                gameRanks={gameRanks}
+                onShowDetails={(registration) => {
+                  setSelectedRegistration(registration);
+                  setDetailsSheetOpen(true);
+                }}
+                onDeleteRegistrationForGame={(registration, gameNumber) =>
+                  openDeleteConfirmation(registration, gameNumber, "single")
+                }
+                onDeleteAllFromUser={(registration, gameNumber) =>
+                  openDeleteConfirmation(registration, gameNumber, "all")
+                }
+              />
             ) : (
               <EventPanel
                 event={activeEvent}

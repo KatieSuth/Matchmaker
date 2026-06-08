@@ -29,11 +29,51 @@ func hashToken(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// sessionCookieDomains lists Domain attribute values to clear. Browsers can retain legacy
+// host-only and domain-scoped cookies side by side; clearing every variant avoids stale
+// refresh_token values shadowing the current session cookie.
+func (h *Handler) sessionCookieDomains() []string {
+	if h.cookieDomain == "" {
+		return []string{""}
+	}
+	return []string{h.cookieDomain, ""}
+}
+
+// writeSessionCookie sets a secure session cookie, optionally scoped to the configured domain.
+func (h *Handler) writeSessionCookie(c *gin.Context, name, value string, maxAge int, httpOnly bool, domain string) {
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		MaxAge:   maxAge,
+		Secure:   true,
+		HttpOnly: httpOnly,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if domain != "" {
+		cookie.Domain = domain
+	}
+	http.SetCookie(c.Writer, cookie)
+}
+
+// clearSessionCookies expires refresh_token and auth_session for every domain variant the app may have used.
+func (h *Handler) clearSessionCookies(c *gin.Context) {
+	for _, domain := range h.sessionCookieDomains() {
+		h.writeSessionCookie(c, "refresh_token", "", -1, true, domain)
+		h.writeSessionCookie(c, "auth_session", "", -1, false, domain)
+	}
+}
+
 // setAuthCookies sets the HttpOnly refresh_token and a lightweight auth_session flag the
 // Next.js layer uses for client-side route guards (API calls still require a valid JWT).
 func (h *Handler) setAuthCookies(c *gin.Context, refreshToken string, maxAge int) {
-	c.SetCookie("refresh_token", refreshToken, maxAge, "/", h.cookieDomain, true, true)
-	c.SetCookie("auth_session", "1", maxAge, "/", h.cookieDomain, true, false)
+	h.clearSessionCookies(c)
+	if maxAge < 0 || refreshToken == "" {
+		return
+	}
+
+	h.writeSessionCookie(c, "refresh_token", refreshToken, maxAge, true, h.cookieDomain)
+	h.writeSessionCookie(c, "auth_session", "1", maxAge, false, h.cookieDomain)
 }
 
 // GET /auth/login
@@ -175,6 +215,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 	refresh, err := h.store.GetRefreshToken(c.Request.Context(), refreshHashStr)
 	if err != nil {
 		slog.WarnContext(c.Request.Context(), "refresh token not found in database", "error", err)
+		h.clearSessionCookies(c)
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -195,10 +236,11 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	//generate fresh tokens
-	accessToken, refreshToken, err := model.GenerateTokens(refresh.UserID.String(), h.jwtSecret)
+	// Issue a new access token only. Keep the existing refresh token so concurrent refresh
+	// requests (e.g. React Strict Mode) cannot invalidate a still-valid browser cookie.
+	accessToken, err := model.GenerateAccessToken(refresh.UserID.String(), h.jwtSecret)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to generate tokens during refresh", "user_id", refresh.UserID, "error", err)
+		slog.ErrorContext(c.Request.Context(), "failed to generate access token during refresh", "user_id", refresh.UserID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": "Could not refresh required tokens",
@@ -206,33 +248,8 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	//store the new refresh token
-	refreshHashNewStr := hashToken(refreshToken)
-	expireTime := time.Now().Add(time.Duration(h.refreshExpiration) * time.Second)
-
-	_, err = h.store.CreateNewRefreshToken(c.Request.Context(), refreshHashNewStr, refresh.UserID, expireTime)
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to store new refresh token", "user_id", refresh.UserID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not store required tokens",
-		})
-		return
-	}
-
-	//set refresh token that lasts the specific amount of time (default: 7 days) in HttpOnly cookie
-	h.setAuthCookies(c, refreshToken, h.refreshExpiration)
-
-	//delete the old refresh token
-	err = h.store.DeleteRefreshToken(c.Request.Context(), refreshHashStr)
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to delete old refresh token during rotation", "user_id", refresh.UserID, "error", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "Could not rotate the refresh token",
-		})
-		return
-	}
+	// Re-set session cookies to extend Max-Age without rotating the refresh token value.
+	h.setAuthCookies(c, cookieVal, h.refreshExpiration)
 
 	//return token
 	c.JSON(http.StatusOK, gin.H{

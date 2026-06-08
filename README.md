@@ -156,25 +156,28 @@ curl https://matchmaker.localhost/api/health
 
 ### Backend (`backend/.env.example`)
 
-| Variable                 | Default                                                  | Description                                                          |
-|--------------------------|----------------------------------------------------------|----------------------------------------------------------------------|
-| `COOKIE_HASH_KEY`        | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                |
-| `COOKIE_ENCRYPT_KEY`     | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login            |
-| `COOKIE_DOMAIN`          | `matchmaker.localhost`                                   | The domain used for setting cookies on login                         |
-| `DATABASE_URL`           | required, no default                                     | URL to connect to the DB                                             |
-| `DATABASE_URL_TESTS`     | no default                                               | URL to connect to the DB for testing                                 |
-| `DISCORD_CLIENT_ID`      | required, no default                                     | Client ID provided by Discord developer portal app                   |
-| `DISCORD_CLIENT_SECRET`  | required, no default                                     | Client Secret provided by Discord developer portal app               |
-| `DISCORD_REDIRECT_URI`   | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal      |
-| `DISCORD_API_URL`        | `https://discord.com/api`                                | Discord API URL (for test flexibility)                               |
-| `FRONTEND_URL`           | `https://matchmaker.localhost`                           | CORS allowed origin                                                  |
-| `GIN_MODE`               | `release`                                                | `debug` or `release`                                                 |
-| `JWT_SECRET`             | required, no default                                     | A key for signing the JWT access tokens                              |
-| `PORT`                   | `8080`                                                   | Server port                                                          |
-| `POSTGRES_DB`            | required, no default                                     | Postgres Database name                                               |
-| `POSTGRES_PASSWORD`      | required, no default                                     | Postgres Database password                                           |
-| `POSTGRES_USER`          | required, no default                                     | Postgres Database username                                           |
-| `REFRESH_EXPIRE_LIMIT`   | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens             |
+| Variable                        | Default                                                  | Description                                                                           |
+|---------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `COOKIE_HASH_KEY`               | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                                 |
+| `COOKIE_ENCRYPT_KEY`            | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login                             |
+| `COOKIE_DOMAIN`                 | `matchmaker.localhost`                                   | The domain used for setting cookies on login                                          |
+| `DATABASE_URL`                  | required, no default                                     | URL to connect to the DB                                                              |
+| `DATABASE_URL_TESTS`            | no default                                               | URL to connect to the DB for testing                                                  |
+| `DISCORD_CLIENT_ID`             | required, no default                                     | Client ID provided by Discord developer portal app                                    |
+| `DISCORD_CLIENT_SECRET`         | required, no default                                     | Client Secret provided by Discord developer portal app                                |
+| `DISCORD_REDIRECT_URI`          | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal                       |
+| `DISCORD_API_URL`               | `https://discord.com/api`                                | Discord API URL (for test flexibility)                                                |
+| `FRONTEND_URL`                  | `https://matchmaker.localhost`                           | CORS allowed origin                                                                   |
+| `GIN_MODE`                      | `release`                                                | `debug` or `release`                                                                  |
+| `JWT_SECRET`                    | required, no default                                     | A key for signing the JWT access tokens                                               |
+| `PORT`                          | `8080`                                                   | Server port                                                                           |
+| `POSTGRES_DB`                   | required, no default                                     | Postgres Database name                                                                |
+| `POSTGRES_PASSWORD`             | required, no default                                     | Postgres Database password                                                            |
+| `POSTGRES_USER`                 | required, no default                                     | Postgres Database username                                                            |
+| `REFRESH_EXPIRE_LIMIT`          | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens                              |
+| `FAIRNESS_OUTLIER_GAP`          | `8`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)   |
+| `FAIRNESS_TEAM_SEPARATION`      | `4`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count) |
+| `FAIRNESS_REFERENCE_TIER_COUNT` | `25`                                                     | Tier count the fairness baselines are calibrated for (Valorant)                       |
 
 ---
 
@@ -220,3 +223,40 @@ The built-in team balancer is a great resource if you have exactly 10 players an
 ### You've got a lot of roadmap there and not a lot of journey. Is this thing ever going to be done?
 
 This application currently has one developer and I work on it when I can, so things might take a while. Thanks for the interest though and please feel free to add issues & contribute! I will review them as I'm able.
+
+### How does matchmaking work?
+
+When the host clicks **Lock In & Create Teams**, Matchmaker looks at everyone signed up for each game and builds teams automatically using the rank information players provided (current rank and peak rank).
+
+For each player, it calculates a single skill number by averaging those two ranks. That number is what gets used for sorting and balancing — not just current rank alone.
+
+The host chooses a **matchmaking mode** when creating the event:
+
+- **Balanced** (default) — Best for casual games. Matchmaker tries to spread different skill levels across the lobby and split players into two even teams. If more people signed up than can play at once, it picks a mix from high, middle, and low ranks rather than only taking the highest-ranked or lowest-ranked players.
+- **Rank Grouping** — Best for serious practice. Matchmaker groups players of similar rank into the same lobby. If not everyone can play, it keeps whichever skill level most players belong to (for example, if most signups are lower rank, lower-ranked players are prioritized for roster spots).
+
+After teams are formed, a few other things happen automatically:
+
+- Players who marked **Can substitute** during sign-up may be placed in a sub pool instead of a team if there are more signups than spots.
+- Players who did **not** mark **Can substitute** and did not make a team stay signed up but are listed as unplaced for that game.
+- If enough players signed up, multiple lobbies can be created so more than one game can run at once.
+- One player per lobby is assigned as lobby host (whoever volunteered first, or the earliest sign-up if no one volunteered).
+
+The host can still review the results and make manual changes afterward.
+
+For more detailed technical information, see [backend/internal/matchmaking/MATCHMAKING.md](backend/internal/matchmaking/MATCHMAKING.md).
+
+### How do I know the matches are fair?
+
+Matchmaker does its best to create even teams, but perfect balance is not always possible — especially when signups span a very wide range of ranks (for example, Iron through Immortal in the same Valorant lobby).
+
+After teams are created, each lobby is checked for balance. If Matchmaker could not get a good result, you will see a warning on that game or lobby. The message explains that teams were formed with the best available balance, but the rank spread was too wide for fully fair teams in that lobby.
+
+A warning usually means one of two things:
+
+- One player is much higher or lower ranked than everyone else in the lobby (a large skill gap).
+- The two teams' average skill levels are still noticeably different after balancing.
+
+If you are the event host, you can also see each team's average rank on the team headers to judge balance yourself.
+
+Fairness warnings are a heads-up, not a failure — the teams are still playable. The host can always adjust rosters manually if something looks off.

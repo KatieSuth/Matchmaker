@@ -44,3 +44,16 @@ SELECT user_id, can_lobby_host, created_at
 FROM registrations
 WHERE event_id = $1
 ORDER BY created_at ASC;
+
+-- name: GetMatchmakingRegistrationsForEvent :many
+SELECT r.user_id, r.can_substitute, r.can_lobby_host, r.created_at,
+       cr."order" AS current_rank_order,
+       pr."order" AS peak_rank_order
+FROM registrations r
+JOIN events e ON e.id = r.event_id
+JOIN game_modes gm ON gm.id = e.game_mode_id
+JOIN user_games ug ON ug.user_id = r.user_id AND ug.game_id = gm.game_id
+JOIN game_ranks cr ON cr.id = ug.current_rank
+JOIN game_ranks pr ON pr.id = ug.peak_rank
+WHERE r.event_id = $1
+ORDER BY r.created_at ASC;

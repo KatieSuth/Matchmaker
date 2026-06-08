@@ -73,11 +73,12 @@ type GameRank struct {
 }
 
 type Lobby struct {
-	ID        uuid.UUID
-	EventID   *uuid.UUID
-	Host      *uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID              uuid.UUID
+	EventID         *uuid.UUID
+	Host            *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	FairnessWarning bool
 }
 
 type OneTimeCode struct {

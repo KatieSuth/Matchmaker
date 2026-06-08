@@ -2,9 +2,9 @@
 
 // Global session: restores JWT via silent refresh, hydrates /users/me, and exposes logout.
 import { createContext, useContext, useEffect, useState } from "react";
-import { setAccessToken, refreshAccessToken } from "@/app/_lib/auth";
+import { setAccessToken } from "@/app/_lib/auth";
+import { bootstrapSession, clearAuthSessionFlag, setAuthSessionFlag } from "@/app/_lib/session";
 import type { User } from "@/app/_types/types";
-import { fetchCurrentUser } from "@/app/_services/users";
 import { logoutUser } from "@/app/_services/auth";
 
 interface AuthContextType {
@@ -40,22 +40,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { signal } = ac;
 
         void (async () => {
-            try {
-                await refreshAccessToken();
-                if (signal.aborted) return;
-                const resolvedUser = await fetchCurrentUser(signal);
-                if (signal.aborted) return;
+            const resolvedUser = await bootstrapSession();
+            if (signal.aborted) return;
+            if (resolvedUser) {
                 setIsAuthenticated(true);
                 setUser(resolvedUser);
-            } catch {
-                if (signal.aborted) return;
+                setAuthSessionFlag();
+            } else {
                 setIsAuthenticated(false);
                 setUser(null);
-                document.cookie = "auth_session=; Max-Age=0; domain=" + process.env.NEXT_PUBLIC_FRONTEND_DOMAIN;
-            } finally {
-                if (!signal.aborted) {
-                    setIsLoading(false);
-                }
+                setAccessToken(null);
+                clearAuthSessionFlag();
+            }
+            if (!signal.aborted) {
+                setIsLoading(false);
             }
         })();
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
@@ -116,6 +117,28 @@ func TestCreateEventHandler_GameModeNotFound(t *testing.T) {
 		},
 	}
 	h := newTestHandler(t, ms, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateEventHandler_GamesToRunZero(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 0,
+	  "registration_open": true
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
 	h.CreateEventHandler(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -532,6 +555,15 @@ func TestUpdateEventGroupSettingsHandler_MissingEvents(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestDeleteEventGroupHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodDelete, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "not-a-uuid"}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.DeleteEventGroupHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestDeleteEventGroupHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
@@ -666,6 +698,7 @@ func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 	}{
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
 		{"already", store.ErrTeamsAlreadyCreated, http.StatusBadRequest},
+		{"insufficient", &store.TeamCreationError{Sentinel: store.ErrInsufficientPlayers, Message: "Game 1 needs at least 10 players"}, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -675,7 +708,7 @@ func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 			test_util.WithUserIDString(c, uid)
 			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
 			h := newTestHandler(t, &store.MockStore{
-				CreateTeamsForGroupFn: func(_ context.Context, inG, inO uuid.UUID) error { return tc.err },
+				CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) error { return tc.err },
 			}, nil, "")
 			h.CreateTeamsHandler(c)
 			assert.Equal(t, tc.status, w.Code)
@@ -688,7 +721,7 @@ func TestCreateTeamsHandler_Success(t *testing.T) {
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
 	h := newTestHandler(t, &store.MockStore{
-		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID) error { return nil },
+		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) error { return nil },
 	}, nil, "")
 	h.CreateTeamsHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())

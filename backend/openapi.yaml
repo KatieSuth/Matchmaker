@@ -808,7 +808,7 @@ paths:
         "204":
           description: Teams created successfully
         "400":
-          description: Invalid `groupId` or teams already exist
+          description: Invalid `groupId`, teams already exist, or insufficient players/subs for matchmaking
           content:
             application/json:
               schema:
@@ -1565,7 +1565,7 @@ components:
 
     EventGroupEvent:
       type: object
-      required: [id, start_time, game_mode_id, game_mode_name, team_size, registered_count, lobbies_count, player_registered, registrations]
+      required: [id, start_time, game_mode_id, game_mode_name, team_size, registered_count, lobbies_count, player_registered, registrations, lobbies, unplaced]
       properties:
         id:
           type: string
@@ -1593,6 +1593,78 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EventRegistration"
+        lobbies:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventLobby"
+        unplaced:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventRegistration"
+
+    LobbyPlayer:
+      type: object
+      required: [user_id, discord_name, pronouns, current_rank_name, current_rank_order, peak_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        discord_name:
+          type: string
+        pronouns:
+          type: string
+        current_rank_name:
+          type: string
+        current_rank_order:
+          type: integer
+          format: int32
+        peak_rank_order:
+          type: integer
+          format: int32
+        can_substitute:
+          type: boolean
+        can_lobby_host:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventTeam:
+      type: object
+      required: [team_number, players]
+      properties:
+        team_number:
+          type: integer
+          format: int32
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/LobbyPlayer"
+
+    EventLobby:
+      type: object
+      required: [id, fairness_warning, teams, subs]
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+          format: uuid
+          nullable: true
+        fairness_warning:
+          type: boolean
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventTeam"
+        subs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LobbyPlayer"
 
     EventGroupDetail:
       type: object
