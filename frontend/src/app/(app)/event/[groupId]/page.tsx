@@ -21,6 +21,7 @@ import {
   deleteRegistration,
   deleteTeams,
   fetchEventGroup,
+  setLobbyHost,
   swapPlayers,
   upsertMyGroupRegistrations,
 } from "@/app/_services/events";
@@ -66,6 +67,18 @@ interface PlayerPlacement {
   lobbyId: string | null;
   sourceLobbyIndex: number | null;
   teamNumber: number | null | undefined;
+}
+
+interface LobbyHostVolunteer {
+  userId: string;
+  discordName: string;
+  teamNumber: number;
+  isCurrentHost: boolean;
+}
+
+interface PendingLobbyHostChange {
+  placement: PlayerPlacement;
+  volunteerOptions: LobbyHostVolunteer[];
 }
 
 function emptyUserGameDraft(gameId: string): UserGameEditorValue {
@@ -176,6 +189,36 @@ function formatSwapCandidateLabel(
   return `${name} (${category}) · ${rank}`;
 }
 
+/** True when a player is assigned to a team (not subs or unplaced). */
+function isTeamAssignedPlacement(
+  placement?: PlayerPlacement,
+): placement is PlayerPlacement & { lobbyId: string; teamNumber: number } {
+  return !!placement && placement.lobbyId !== null && typeof placement.teamNumber === "number";
+}
+
+/** Lists team players in a lobby who volunteered to host, excluding the selected player. */
+function buildLobbyHostVolunteers(
+  lobby: EventLobby,
+  excludeUserId: string,
+  lobbyHostId?: string | null,
+): LobbyHostVolunteer[] {
+  const volunteers: LobbyHostVolunteer[] = [];
+  for (const team of lobby.teams) {
+    for (const player of team.players) {
+      if (player.user_id === excludeUserId || !player.can_lobby_host) {
+        continue;
+      }
+      volunteers.push({
+        userId: player.user_id,
+        discordName: player.discord_name || "Unknown user",
+        teamNumber: team.team_number,
+        isCurrentHost: !!lobbyHostId && player.user_id === lobbyHostId,
+      });
+    }
+  }
+  return volunteers;
+}
+
 /** Lists eligible swap targets for a player, excluding same-team roster mates and same-lobby subs. */
 function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): SelectOption[] {
   const options: SelectOption[] = [];
@@ -245,6 +288,8 @@ function PlayerCard({
   onDeleteAllFromUser,
   placement,
   onSwap,
+  onMakeLobbyHost,
+  lobbyHostId,
   showDuoRequest = false,
 }: {
   registration: EventRegistration;
@@ -259,6 +304,8 @@ function PlayerCard({
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
   placement?: PlayerPlacement;
   onSwap?: (placement: PlayerPlacement) => void;
+  onMakeLobbyHost?: (placement: PlayerPlacement) => void;
+  lobbyHostId?: string | null;
   showDuoRequest?: boolean;
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
@@ -276,6 +323,17 @@ function PlayerCard({
     menuOptions.push({
       label: "Swap",
       onSelect: () => onSwap(placement),
+    });
+  }
+  if (
+    isHostView &&
+    isTeamAssignedPlacement(placement) &&
+    onMakeLobbyHost &&
+    placement.userId !== lobbyHostId
+  ) {
+    menuOptions.push({
+      label: "Make Lobby Host",
+      onSelect: () => onMakeLobbyHost(placement),
     });
   }
   if (canDelete) {
@@ -399,6 +457,7 @@ function TeamsPanel({
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
   onSwapPlayer,
+  onMakeLobbyHost,
 }: {
   event: EventGroupEvent;
   gameNumber: number;
@@ -411,6 +470,7 @@ function TeamsPanel({
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
   onSwapPlayer?: (placement: PlayerPlacement) => void;
+  onMakeLobbyHost?: (placement: PlayerPlacement) => void;
 }) {
   const lobbies = event.lobbies ?? [];
   if (lobbies.length === 0) {
@@ -464,7 +524,9 @@ function TeamsPanel({
                       sourceLobbyIndex: lobbyIndex,
                       teamNumber: team.team_number,
                     }}
+                    lobbyHostId={lobby.host_id}
                     onSwap={onSwapPlayer}
+                    onMakeLobbyHost={onMakeLobbyHost}
                   />
                 ))}
               </div>
@@ -606,9 +668,11 @@ export default function EventGroupPage() {
   const [warningSheetOpen, setWarningSheetOpen] = useState(false);
   const [deleteWarningSheetOpen, setDeleteWarningSheetOpen] = useState(false);
   const [swapSheetOpen, setSwapSheetOpen] = useState(false);
+  const [lobbyHostConfirmOpen, setLobbyHostConfirmOpen] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState<EventRegistration | null>(null);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<PendingDeleteAction | null>(null);
   const [pendingSwap, setPendingSwap] = useState<PlayerPlacement | null>(null);
+  const [pendingLobbyHostChange, setPendingLobbyHostChange] = useState<PendingLobbyHostChange | null>(null);
   const [swapTargetUserId, setSwapTargetUserId] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
@@ -782,6 +846,52 @@ export default function EventGroupPage() {
     setPendingSwap(null);
     setSwapTargetUserId("");
   }, []);
+
+  const closeLobbyHostConfirm = useCallback(() => {
+    setLobbyHostConfirmOpen(false);
+    setPendingLobbyHostChange(null);
+  }, []);
+
+  const submitLobbyHostChange = useCallback(async (placement: PlayerPlacement) => {
+    try {
+      setWorking(true);
+      await setLobbyHost(placement.eventId, placement.userId);
+      await loadGroup();
+      closeLobbyHostConfirm();
+    } catch (err) {
+      setPageError(extractApiError(err, "Could not complete that action."));
+    } finally {
+      setWorking(false);
+    }
+  }, [closeLobbyHostConfirm, loadGroup]);
+
+  const handleMakeLobbyHost = useCallback(
+    (placement: PlayerPlacement) => {
+      if (!group) return;
+      const event = group.events.find((item) => item.id === placement.eventId);
+      if (!event || !isTeamAssignedPlacement(placement)) return;
+
+      const lobby = (event.lobbies ?? []).find((item) => item.id === placement.lobbyId);
+      if (!lobby) return;
+
+      const player = lobby.teams
+        .flatMap((team) => team.players)
+        .find((item) => item.user_id === placement.userId);
+      if (!player) return;
+
+      if (player.can_lobby_host) {
+        void submitLobbyHostChange(placement);
+        return;
+      }
+
+      setPendingLobbyHostChange({
+        placement,
+        volunteerOptions: buildLobbyHostVolunteers(lobby, placement.userId, lobby.host_id),
+      });
+      setLobbyHostConfirmOpen(true);
+    },
+    [group, submitLobbyHostChange],
+  );
 
   const handleSwapSubmit = async () => {
     if (!pendingSwap || !swapTargetUserId) return;
@@ -1436,6 +1546,7 @@ export default function EventGroupPage() {
                       openDeleteConfirmation(registration, gameNumber, "all")
                     }
                     onSwapPlayer={isHost ? openSwapSheet : undefined}
+                    onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
                   />
                 ) : (
                   <EventPanel
@@ -1505,6 +1616,7 @@ export default function EventGroupPage() {
                   openDeleteConfirmation(registration, gameNumber, "all")
                 }
                 onSwapPlayer={isHost ? openSwapSheet : undefined}
+                onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
               />
             ) : (
               <EventPanel
@@ -1693,6 +1805,67 @@ export default function EventGroupPage() {
             </button>
           </div>
         </div>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        isOpen={lobbyHostConfirmOpen}
+        onClose={closeLobbyHostConfirm}
+        title={
+          pendingLobbyHostChange
+            ? `Make ${pendingLobbyHostChange.placement.discordName} Lobby Host`
+            : "Make Lobby Host"
+        }
+      >
+        {pendingLobbyHostChange ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-[var(--color-text-soft)]">
+              {pendingLobbyHostChange.placement.discordName} indicated they do not want to be a lobby host.
+            </p>
+            {pendingLobbyHostChange.volunteerOptions.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-[var(--color-text-soft)]">
+                  Other players on a team in this lobby who want to host:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-[var(--color-text-soft)]">
+                  {pendingLobbyHostChange.volunteerOptions.map((player) => (
+                    <li key={player.userId}>
+                      {player.discordName} · Team {player.teamNumber}
+                      {player.isCurrentHost ? " · (current host)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--color-text-soft)]">
+                There are no other players on a team in this lobby who want to host.
+              </p>
+            )}
+            <p className="text-sm text-[var(--color-text-soft)]">
+              Do you still want to make {pendingLobbyHostChange.placement.discordName} the lobby host?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeLobbyHostConfirm}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void submitLobbyHostChange(pendingLobbyHostChange.placement);
+                }}
+                disabled={working}
+                className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+              >
+                {working ? "Updating..." : "Yes, make lobby host"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)]">No player selected.</p>
+        )}
       </ResponsiveSheet>
 
       <ResponsiveSheet

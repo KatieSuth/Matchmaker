@@ -849,6 +849,92 @@ func TestSwapPlayersHandler_Validation(t *testing.T) {
 	})
 }
 
+func TestSetLobbyHostHandler_StoreErrors(t *testing.T) {
+	eventID := uuid.New()
+	uid := uuid.New()
+	targetUser := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `"}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid change", &store.LobbyHostValidationError{Message: "Player is already the lobby host"}, http.StatusBadRequest},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/lobby-host")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				SetLobbyHostForEventFn: func(_ context.Context, _, _, _ uuid.UUID) error { return tc.err },
+			}, nil, "")
+			h.SetLobbyHostHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestSetLobbyHostHandler_Validation(t *testing.T) {
+	validUser := uuid.New()
+	validBody := `{"user_id":"` + validUser.String() + `"}`
+
+	t.Run("invalid event id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/bad/lobby-host")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(validBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SetLobbyHostHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/lobby-host")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SetLobbyHostHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid user_id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/lobby-host")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "eventId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"user_id":"bad"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.SetLobbyHostHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestSetLobbyHostHandler_Success(t *testing.T) {
+	eventID := uuid.New()
+	targetUser := uuid.New()
+	body := `{"user_id":"` + targetUser.String() + `"}`
+	c, _ := test_util.NewGinContext(http.MethodPost, "/registrations/x/lobby-host")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		SetLobbyHostForEventFn: func(_ context.Context, _, _, _ uuid.UUID) error { return nil },
+	}, nil, "")
+	h.SetLobbyHostHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
 func TestSwapPlayersHandler_Success(t *testing.T) {
 	eventID := uuid.New()
 	userA := uuid.New()

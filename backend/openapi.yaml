@@ -1012,6 +1012,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /registrations/{eventId}/lobby-host:
+    post:
+      tags: [registrations]
+      summary: Set a team player as lobby host
+      operationId: setLobbyHostForEvent
+      description: >
+        Host-only. Assigns a team player as the lobby host for their lobby.
+        The player's can_lobby_host preference is not enforced server-side.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the game (event row)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+      responses:
+        "204":
+          description: Lobby host updated successfully
+        "400":
+          description: Invalid request or player cannot be made lobby host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can change the lobby host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to set lobby host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /registrations/{eventId}/player-swap:
     post:
       tags: [registrations]

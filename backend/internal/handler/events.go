@@ -63,6 +63,10 @@ type swapPlayersRequest struct {
 	UserIDB string `json:"user_id_b"`
 }
 
+type setLobbyHostRequest struct {
+	UserID string `json:"user_id"`
+}
+
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -548,6 +552,65 @@ func (h *Handler) SwapPlayersHandler(c *gin.Context) {
 		default:
 			slog.ErrorContext(c.Request.Context(), "failed to swap players", "event_id", eventID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to swap players"})
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// POST /registrations/:eventId/lobby-host
+// Host-only. Assigns a team player as the lobby host for their lobby.
+func (h *Handler) SetLobbyHostHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid eventId in SetLobbyHostHandler", "user_id", userUUID, "event_id", c.Param("eventId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "eventId must be a valid UUID"})
+		return
+	}
+
+	var body setLobbyHostRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in SetLobbyHostHandler", "user_id", userUUID, "event_id", eventID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+
+	targetUserID, err := uuid.Parse(body.UserID)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id in SetLobbyHostHandler", "user_id", userUUID, "event_id", eventID, "target_user_id", body.UserID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id must be a valid UUID"})
+		return
+	}
+
+	err = h.store.SetLobbyHostForEvent(c.Request.Context(), eventID, userUUID, targetUserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrForbidden):
+			slog.WarnContext(c.Request.Context(), "forbidden set lobby host attempt", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can change the lobby host"})
+		case errors.Is(err, store.ErrInvalidLobbyHostChange):
+			msg := err.Error()
+			var hostErr *store.LobbyHostValidationError
+			if errors.As(err, &hostErr) {
+				msg = hostErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "set lobby host validation failed", "user_id", userUUID, "event_id", eventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+		case errors.Is(err, store.ErrTeamsNotCreated):
+			slog.WarnContext(c.Request.Context(), "set lobby host requested but no teams exist", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "No teams exist for this game"})
+		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
+			slog.WarnContext(c.Request.Context(), "event not found for set lobby host", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
+		default:
+			slog.ErrorContext(c.Request.Context(), "failed to set lobby host", "event_id", eventID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to set lobby host"})
 		}
 		return
 	}

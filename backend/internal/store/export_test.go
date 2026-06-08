@@ -66,6 +66,10 @@ var ResolveSwapDestinationForTest = func(source SwapPlacementForTest, canSubstit
 }
 
 // RecomputeLobbyAfterSwapForTest exposes recomputeLobbyAfterSwap for integration tests.
+func NewPostgresStoreFromDBTXForTest(dbtx db.DBTX) *PostgresStore {
+	return &PostgresStore{q: db.New(dbtx)}
+}
+
 var RecomputeLobbyAfterSwapForTest = func(
 	s *PostgresStore,
 	ctx context.Context,

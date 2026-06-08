@@ -72,6 +72,11 @@ export async function swapPlayers(eventId: string, userIdA: string, userIdB: str
   await api.post(`/registrations/${eventId}/player-swap`, { user_id_a: userIdA, user_id_b: userIdB });
 }
 
+/** Host-only. Assigns a team player as the lobby host for their lobby. */
+export async function setLobbyHost(eventId: string, userId: string): Promise<void> {
+  await api.post(`/registrations/${eventId}/lobby-host`, { user_id: userId });
+}
+
 export async function deleteEventGroup(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}`);
 }

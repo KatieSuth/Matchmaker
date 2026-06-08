@@ -14,7 +14,7 @@ function avatarUrl(discordId: string | null, avatarHash: string | null): string 
 
 const NAV_LINKS = [
   { label: "Events", href: "/my_events" },
-  { label: "Games",  href: "/games"  },
+  //{ label: "Games",  href: "/games"  },
 ];
 
 export default function AppNav() {
