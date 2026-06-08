@@ -23,6 +23,9 @@ var GetEventGroupByIdForTest = func(s *PostgresStore, ctx context.Context, id uu
 var PlanTeamsForGroupForTest = func(s *PostgresStore, ctx context.Context, group db.EventGroup, settings matchmaking.Settings) ([]matchmaking.GamePlan, error) {
 	return s.planTeamsForGroup(ctx, group, settings)
 }
+var BuildGroupRegistrationCountsForTest = func(s *PostgresStore, ctx context.Context, groupID uuid.UUID) (map[uuid.UUID]int, error) {
+	return s.buildGroupRegistrationCounts(ctx, groupID)
+}
 var MapRegistrationsToPlayersForTest = mapRegistrationsToPlayers
 
 // SwapPlacementForTest mirrors swapPlacement for black-box unit tests.

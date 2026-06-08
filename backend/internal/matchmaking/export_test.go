@@ -32,4 +32,7 @@ var (
 	CompareDuoPairsForTest = func(a, b DuoPairForTest) int {
 		return compareDuoPairs(duoPair{a: a.A, b: a.B}, duoPair{a: b.A, b: b.B})
 	}
+	FindPlayerLobbyForTest = findPlayerLobby
+	FindPlayerTeamForTest  = findPlayerTeam
+	SwapRosterPlayerForTest = swapRosterPlayer
 )

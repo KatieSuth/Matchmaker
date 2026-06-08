@@ -908,7 +908,7 @@ paths:
         "204":
           description: Group registrations saved successfully
         "400":
-          description: Invalid payload, invalid UUIDs, duplicate event IDs, invalid event selection, registration is closed, or game profile is incomplete
+          description: Invalid payload, invalid UUIDs, duplicate event IDs, invalid event selection, registration is closed, teams already exist for a deselected game, or game profile is incomplete
           content:
             application/json:
               schema:
@@ -977,7 +977,9 @@ paths:
       tags: [registrations]
       summary: Delete current user's registration
       operationId: deleteMyRegistration
-      description: Deletes the authenticated user's registration for an event.
+      description: >
+        Deletes the authenticated user's registration for an event.
+        Rejected with 400 when teams have already been created for the event.
       security:
         - bearerAuth: []
       parameters:
@@ -992,7 +994,7 @@ paths:
         "204":
           description: Registration deleted successfully
         "400":
-          description: Invalid `eventId` or registration is closed
+          description: Invalid `eventId`, registration is closed, or teams already exist for the event
           content:
             application/json:
               schema:
@@ -1141,6 +1143,7 @@ paths:
       description: >
         Deletes the target user's registration for an event.
         Caller must have permission (for example, event host privileges).
+        Rejected with 400 when teams have already been created for the event.
       security:
         - bearerAuth: []
       parameters:
@@ -1162,7 +1165,7 @@ paths:
         "204":
           description: Registration deleted successfully
         "400":
-          description: Invalid `eventId`/`userId` or registration is closed
+          description: Invalid `eventId`/`userId`, registration is closed, or teams already exist for the event
           content:
             application/json:
               schema:

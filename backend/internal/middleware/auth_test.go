@@ -1,6 +1,8 @@
 package middleware_test
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"testing"
@@ -112,6 +114,27 @@ func TestValidateAuth_MalformedToken(t *testing.T) {
 
 	_, status, err := middleware.ValidateAuth(jwtSecret, "Bearer this.is.notavalidjwt")
 
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Error(t, err)
+}
+
+func TestValidateAuth_UnexpectedSigningMethod(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	userID := uuid.New().String()
+	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, &model.Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+		},
+	}).SignedString(privateKey)
+	require.NoError(t, err)
+
+	jwtSecret, err := test_util.GetJWTSecret(t)
+	require.NoError(t, err)
+
+	_, status, err := middleware.ValidateAuth(jwtSecret, fmt.Sprintf("Bearer %s", token))
 	assert.Equal(t, http.StatusUnauthorized, status)
 	assert.Error(t, err)
 }

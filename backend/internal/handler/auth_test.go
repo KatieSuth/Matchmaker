@@ -526,6 +526,53 @@ func TestRefreshHandler_Success(t *testing.T) {
 	assert.Equal(t, "valid-token", refreshCookie.Value)
 }
 
+func TestRefreshHandler_ExpiredTokenDeleteFails(t *testing.T) {
+	userID := uuid.New()
+	ms := &store.MockStore{
+		GetRefreshTokenFn: func(_ context.Context, _ string) (model.RefreshToken, error) {
+			return model.RefreshToken{
+				UserID:    userID,
+				ExpiresAt: time.Now().Add(-time.Hour),
+			}, nil
+		},
+		DeleteRefreshTokenFn: func(_ context.Context, _ string) error {
+			return errors.New("delete failed")
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/refresh")
+	test_util.SetCookie(c, "refresh_token", "expired-token")
+	h.RefreshHandler(c)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRefreshHandler_AccessTokenGenerationFails(t *testing.T) {
+	handler.SetGenerateAccessTokenForRefreshTest(func(string, []byte) (string, error) {
+		return "", errors.New("token gen failed")
+	})
+	t.Cleanup(handler.ResetGenerateAccessTokenForRefreshTest)
+
+	ms := &store.MockStore{
+		GetRefreshTokenFn: func(_ context.Context, _ string) (model.RefreshToken, error) {
+			return model.RefreshToken{
+				UserID:    uuid.New(),
+				ExpiresAt: time.Now().Add(time.Hour),
+			}, nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/refresh")
+	test_util.SetCookie(c, "refresh_token", "valid-token")
+	h.RefreshHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "error", body["status"])
+}
+
 // ============================================================
 // CompleteAuthHandler
 // ============================================================

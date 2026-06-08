@@ -38,6 +38,7 @@ var (
 	ErrUserGameProfileIncomplete = errors.New("user game profile is incomplete")
 	ErrInvalidGroupEvents        = errors.New("events payload does not match this group's schedule")
 	ErrEventStartInPast          = errors.New("event start time cannot be in the past")
+	ErrRegistrationDeleteWithTeams = errors.New("registration delete blocked by teams")
 )
 
 // GroupEventUpdate is one row in PATCH /events/:groupId (per-game schedule + mode).
@@ -669,6 +670,23 @@ func (s *PostgresStore) UpsertRegistrationsForGroup(ctx context.Context, groupID
 			if _, selected := selectedEventIDs[groupEvent.ID]; selected {
 				continue
 			}
+			_, err = txStore.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
+				EventID: groupEvent.ID,
+				UserID:  userID,
+			})
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("get registration before delete: %w", err)
+			}
+			lobbyCount, err := txStore.q.CountLobbiesForEvent(ctx, &groupEvent.ID)
+			if err != nil {
+				return fmt.Errorf("count lobbies for event %s: %w", groupEvent.ID.String(), err)
+			}
+			if lobbyCount > 0 {
+				return ErrRegistrationDeleteWithTeams
+			}
 			if err := txStore.q.DeleteRegistration(ctx, db.DeleteRegistrationParams{
 				EventID: groupEvent.ID,
 				UserID:  userID,
@@ -715,9 +733,6 @@ func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID,
 	if !isHost && !isSelf {
 		return ErrForbidden
 	}
-	if !isHost && !eventRow.RegistrationOpen {
-		return ErrRegistrationClosed
-	}
 
 	_, err = s.q.GetRegistrationByEventAndUser(ctx, db.GetRegistrationByEventAndUserParams{
 		EventID: eventID,
@@ -728,6 +743,17 @@ func (s *PostgresStore) DeleteRegistrationForEvent(ctx context.Context, eventID,
 			return ErrRegistrationNotFound
 		}
 		return fmt.Errorf("get registration before delete: %w", err)
+	}
+
+	lobbyCount, err := s.q.CountLobbiesForEvent(ctx, &eventID)
+	if err != nil {
+		return fmt.Errorf("count lobbies for event: %w", err)
+	}
+	if lobbyCount > 0 {
+		return ErrRegistrationDeleteWithTeams
+	}
+	if !isHost && !eventRow.RegistrationOpen {
+		return ErrRegistrationClosed
 	}
 
 	if err := s.q.DeleteRegistration(ctx, db.DeleteRegistrationParams{

@@ -1,6 +1,19 @@
 package handler
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/KatieSuth/MatchmakerAPI/internal/model"
+	"github.com/gin-gonic/gin"
+)
+
+// SetGenerateAccessTokenForRefreshTest overrides access-token generation during refresh tests.
+func SetGenerateAccessTokenForRefreshTest(fn func(string, []byte) (string, error)) {
+	generateAccessTokenForRefresh = fn
+}
+
+// ResetGenerateAccessTokenForRefreshTest restores the default refresh access-token generator.
+func ResetGenerateAccessTokenForRefreshTest() {
+	generateAccessTokenForRefresh = model.GenerateAccessToken
+}
 
 // SetLoginTestHooks overrides LoginHandler internals for deterministic tests.
 func SetLoginTestHooks(

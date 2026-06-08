@@ -727,6 +727,9 @@ func (h *Handler) UpsertMyGroupRegistrationsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationClosed):
 			slog.WarnContext(c.Request.Context(), "group registration upsert rejected because registration is closed", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
+		case errors.Is(err, store.ErrRegistrationDeleteWithTeams):
+			slog.WarnContext(c.Request.Context(), "group registration upsert rejected because teams exist", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Cannot delete registration after teams have been created"})
 		case errors.Is(err, store.ErrUserGameProfileIncomplete):
 			slog.WarnContext(c.Request.Context(), "group registration upsert rejected due to incomplete user game profile", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Complete your game profile before registering"})
@@ -780,6 +783,9 @@ func (h *Handler) DeleteRegistrationHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistrationClosed):
 			slog.WarnContext(c.Request.Context(), "registration delete rejected because registration is closed", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Registration is closed"})
+		case errors.Is(err, store.ErrRegistrationDeleteWithTeams):
+			slog.WarnContext(c.Request.Context(), "registration delete rejected because teams exist", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Cannot delete registration after teams have been created"})
 		case errors.Is(err, store.ErrRegistrationNotFound):
 			slog.WarnContext(c.Request.Context(), "registration not found for delete", "actor_user_id", actorID, "event_id", eventID, "target_user_id", targetUserID)
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Registration not found"})

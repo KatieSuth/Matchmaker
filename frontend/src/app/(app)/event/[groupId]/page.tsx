@@ -283,6 +283,7 @@ function PlayerCard({
   isHostView,
   currentUserId,
   canEditRegistration,
+  allowRegistrationDelete = true,
   onShowDetails,
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
@@ -299,6 +300,7 @@ function PlayerCard({
   isHostView: boolean;
   currentUserId?: string;
   canEditRegistration: boolean;
+  allowRegistrationDelete?: boolean;
   onShowDetails: (registration: EventRegistration) => void;
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
@@ -309,7 +311,8 @@ function PlayerCard({
   showDuoRequest?: boolean;
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
-  const canDelete = isHostView || registration.user_id === currentUserId;
+  const canDelete =
+    allowRegistrationDelete && (isHostView || registration.user_id === currentUserId);
   const regionMismatch =
     canEditRegistration &&
     !!currentUserRegion &&
@@ -512,6 +515,7 @@ function TeamsPanel({
                     isHostView={isHostView}
                     currentUserId={currentUserId}
                     canEditRegistration={false}
+                    allowRegistrationDelete={false}
                     onShowDetails={onShowDetails}
                     onDeleteRegistrationForGame={onDeleteRegistrationForGame}
                     onDeleteAllFromUser={onDeleteAllFromUser}
@@ -546,6 +550,7 @@ function TeamsPanel({
                   isHostView={isHostView}
                   currentUserId={currentUserId}
                   canEditRegistration={false}
+                  allowRegistrationDelete={false}
                   onShowDetails={onShowDetails}
                   onDeleteRegistrationForGame={onDeleteRegistrationForGame}
                   onDeleteAllFromUser={onDeleteAllFromUser}
@@ -581,6 +586,7 @@ function TeamsPanel({
               isHostView={isHostView}
               currentUserId={currentUserId}
               canEditRegistration={false}
+              allowRegistrationDelete={false}
               onShowDetails={onShowDetails}
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
@@ -640,6 +646,7 @@ function EventPanel({
             isHostView={isHostView}
             currentUserId={currentUserId}
             canEditRegistration={registration.user_id === currentUserId}
+            allowRegistrationDelete={event.lobbies_count === 0}
             onShowDetails={onShowDetails}
             onDeleteRegistrationForGame={onDeleteRegistrationForGame}
             onDeleteAllFromUser={onDeleteAllFromUser}
@@ -805,7 +812,12 @@ export default function EventGroupPage() {
   const hasUserGameErrors = !!(userGameErrors.in_game_name || userGameErrors.current_rank || userGameErrors.peak_rank);
   const registrationIsEditMode = myRegistrationsByEvent.size > 0;
   const canDeleteAllViaSave =
-    registrationIsEditMode && selectedValidEventIds.length === 0 && !!user?.id && !working && !registrationLoading;
+    registrationIsEditMode &&
+    selectedValidEventIds.length === 0 &&
+    !!user?.id &&
+    !hasAnyLobbies &&
+    !working &&
+    !registrationLoading;
   const canSaveRegistration =
     selectedValidEventIds.length > 0 && !working && !registrationLoading && !hasUserGameErrors;
   const canSubmitRegistration = canSaveRegistration || canDeleteAllViaSave;

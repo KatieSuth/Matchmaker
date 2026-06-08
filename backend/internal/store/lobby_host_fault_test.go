@@ -85,7 +85,7 @@ func setupLobbyHostFixture(t *testing.T) lobbyHostFixtureData {
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
-	target, _, ok := findLobbyTeamPlayer(detail, eventID, 2)
+	target, _, ok := findNonHostTeamPlayerInLobbyIndex(detail, eventID, 0)
 	require.True(t, ok)
 
 	return lobbyHostFixtureData{

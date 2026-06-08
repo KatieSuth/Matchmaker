@@ -282,6 +282,51 @@ func TestLobbyAverageSpreadForTest(t *testing.T) {
 	assert.InDelta(t, 4, spread, 0.01)
 }
 
+func TestLobbyAverageSpreadForTest_SkipsEmptyRostersAndSingleLobby(t *testing.T) {
+	assert.Equal(t, 0.0, matchmaking.LobbyAverageSpreadForTest([]matchmaking.LobbyPlan{
+		{Roster: nil},
+		{Roster: []matchmaking.Player{{AvgRank: 10}}},
+	}))
+	assert.Equal(t, 0.0, matchmaking.LobbyAverageSpreadForTest([]matchmaking.LobbyPlan{
+		{Roster: []matchmaking.Player{{AvgRank: 20}}},
+	}))
+}
+
+func TestFindPlayerLobbyForTest(t *testing.T) {
+	userID := uuid.New()
+	otherID := uuid.New()
+	lobbies := []matchmaking.LobbyPlan{
+		{Roster: []matchmaking.Player{{UserID: otherID}}},
+		{Roster: []matchmaking.Player{{UserID: userID}, {UserID: uuid.New()}}},
+	}
+	lobbyIdx, rosterIdx := matchmaking.FindPlayerLobbyForTest(lobbies, userID)
+	assert.Equal(t, 1, lobbyIdx)
+	assert.Equal(t, 0, rosterIdx)
+
+	missingLobby, missingRoster := matchmaking.FindPlayerLobbyForTest(lobbies, uuid.New())
+	assert.Equal(t, -1, missingLobby)
+	assert.Equal(t, -1, missingRoster)
+}
+
+func TestFindPlayerTeamForTest(t *testing.T) {
+	team1ID := uuid.New()
+	team2ID := uuid.New()
+	team1 := []matchmaking.Player{{UserID: team1ID}}
+	team2 := []matchmaking.Player{{UserID: team2ID}}
+
+	num, idx := matchmaking.FindPlayerTeamForTest(team1, team2, team1ID)
+	assert.Equal(t, 1, num)
+	assert.Equal(t, 0, idx)
+
+	num, idx = matchmaking.FindPlayerTeamForTest(team1, team2, team2ID)
+	assert.Equal(t, 2, num)
+	assert.Equal(t, 0, idx)
+
+	num, idx = matchmaking.FindPlayerTeamForTest(team1, team2, uuid.New())
+	assert.Equal(t, 0, num)
+	assert.Equal(t, -1, idx)
+}
+
 func TestTeamAverageSeparationForTest(t *testing.T) {
 	sep := matchmaking.TeamAverageSeparationForTest(
 		[]matchmaking.Player{{AvgRank: 15}, {AvgRank: 14}},
@@ -342,14 +387,20 @@ func TestCompareDuoPairsForTest(t *testing.T) {
 	assert.Greater(t, matchmaking.CompareDuoPairsForTest(laterPair, earlierPair), 0)
 	assert.Equal(t, 0, matchmaking.CompareDuoPairsForTest(earlierPair, earlierPair))
 
-	if a.String() < b.String() {
-		assert.Less(t, matchmaking.CompareDuoPairsForTest(
-			matchmaking.DuoPairForTest{A: matchmaking.Player{UserID: a, CreatedAt: now}, B: matchmaking.Player{UserID: b, CreatedAt: now}},
-			matchmaking.DuoPairForTest{A: matchmaking.Player{UserID: b, CreatedAt: now}, B: matchmaking.Player{UserID: a, CreatedAt: now}},
-		), 0)
-		assert.Greater(t, matchmaking.CompareDuoPairsForTest(
-			matchmaking.DuoPairForTest{A: matchmaking.Player{UserID: b, CreatedAt: now}, B: matchmaking.Player{UserID: a, CreatedAt: now}},
-			matchmaking.DuoPairForTest{A: matchmaking.Player{UserID: a, CreatedAt: now}, B: matchmaking.Player{UserID: b, CreatedAt: now}},
-		), 0)
+	sameTimeA := uuid.New()
+	sameTimeB := uuid.New()
+	if sameTimeA.String() > sameTimeB.String() {
+		sameTimeA, sameTimeB = sameTimeB, sameTimeA
 	}
+	pairLowID := matchmaking.DuoPairForTest{
+		A: matchmaking.Player{UserID: sameTimeA, CreatedAt: now},
+		B: matchmaking.Player{UserID: uuid.New(), CreatedAt: now},
+	}
+	pairHighID := matchmaking.DuoPairForTest{
+		A: matchmaking.Player{UserID: sameTimeB, CreatedAt: now},
+		B: matchmaking.Player{UserID: uuid.New(), CreatedAt: now},
+	}
+	assert.Less(t, matchmaking.CompareDuoPairsForTest(pairLowID, pairHighID), 0)
+	assert.Greater(t, matchmaking.CompareDuoPairsForTest(pairHighID, pairLowID), 0)
+	assert.Equal(t, 0, matchmaking.CompareDuoPairsForTest(pairLowID, pairLowID))
 }

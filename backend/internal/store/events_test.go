@@ -1592,3 +1592,50 @@ func TestDeleteRegistrationForEvent_EventNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventNotFound)
 }
+
+func TestDeleteRegistrationForEvent_BlockedWhenTeamsExist(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	joiner := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+
+	for i := 0; i < 4; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
+	}
+	registerUserForEvent(t, ctx, tx, eventID, joiner.ID)
+	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+
+	err = s.DeleteRegistrationForEvent(ctx, eventID, joiner.ID, host.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrRegistrationDeleteWithTeams)
+
+	err = s.DeleteRegistrationForEvent(ctx, eventID, joiner.ID, joiner.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrRegistrationDeleteWithTeams)
+}
+
+func TestUpsertRegistrationsForGroup_BlockedDeleteWhenTeamsExist(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	participant := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+	event2 := insertEventInGroupFixture(t, ctx, tx, groupID, modeID, time.Now().UTC().Add(48*time.Hour))
+	createCompleteUserGameForRegistration(t, ctx, tx, s, participant.ID, games[0].ID)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, participant.ID, games[0].ID, false, false)
+	insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
+
+	err = s.UpsertRegistrationsForGroup(ctx, groupID, participant.ID, []store.RegistrationUpsertItem{
+		{EventID: event2, CanSubstitute: true, CanLobbyHost: false},
+	}, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrRegistrationDeleteWithTeams)
+}

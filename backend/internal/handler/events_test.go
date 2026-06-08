@@ -278,6 +278,102 @@ func TestCreateEventHandler_SortLogicDefaultsToBalanced(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestCreateEventHandler_InvalidGameModeID(t *testing.T) {
+	userID := uuid.New()
+	body := `{
+	  "game_mode_id": "not-a-uuid",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateEventHandler_InvalidStartTime(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "not-a-time",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true
+	}`
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateEventHandler_StoreInvalidSortLogic(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := sprintf(validCreateEventBody, gameModeID.String(), startTimeHoursFromNow(48))
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ms := &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+			return uuid.Nil, store.ErrInvalidSortLogic
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateEventHandler_UserIDAsUUID(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	groupID := uuid.New()
+	body := sprintf(validCreateEventBody, gameModeID.String(), startTimeHoursFromNow(48))
+
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserID(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	ms := &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+			assert.Equal(t, userID, inUserID)
+			return groupID, nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestCreateEventHandler_UnexpectedUserIDType(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	c.Set("userID", 42)
+	c.Request.Body = io.NopCloser(strings.NewReader("{}"))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestCreateEventHandler_SortLogicRanked(t *testing.T) {
 	userID := uuid.New()
 	gameModeID := uuid.New()
@@ -688,6 +784,23 @@ func TestUpdateEventGroupRegistrationStatusHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
+func TestCreateTeamsHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateTeamsHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestCreateTeamsHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "bad-id"}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateTeamsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
@@ -699,7 +812,9 @@ func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
 		{"already", store.ErrTeamsAlreadyCreated, http.StatusBadRequest},
 		{"insufficient", &store.TeamCreationError{Sentinel: store.ErrInsufficientPlayers, Message: "Game 1 needs at least 10 players"}, http.StatusBadRequest},
+		{"insufficient subs", &store.TeamCreationError{Sentinel: store.ErrInsufficientSubstitutes, Message: "needs more subs"}, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"group not found", store.ErrEventGroupNotFound, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
 	for _, tc := range cases {
@@ -727,6 +842,23 @@ func TestCreateTeamsHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
+func TestDeleteTeamsHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodDelete, "/events/x/teams")
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.DeleteTeamsHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDeleteTeamsHandler_InvalidGroupID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodDelete, "/events/x/teams")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: "bad-id"}}
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.DeleteTeamsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestDeleteTeamsHandler_StoreErrors(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
@@ -738,6 +870,7 @@ func TestDeleteTeamsHandler_StoreErrors(t *testing.T) {
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
 		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
+		{"group not found", store.ErrEventGroupNotFound, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
 	for _, tc := range cases {
@@ -1101,6 +1234,7 @@ func TestUpsertMyGroupRegistrationsHandler_StoreErrors(t *testing.T) {
 		{"invalid registration", store.ErrInvalidRegistration, http.StatusBadRequest},
 		{"registration closed", store.ErrRegistrationClosed, http.StatusBadRequest},
 		{"incomplete profile", store.ErrUserGameProfileIncomplete, http.StatusBadRequest},
+		{"teams exist", store.ErrRegistrationDeleteWithTeams, http.StatusBadRequest},
 		{"invalid event", store.ErrEventNotFound, http.StatusBadRequest},
 		{"group not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
@@ -1190,6 +1324,7 @@ func TestDeleteRegistrationHandler_StoreErrors(t *testing.T) {
 	}{
 		{"forbidden", store.ErrForbidden, http.StatusForbidden},
 		{"closed", store.ErrRegistrationClosed, http.StatusBadRequest},
+		{"teams exist", store.ErrRegistrationDeleteWithTeams, http.StatusBadRequest},
 		{"reg missing", store.ErrRegistrationNotFound, http.StatusNotFound},
 		{"event missing", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},

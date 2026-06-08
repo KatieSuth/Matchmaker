@@ -14,10 +14,9 @@ import (
 func (s *PostgresStore) GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error) {
 	dbUser, err := s.q.GetUserByDiscordID(ctx, &discordId)
 	if err != nil {
-		return model.User{}, fmt.Errorf("looking up user: %w", err)
-	}
-
-	if errorOnNoRows && errors.Is(err, pgx.ErrNoRows) {
+		if errorOnNoRows && errors.Is(err, pgx.ErrNoRows) {
+			return model.User{}, fmt.Errorf("looking up user: %w", err)
+		}
 		return model.User{}, fmt.Errorf("looking up user: %w", err)
 	}
 

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
@@ -43,6 +44,17 @@ func TestGetUserByDiscordID_NotFound(t *testing.T) {
 		_, err := s.GetUserByDiscordID(context.Background(), "nonexistent-id", true)
 		assert.Error(t, err)
 	})
+}
+
+func TestGetUserByDiscordID_QueryError(t *testing.T) {
+	_, tx := createEventTestStoreTx(t)
+	injectedErr := errors.New("injected database failure")
+	faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
+
+	_, err := fs.GetUserByDiscordID(context.Background(), "discord-any", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "looking up user")
 }
 
 // ============================================================

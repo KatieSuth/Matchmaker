@@ -84,6 +84,23 @@ func TestAssignMandatorySubs_PlacesPerLobby(t *testing.T) {
 	assert.Nil(t, out[0].Subs[0].TeamNumber)
 }
 
+func TestSwapRosterPlayerForTest(t *testing.T) {
+	removeID := uuid.New()
+	replacement := player(uuid.New(), 9, false, time.Now())
+	lobbies := []matchmaking.LobbyPlan{
+		{Roster: []matchmaking.Player{player(removeID, 10, false, time.Now())}},
+	}
+
+	out := matchmaking.SwapRosterPlayerForTest(lobbies, removeID, replacement)
+	assert.Equal(t, replacement.UserID, out[0].Roster[0].UserID)
+
+	lobbies2 := []matchmaking.LobbyPlan{
+		{Roster: []matchmaking.Player{player(removeID, 10, false, time.Now())}},
+	}
+	unchanged := matchmaking.SwapRosterPlayerForTest(lobbies2, uuid.New(), replacement)
+	assert.Equal(t, removeID, unchanged[0].Roster[0].UserID)
+}
+
 func TestAssignRemainingAsSubs_RoundRobin(t *testing.T) {
 	now := time.Now()
 	sub1 := player(uuid.New(), 5, true, now)

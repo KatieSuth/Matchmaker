@@ -14,6 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// generateAccessTokenForRefresh is swappable in tests to cover refresh error paths.
+var generateAccessTokenForRefresh = model.GenerateAccessToken
+
 // GenerateState returns a random hex string used as the OAuth2 state parameter to bind the
 // callback to the user’s original /auth/login request (CSRF protection).
 func GenerateState() (string, error) {
@@ -238,7 +241,7 @@ func (h *Handler) RefreshHandler(c *gin.Context) {
 
 	// Issue a new access token only. Keep the existing refresh token so concurrent refresh
 	// requests (e.g. React Strict Mode) cannot invalidate a still-valid browser cookie.
-	accessToken, err := model.GenerateAccessToken(refresh.UserID.String(), h.jwtSecret)
+	accessToken, err := generateAccessTokenForRefresh(refresh.UserID.String(), h.jwtSecret)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to generate access token during refresh", "user_id", refresh.UserID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{

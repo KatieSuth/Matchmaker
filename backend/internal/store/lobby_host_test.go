@@ -29,7 +29,7 @@ func TestSetLobbyHostForEvent_Success(t *testing.T) {
 
 	for i := 0; i < 4; i++ {
 		u := createTestUser(t, ctx, s)
-		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, i == 0)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
 	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
@@ -37,7 +37,7 @@ func TestSetLobbyHostForEvent_Success(t *testing.T) {
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
 
-	target, lobbyID, ok := findLobbyTeamPlayer(detail, eventID, 2)
+	target, lobbyID, ok := findNonHostTeamPlayerInLobbyIndex(detail, eventID, 0)
 	require.True(t, ok)
 
 	require.NoError(t, s.SetLobbyHostForEvent(ctx, eventID, host.ID, target.UserID))

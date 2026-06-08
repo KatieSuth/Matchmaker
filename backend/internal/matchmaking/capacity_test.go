@@ -9,6 +9,8 @@ import (
 )
 
 func TestRequiredPlayers(t *testing.T) {
+	assert.Equal(t, 0, matchmaking.RequiredPlayers(0, 10, 3))
+	assert.Equal(t, 0, matchmaking.RequiredPlayers(-1, 10, 3))
 	assert.Equal(t, 10, matchmaking.RequiredPlayers(1, 10, 3))
 	assert.Equal(t, 26, matchmaking.RequiredPlayers(2, 10, 3))
 }
