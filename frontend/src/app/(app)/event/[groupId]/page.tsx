@@ -355,7 +355,7 @@ function PlayerCard({
   }
   if (isHostView && placement && isSubPlacement(placement) && onMoveToUnplaced) {
     menuOptions.push({
-      label: "Move to unplaced",
+      label: "Move to Unplaced",
       onSelect: () => onMoveToUnplaced(placement),
     });
   }
@@ -367,7 +367,7 @@ function PlayerCard({
     onMoveToSubs
   ) {
     menuOptions.push({
-      label: "Move to subs",
+      label: "Move to Substitutes",
       onSelect: () => onMoveToSubs(placement),
     });
   }
