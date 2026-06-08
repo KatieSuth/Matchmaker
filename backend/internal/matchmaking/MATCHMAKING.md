@@ -304,11 +304,11 @@ A warning means the algorithm did its best but could not achieve a tight balance
 
 Parsed in `cmd/server/main.go`, passed through `handler.New` → `store.CreateTeamsForGroup` → `PlanEvent` / `IsLobbyUnfair`. Never read via `os.Getenv` inside this package.
 
-| Variable | Default | Type | Role |
-|----------|---------|------|------|
-| `FAIRNESS_OUTLIER_GAP` | `8` | int | Baseline max gap between 1st and 2nd highest skill in a lobby roster, at reference tier count |
-| `FAIRNESS_TEAM_SEPARATION` | `4` | float | Baseline max allowed difference between team average skills, at reference tier count |
-| `FAIRNESS_REFERENCE_TIER_COUNT` | `25` | int | Tier count the baseline values were calibrated for |
+| Variable                        | Default | Type  | Role                                                                                          |
+|---------------------------------|---------|-------|-----------------------------------------------------------------------------------------------|
+| `FAIRNESS_OUTLIER_GAP`          | `8`     | int   | Baseline max gap between 1st and 2nd highest skill in a lobby roster, at reference tier count |
+| `FAIRNESS_TEAM_SEPARATION`      | `4`     | float | Baseline max allowed difference between team average skills, at reference tier count          |
+| `FAIRNESS_REFERENCE_TIER_COUNT` | `25`    | int   | Tier count the baseline values were calibrated for                                            |
 
 All three must be positive if set; invalid values cause startup failure.
 
@@ -336,21 +336,21 @@ All three must be positive if set; invalid values cause startup failure.
 
 ## Source file map
 
-| File | Responsibility |
-|------|----------------|
-| `plan.go` | `PlanEvent` orchestrator |
-| `balanced.go` | Balanced lobby snake draft |
-| `ranked.go` | Ranked sequential lobby packing |
-| `roster.go` | Balanced/ranked roster pool selection |
-| `capacity.go` | Lobby count math |
-| `subs.go` | Sub-capacity swaps, mandatory/overflow subs |
-| `teams.go` | Within-lobby team snake draft |
-| `tiebreak.go` | `CompareByRankThenAvailability` |
-| `rank.go` | `AverageRankOrder` |
-| `host.go` | `PickLobbyHost` |
-| `fairness.go` | Threshold scaling and `IsLobbyUnfair` |
-| `types.go` | Domain types |
-| `errors.go` | `ValidationError` |
+| File          | Responsibility                              |
+|---------------|---------------------------------------------|
+| `plan.go`     | `PlanEvent` orchestrator                    |
+| `balanced.go` | Balanced lobby snake draft                  |
+| `ranked.go`   | Ranked sequential lobby packing             |
+| `roster.go`   | Balanced/ranked roster pool selection       |
+| `capacity.go` | Lobby count math                            |
+| `subs.go`     | Sub-capacity swaps, mandatory/overflow subs |
+| `teams.go`    | Within-lobby team snake draft               |
+| `tiebreak.go` | `CompareByRankThenAvailability`             |
+| `rank.go`     | `AverageRankOrder`                          |
+| `host.go`     | `PickLobbyHost`                             |
+| `fairness.go` | Threshold scaling and `IsLobbyUnfair`       |
+| `types.go`    | Domain types                                |
+| `errors.go`   | `ValidationError`                           |
 
 Tests live in `*_test.go` alongside each file (`package matchmaking_test`).
 
