@@ -716,6 +716,7 @@ SELECT P.user_id,
            WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR."order", 0)
            ELSE 0
        END::INT AS peak_rank_order,
+       COALESCE(UG.in_game_name, '') AS in_game_name,
        R.can_substitute,
        R.can_lobby_host,
        R.duo_request,
@@ -747,6 +748,7 @@ type GetPlayersForLobbyRow struct {
 	CurrentRankName  string
 	CurrentRankOrder int32
 	PeakRankOrder    int32
+	InGameName       string
 	CanSubstitute    bool
 	CanLobbyHost     bool
 	DuoRequest       *string
@@ -771,6 +773,7 @@ func (q *Queries) GetPlayersForLobby(ctx context.Context, arg GetPlayersForLobby
 			&i.CurrentRankName,
 			&i.CurrentRankOrder,
 			&i.PeakRankOrder,
+			&i.InGameName,
 			&i.CanSubstitute,
 			&i.CanLobbyHost,
 			&i.DuoRequest,

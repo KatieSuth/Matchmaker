@@ -184,6 +184,7 @@ SELECT P.user_id,
            WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR."order", 0)
            ELSE 0
        END::INT AS peak_rank_order,
+       COALESCE(UG.in_game_name, '') AS in_game_name,
        R.can_substitute,
        R.can_lobby_host,
        R.duo_request,

@@ -1782,7 +1782,7 @@ components:
 
     EventRegistration:
       type: object
-      required: [event_id, user_id, discord_name, pronouns, current_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [event_id, user_id, discord_name, in_game_name, pronouns, current_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         event_id:
           type: string
@@ -1791,6 +1791,8 @@ components:
           type: string
           format: uuid
         discord_name:
+          type: string
+        in_game_name:
           type: string
         pronouns:
           type: string
@@ -1850,12 +1852,14 @@ components:
 
     LobbyPlayer:
       type: object
-      required: [user_id, discord_name, pronouns, current_rank_name, current_rank_order, peak_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [user_id, discord_name, in_game_name, pronouns, current_rank_name, current_rank_order, peak_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         user_id:
           type: string
           format: uuid
         discord_name:
+          type: string
+        in_game_name:
           type: string
         pronouns:
           type: string

@@ -489,9 +489,11 @@ func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_DiscordNamePoin
 		DiscordName:     &dn,
 		Pronouns:        "they/them",
 		CurrentRankName: "Gold",
+		InGameName:      "PlayerOne",
 	}
 	result := model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(input)
 	assert.Equal(t, dn, result.DiscordName)
+	assert.Equal(t, "PlayerOne", result.InGameName)
 	assert.Equal(t, "they/them", result.Pronouns)
 	assert.Equal(t, "Gold", result.CurrentRankName)
 }
@@ -635,6 +637,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 		UserID:          uuid.New(),
 		TeamNumber:      ptrInt32(1),
 		DiscordName:     &name,
+		InGameName:      "IG_PlayerOne",
 		Pronouns:        "they/them",
 		CurrentRankName:  "Gold 1",
 		CurrentRankOrder: 12,
@@ -648,6 +651,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	result := model.MapDbGetPlayersForLobbyRowToLobbyPlayer(row)
 	assert.Equal(t, row.UserID, result.UserID)
 	assert.Equal(t, "player-one", result.DiscordName)
+	assert.Equal(t, "IG_PlayerOne", result.InGameName)
 	assert.Equal(t, "they/them", result.Pronouns)
 	assert.Equal(t, "Gold 1", result.CurrentRankName)
 	assert.Equal(t, 12, result.CurrentRankOrder)

@@ -8,7 +8,8 @@ SELECT R.*,
     CASE
         WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
         ELSE ''
-    END AS current_rank_name
+    END AS current_rank_name,
+    COALESCE(UG.in_game_name, '') AS in_game_name
 FROM registrations AS R 
 JOIN users AS U ON R.user_id = U.id 
 JOIN events AS E ON R.event_id = E.id

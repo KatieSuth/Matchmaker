@@ -26,6 +26,7 @@ type EventRegistration struct {
 	EventID         uuid.UUID `json:"event_id"`
 	UserID          uuid.UUID `json:"user_id"`
 	DiscordName     string    `json:"discord_name"`
+	InGameName      string    `json:"in_game_name"`
 	Pronouns        string    `json:"pronouns"`
 	CurrentRankName string    `json:"current_rank_name"`
 	CanSubstitute   bool      `json:"can_substitute"`
@@ -39,6 +40,7 @@ type EventRegistration struct {
 type LobbyPlayer struct {
 	UserID           uuid.UUID `json:"user_id"`
 	DiscordName      string    `json:"discord_name"`
+	InGameName       string    `json:"in_game_name"`
 	Pronouns         string    `json:"pronouns"`
 	CurrentRankName  string `json:"current_rank_name"`
 	CurrentRankOrder int    `json:"current_rank_order"`
@@ -127,6 +129,7 @@ func MapDbGetRegistrationDataByEventIdRowToEventRegistration(row db.GetRegistrat
 		EventID:         row.EventID,
 		UserID:          row.UserID,
 		DiscordName:     discordName,
+		InGameName:      row.InGameName,
 		Pronouns:        row.Pronouns,
 		CurrentRankName: row.CurrentRankName,
 		CanSubstitute:   row.CanSubstitute,
@@ -180,6 +183,7 @@ func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) Lobby
 	return LobbyPlayer{
 		UserID:           row.UserID,
 		DiscordName:      discordName,
+		InGameName:       row.InGameName,
 		Pronouns:         row.Pronouns,
 		CurrentRankName:  row.CurrentRankName,
 		CurrentRankOrder: int(row.CurrentRankOrder),

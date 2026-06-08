@@ -57,6 +57,7 @@ export interface EventRegistration {
   event_id: string;
   user_id: string;
   discord_name: string;
+  in_game_name: string;
   pronouns: string;
   current_rank_name: string;
   peak_rank_name?: string;
@@ -70,6 +71,7 @@ export interface EventRegistration {
 export interface LobbyPlayer {
   user_id: string;
   discord_name: string;
+  in_game_name: string;
   pronouns: string;
   current_rank_name: string;
   current_rank_order: number;

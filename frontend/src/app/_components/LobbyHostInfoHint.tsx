@@ -1,6 +1,7 @@
 "use client";
 
 // Question-mark hint next to “Can lobby host”; hover or tap opens a floating popover (portal).
+import { LobbyHostResponsibilitiesList } from "@/app/_components/LobbyHostResponsibilities";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -8,11 +9,7 @@ function LobbyHostInfoContent() {
   return (
     <div className="text-left">
       <p className="mb-2 font-medium text-[var(--color-text-soft)]">The lobby host is responsible for:</p>
-      <ul className="list-disc space-y-1 pl-4 text-[var(--color-text-muted)]">
-        <li>Creating the lobby and sharing the lobby code or inviting players</li>
-        <li>Choosing the most balanced server for the majority</li>
-        <li>Alerting the host of any toxicity occurring during matches</li>
-      </ul>
+      <LobbyHostResponsibilitiesList className="text-[var(--color-text-muted)]" />
     </div>
   );
 }

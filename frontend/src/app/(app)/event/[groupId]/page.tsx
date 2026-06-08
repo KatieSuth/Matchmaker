@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { Select, SelectOption } from "@/app/_components/Select";
+import { LobbyHostAssignmentBanner } from "@/app/_components/LobbyHostAssignmentBanner";
 import { LobbyHostInfoHint } from "@/app/_components/LobbyHostInfoHint";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
@@ -425,12 +426,14 @@ function PlayerCard({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Current Rank</p>
-          <p className="text-xs text-[var(--color-text-soft)]">{registration.current_rank_name || EMPTY_VALUE}</p>
+          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">In-game name</p>
+          <p className="text-xs text-[var(--color-text-soft)] truncate" title={registration.in_game_name || undefined}>
+            {registration.in_game_name?.trim() || EMPTY_VALUE}
+          </p>
         </div>
         <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Signed up</p>
-          <p className="text-xs text-[var(--color-text-soft)]">{formatDateTime(registration.created_at)}</p>
+          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Current Rank</p>
+          <p className="text-xs text-[var(--color-text-soft)]">{registration.current_rank_name || EMPTY_VALUE}</p>
         </div>
         <div>
           <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
@@ -447,6 +450,25 @@ function PlayerCard({
       </div>
     </div>
   );
+}
+
+/** Lists every lobby the given user hosts across all games in the group. */
+function findUserLobbyHostAssignments(
+  events: EventGroupEvent[],
+  userId: string,
+): { gameNumber: number; lobbyNumber: number }[] {
+  const assignments: { gameNumber: number; lobbyNumber: number }[] = [];
+  events.forEach((event, eventIndex) => {
+    (event.lobbies ?? []).forEach((lobby, lobbyIndex) => {
+      if (lobby.host_id === userId) {
+        assignments.push({
+          gameNumber: eventIndex + 1,
+          lobbyNumber: lobbyIndex + 1,
+        });
+      }
+    });
+  });
+  return assignments;
 }
 
 /** True when any lobby in the game is currently flagged unfair. */
@@ -468,6 +490,7 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
     event_id: eventId,
     user_id: player.user_id,
     discord_name: player.discord_name,
+    in_game_name: player.in_game_name,
     pronouns: player.pronouns,
     current_rank_name: player.current_rank_name,
     can_substitute: player.can_substitute,
@@ -830,6 +853,10 @@ export default function EventGroupPage() {
     const idx = group.events.findIndex((event) => event.id === activeEvent.id);
     return idx >= 0 ? idx + 1 : 1;
   }, [activeEvent, group]);
+  const myLobbyHostAssignments = useMemo(() => {
+    if (!group || !user?.id) return [];
+    return findUserLobbyHostAssignments(group.events, user.id);
+  }, [group, user]);
   const scrollToEventSection = useCallback((eventId: string) => {
     eventSectionRefs.current[eventId]?.scrollIntoView({
       behavior: "smooth",
@@ -1411,6 +1438,8 @@ export default function EventGroupPage() {
           </div>
         </div>
 
+        <LobbyHostAssignmentBanner assignments={myLobbyHostAssignments} />
+
         <div className="card rounded-xl p-3 sm:p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-[var(--color-text-soft)]">Games in this group</p>
@@ -1851,6 +1880,10 @@ export default function EventGroupPage() {
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Discord</p>
               <p className="text-[var(--color-text-soft)]">{selectedRegistration.discord_name || EMPTY_VALUE}</p>
+            </div>
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">In-game name</p>
+              <p className="text-[var(--color-text-soft)]">{selectedRegistration.in_game_name?.trim() || EMPTY_VALUE}</p>
             </div>
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Pronouns</p>

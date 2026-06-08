@@ -154,7 +154,8 @@ SELECT r.event_id, r.user_id, r.can_substitute, r.can_lobby_host, r.duo_request,
     CASE
         WHEN $1::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(GR.name, '')
         ELSE ''
-    END AS current_rank_name
+    END AS current_rank_name,
+    COALESCE(UG.in_game_name, '') AS in_game_name
 FROM registrations AS R 
 JOIN users AS U ON R.user_id = U.id 
 JOIN events AS E ON R.event_id = E.id
@@ -182,6 +183,7 @@ type GetRegistrationDataByEventIdRow struct {
 	DiscordName     *string
 	Pronouns        string
 	CurrentRankName string
+	InGameName      string
 }
 
 func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, arg GetRegistrationDataByEventIdParams) ([]GetRegistrationDataByEventIdRow, error) {
@@ -204,6 +206,7 @@ func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, arg GetRegis
 			&i.DiscordName,
 			&i.Pronouns,
 			&i.CurrentRankName,
+			&i.InGameName,
 		); err != nil {
 			return nil, err
 		}
