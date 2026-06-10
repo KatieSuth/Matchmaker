@@ -28,6 +28,14 @@ var BuildGroupRegistrationCountsForTest = func(s *PostgresStore, ctx context.Con
 }
 var MapRegistrationsToPlayersForTest = mapRegistrationsToPlayers
 
+var ResolveAvgRankIDForTest = func(s *PostgresStore, ctx context.Context, gameID uuid.UUID, currentOrder, peakOrder int32) (uuid.UUID, int32, error) {
+	return s.resolveAvgRankID(ctx, gameID, currentOrder, peakOrder)
+}
+
+var EnsureAvgRanksForMatchmakingForTest = func(s *PostgresStore, ctx context.Context, rows []db.GetMatchmakingRegistrationsForEventRow) ([]db.GetMatchmakingRegistrationsForEventRow, error) {
+	return s.ensureAvgRanksForMatchmaking(ctx, rows)
+}
+
 // SwapPlacementForTest mirrors swapPlacement for black-box unit tests.
 type SwapPlacementForTest struct {
 	Placed     bool

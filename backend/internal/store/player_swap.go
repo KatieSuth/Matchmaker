@@ -310,7 +310,7 @@ func (s *PostgresStore) recomputeLobbyAfterSwap(
 	for _, row := range playerRows {
 		p := matchmaking.Player{
 			UserID:        row.UserID,
-			AvgRank:       matchmaking.AverageRankOrder(int(row.CurrentRankOrder), int(row.PeakRankOrder)),
+			AvgRank:       float64(row.AvgRankOrder),
 			CanSubstitute: row.CanSubstitute,
 			CanLobbyHost:  row.CanLobbyHost,
 			CreatedAt:     row.CreatedAt,

@@ -60,18 +60,23 @@ func TestUpsertGameForUser_DatabaseErrors(t *testing.T) {
 			wantContains:       "looking up peak rank by ID",
 		},
 		{
-			name:               "user game lookup fails",
+			name:               "avg rank lookup fails",
 			failOnQueryRowCall: 4,
+			wantContains:       "lookup avg rank for game",
+		},
+		{
+			name:               "user game lookup fails",
+			failOnQueryRowCall: 5,
 			wantContains:       "looking up user game",
 		},
 		{
 			name:               "create user game fails",
-			failOnQueryRowCall: 5,
+			failOnQueryRowCall: 6,
 			wantContains:       "creating game for user",
 		},
 		{
 			name:               "update user game fails",
-			failOnQueryRowCall: 5,
+			failOnQueryRowCall: 6,
 			wantContains:       "updated game for user",
 			setup: func() {
 				_, err := s.UpsertGameForUser(ctx, user.ID, payload)

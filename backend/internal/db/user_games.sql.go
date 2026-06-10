@@ -13,7 +13,7 @@ import (
 )
 
 const createGameForUser = `-- name: CreateGameForUser :one
-INSERT INTO user_games (user_id, game_id, created_at, updated_at, in_game_name, current_rank, peak_rank, show_rank)
+INSERT INTO user_games (user_id, game_id, created_at, updated_at, in_game_name, current_rank, peak_rank, avg_rank, show_rank)
 VALUES (
     $1,
     $2,
@@ -22,9 +22,10 @@ VALUES (
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 )
-RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at, avg_rank
 `
 
 type CreateGameForUserParams struct {
@@ -33,6 +34,7 @@ type CreateGameForUserParams struct {
 	InGameName  string
 	CurrentRank *uuid.UUID
 	PeakRank    *uuid.UUID
+	AvgRank     *uuid.UUID
 	ShowRank    bool
 }
 
@@ -43,6 +45,7 @@ func (q *Queries) CreateGameForUser(ctx context.Context, arg CreateGameForUserPa
 		arg.InGameName,
 		arg.CurrentRank,
 		arg.PeakRank,
+		arg.AvgRank,
 		arg.ShowRank,
 	)
 	var i UserGame
@@ -57,12 +60,13 @@ func (q *Queries) CreateGameForUser(ctx context.Context, arg CreateGameForUserPa
 		&i.ApiLinksID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvgRank,
 	)
 	return i, err
 }
 
 const getGameForUserByIds = `-- name: GetGameForUserByIds :one
-SELECT user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+SELECT user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at, avg_rank
 FROM user_games AS UG
 WHERE user_id = $1 AND game_id = $2
 `
@@ -86,19 +90,22 @@ func (q *Queries) GetGameForUserByIds(ctx context.Context, arg GetGameForUserByI
 		&i.ApiLinksID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvgRank,
 	)
 	return i, err
 }
 
 const getGamesForUser = `-- name: GetGamesForUser :many
-SELECT UG.user_id, UG.game_id, UG.in_game_name, UG.current_rank, UG.peak_rank, UG.show_rank, UG.created_at, UG.updated_at,
+SELECT UG.user_id, UG.game_id, UG.in_game_name, UG.current_rank, UG.peak_rank, UG.avg_rank, UG.show_rank, UG.created_at, UG.updated_at,
        G.name as game_name,
        GR_Current.name AS current_rank_name,
-       GR_Peak.name AS peak_rank_name
+       GR_Peak.name AS peak_rank_name,
+       GR_Avg.name AS avg_rank_name
 FROM user_games AS UG
 JOIN games AS G ON (UG.game_id = G.id)
 JOIN game_ranks AS GR_Current ON (UG.current_rank = GR_Current.id)
 JOIN game_ranks AS GR_Peak ON (UG.peak_rank = GR_Peak.id)
+LEFT JOIN game_ranks AS GR_Avg ON (UG.avg_rank = GR_Avg.id)
 WHERE UG.user_id = $1
 `
 
@@ -108,12 +115,14 @@ type GetGamesForUserRow struct {
 	InGameName      string
 	CurrentRank     *uuid.UUID
 	PeakRank        *uuid.UUID
+	AvgRank         *uuid.UUID
 	ShowRank        bool
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	GameName        string
 	CurrentRankName string
 	PeakRankName    string
+	AvgRankName     *string
 }
 
 func (q *Queries) GetGamesForUser(ctx context.Context, userID uuid.UUID) ([]GetGamesForUserRow, error) {
@@ -131,12 +140,14 @@ func (q *Queries) GetGamesForUser(ctx context.Context, userID uuid.UUID) ([]GetG
 			&i.InGameName,
 			&i.CurrentRank,
 			&i.PeakRank,
+			&i.AvgRank,
 			&i.ShowRank,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.GameName,
 			&i.CurrentRankName,
 			&i.PeakRankName,
+			&i.AvgRankName,
 		); err != nil {
 			return nil, err
 		}
@@ -154,16 +165,18 @@ SET updated_at = NOW(),
     in_game_name = $1,
     current_rank = $2,
     peak_rank = $3,
-    show_rank = $4
-WHERE user_id = $5
-AND game_id = $6
-RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at
+    avg_rank = $4,
+    show_rank = $5
+WHERE user_id = $6
+AND game_id = $7
+RETURNING user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at, avg_rank
 `
 
 type UpdateGameForUserParams struct {
 	InGameName  string
 	CurrentRank *uuid.UUID
 	PeakRank    *uuid.UUID
+	AvgRank     *uuid.UUID
 	ShowRank    bool
 	UserID      uuid.UUID
 	GameID      uuid.UUID
@@ -174,6 +187,7 @@ func (q *Queries) UpdateGameForUser(ctx context.Context, arg UpdateGameForUserPa
 		arg.InGameName,
 		arg.CurrentRank,
 		arg.PeakRank,
+		arg.AvgRank,
 		arg.ShowRank,
 		arg.UserID,
 		arg.GameID,
@@ -190,6 +204,26 @@ func (q *Queries) UpdateGameForUser(ctx context.Context, arg UpdateGameForUserPa
 		&i.ApiLinksID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AvgRank,
 	)
 	return i, err
+}
+
+const updateUserGameAvgRank = `-- name: UpdateUserGameAvgRank :exec
+UPDATE user_games
+SET updated_at = NOW(),
+    avg_rank = $1
+WHERE user_id = $2
+AND game_id = $3
+`
+
+type UpdateUserGameAvgRankParams struct {
+	AvgRank *uuid.UUID
+	UserID  uuid.UUID
+	GameID  uuid.UUID
+}
+
+func (q *Queries) UpdateUserGameAvgRank(ctx context.Context, arg UpdateUserGameAvgRankParams) error {
+	_, err := q.db.Exec(ctx, updateUserGameAvgRank, arg.AvgRank, arg.UserID, arg.GameID)
+	return err
 }

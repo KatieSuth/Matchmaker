@@ -139,6 +139,7 @@ type UserGame struct {
 	ApiLinksID    *uuid.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	AvgRank       *uuid.UUID
 }
 
 type UserNoshow struct {

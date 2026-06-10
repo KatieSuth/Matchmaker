@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
@@ -199,6 +200,52 @@ func TestUpsertGameForUser_CreatesNewEntry(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, game.ID, result.GameID)
 		assert.Equal(t, seeded.ID, result.UserID)
+		require.NotNil(t, result.AvgRank)
+		assert.Equal(t, rank.ID, *result.AvgRank)
+	})
+}
+
+func TestUpsertGameForUser_PersistsFlooredAvgRank(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug-avg", "uguser-avg")
+		game := seedGame(t, q)
+		ranks, err := q.GetRanksForGame(context.Background(), &game.ID)
+		require.NoError(t, err)
+		if len(ranks) < 2 {
+			t.Skip("need at least 2 ranks to test floored avg rank — skipping")
+		}
+
+		var lowRank, highRank db.GameRank
+		for _, r := range ranks {
+			if lowRank.ID == uuid.Nil || r.Order < lowRank.Order {
+				lowRank = r
+			}
+			if highRank.ID == uuid.Nil || r.Order > highRank.Order {
+				highRank = r
+			}
+		}
+
+		flooredOrder := matchmaking.FlooredAverageRankOrder(int(lowRank.Order), int(highRank.Order))
+		var expectedAvg db.GameRank
+		for _, r := range ranks {
+			if int(r.Order) == flooredOrder {
+				expectedAvg = r
+				break
+			}
+		}
+		require.NotEqual(t, uuid.Nil, expectedAvg.ID)
+
+		inGameName := "avg-player"
+		result, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+			GameID:      game.ID,
+			CurrentRank: &lowRank.ID,
+			PeakRank:    &highRank.ID,
+			InGameName:  &inGameName,
+			ShowRank:    true,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result.AvgRank)
+		assert.Equal(t, expectedAvg.ID, *result.AvgRank)
 	})
 }
 

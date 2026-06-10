@@ -10,6 +10,7 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/cmd/scripts/common"
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -59,12 +60,33 @@ func pickCurrentPeakRankIDs(sorted []db.GameRank, userIdx, gameIdx int) (uuid.UU
 	return sorted[currentIdx].ID, sorted[peakIdx].ID
 }
 
+func avgRankIDForOrders(sorted []db.GameRank, currentID, peakID uuid.UUID) uuid.UUID {
+	currentOrder, peakOrder := 0, 0
+	for _, rank := range sorted {
+		if rank.ID == currentID {
+			currentOrder = int(rank.Order)
+		}
+		if rank.ID == peakID {
+			peakOrder = int(rank.Order)
+		}
+	}
+	flooredOrder := matchmaking.FlooredAverageRankOrder(currentOrder, peakOrder)
+	for _, rank := range sorted {
+		if int(rank.Order) == flooredOrder {
+			return rank.ID
+		}
+	}
+	common.Fatal("avg rank order not found in game ranks", "order", flooredOrder)
+	return uuid.Nil
+}
+
 func seedUpsertUserGames(seed *common.SeedContext, userID uuid.UUID, userIdx int, games []seededGame) {
 	for gi, g := range games {
 		if len(g.ranks) == 0 {
 			common.Fatal("seeded game has no ranks", "game", g.name)
 		}
 		currentID, peakID := pickCurrentPeakRankIDs(g.ranks, userIdx, gi)
+		avgID := avgRankIDForOrders(g.ranks, currentID, peakID)
 		inGameName := fmt.Sprintf("SeedIGN_%03d_%d", userIdx, gi)
 		showRank := (userIdx+gi)%3 != 0
 
@@ -79,6 +101,7 @@ func seedUpsertUserGames(seed *common.SeedContext, userID uuid.UUID, userIdx int
 				InGameName:  inGameName,
 				CurrentRank: &currentID,
 				PeakRank:    &peakID,
+				AvgRank:     &avgID,
 				ShowRank:    showRank,
 			})
 			if err != nil {
@@ -93,6 +116,7 @@ func seedUpsertUserGames(seed *common.SeedContext, userID uuid.UUID, userIdx int
 			InGameName:  inGameName,
 			CurrentRank: &currentID,
 			PeakRank:    &peakID,
+			AvgRank:     &avgID,
 			ShowRank:    showRank,
 			UserID:      userID,
 			GameID:      g.id,

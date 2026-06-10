@@ -29,6 +29,8 @@ type EventRegistration struct {
 	InGameName      string    `json:"in_game_name"`
 	Pronouns        string    `json:"pronouns"`
 	CurrentRankName string    `json:"current_rank_name"`
+	PeakRankName    string    `json:"peak_rank_name"`
+	AvgRankName     string    `json:"avg_rank_name"`
 	CanSubstitute   bool      `json:"can_substitute"`
 	CanLobbyHost    bool      `json:"can_lobby_host"`
 	DuoRequest      *string   `json:"duo_request"`
@@ -44,7 +46,10 @@ type LobbyPlayer struct {
 	Pronouns         string    `json:"pronouns"`
 	CurrentRankName  string `json:"current_rank_name"`
 	CurrentRankOrder int    `json:"current_rank_order"`
+	PeakRankName     string `json:"peak_rank_name"`
 	PeakRankOrder    int    `json:"peak_rank_order"`
+	AvgRankName      string `json:"avg_rank_name"`
+	AvgRankOrder     int    `json:"avg_rank_order"`
 	CanSubstitute    bool      `json:"can_substitute"`
 	CanLobbyHost     bool      `json:"can_lobby_host"`
 	DuoRequest       *string   `json:"duo_request"`
@@ -132,6 +137,8 @@ func MapDbGetRegistrationDataByEventIdRowToEventRegistration(row db.GetRegistrat
 		InGameName:      row.InGameName,
 		Pronouns:        row.Pronouns,
 		CurrentRankName: row.CurrentRankName,
+		PeakRankName:    row.PeakRankName,
+		AvgRankName:     row.AvgRankName,
 		CanSubstitute:   row.CanSubstitute,
 		CanLobbyHost:    row.CanLobbyHost,
 		DuoRequest:      row.DuoRequest,
@@ -187,7 +194,10 @@ func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) Lobby
 		Pronouns:         row.Pronouns,
 		CurrentRankName:  row.CurrentRankName,
 		CurrentRankOrder: int(row.CurrentRankOrder),
+		PeakRankName:     row.PeakRankName,
 		PeakRankOrder:    int(row.PeakRankOrder),
+		AvgRankName:      row.AvgRankName,
+		AvgRankOrder:     int(row.AvgRankOrder),
 		CanSubstitute:    row.CanSubstitute,
 		CanLobbyHost:     row.CanLobbyHost,
 		DuoRequest:       row.DuoRequest,

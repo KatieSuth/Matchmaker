@@ -1474,7 +1474,7 @@ components:
     UserGame:
       type: object
       description: A game associated with a user, including rank information
-      required: [user_id, game_id, game_name, current_rank_name, peak_rank_name, show_rank, created_at, updated_at]
+      required: [user_id, game_id, game_name, current_rank_name, peak_rank_name, avg_rank_name, show_rank, created_at, updated_at]
       properties:
         user_id:
           type: string
@@ -1512,6 +1512,14 @@ components:
           type: string
           description: Display name of the peak rank
           examples: ["Immortal 1"]
+        avg_rank:
+          type: ["string", "null"]
+          format: uuid
+          description: UUID of the user's floored average rank, if set
+        avg_rank_name:
+          type: string
+          description: Display name of the floored average rank used for matchmaking
+          examples: ["Diamond 3"]
         show_rank:
           type: boolean
           description: Whether rank information is shown publicly
@@ -1782,7 +1790,7 @@ components:
 
     EventRegistration:
       type: object
-      required: [event_id, user_id, discord_name, in_game_name, pronouns, current_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [event_id, user_id, discord_name, in_game_name, pronouns, current_rank_name, peak_rank_name, avg_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         event_id:
           type: string
@@ -1797,6 +1805,10 @@ components:
         pronouns:
           type: string
         current_rank_name:
+          type: string
+        peak_rank_name:
+          type: string
+        avg_rank_name:
           type: string
         can_substitute:
           type: boolean
@@ -1853,7 +1865,7 @@ components:
 
     LobbyPlayer:
       type: object
-      required: [user_id, discord_name, in_game_name, pronouns, current_rank_name, current_rank_order, peak_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [user_id, discord_name, in_game_name, pronouns, current_rank_name, current_rank_order, peak_rank_name, peak_rank_order, avg_rank_name, avg_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         user_id:
           type: string
@@ -1870,6 +1882,13 @@ components:
           type: integer
           format: int32
         peak_rank_order:
+          type: integer
+          format: int32
+        peak_rank_name:
+          type: string
+        avg_rank_name:
+          type: string
+        avg_rank_order:
           type: integer
           format: int32
         can_substitute:

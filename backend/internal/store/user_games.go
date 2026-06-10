@@ -71,6 +71,11 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 		return model.UserGame{}, ErrInvalidRankOrder
 	}
 
+	avgRankID, _, err := s.resolveAvgRankID(ctx, ug.GameID, currentRank.Order, peakRank.Order)
+	if err != nil {
+		return model.UserGame{}, err
+	}
+
 	/*** Upsert ***/
 	_, err = s.q.GetGameForUserByIds(ctx, db.GetGameForUserByIdsParams{
 		UserID: userID,
@@ -91,6 +96,7 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 			InGameName:  *ug.InGameName,
 			CurrentRank: ug.CurrentRank,
 			PeakRank:    ug.PeakRank,
+			AvgRank:     &avgRankID,
 			ShowRank:    ug.ShowRank,
 		})
 		if err != nil {
@@ -99,12 +105,13 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 	} else {
 		//userGame link exists, update it
 		dbUserGame, err = s.q.UpdateGameForUser(ctx, db.UpdateGameForUserParams{
-			UserID:      userID,
-			GameID:      ug.GameID,
 			InGameName:  *ug.InGameName,
 			CurrentRank: ug.CurrentRank,
 			PeakRank:    ug.PeakRank,
+			AvgRank:     &avgRankID,
 			ShowRank:    ug.ShowRank,
+			UserID:      userID,
+			GameID:      ug.GameID,
 		})
 
 		if err != nil {

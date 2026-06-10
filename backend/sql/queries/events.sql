@@ -184,6 +184,18 @@ SELECT P.user_id,
            WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR."order", 0)
            ELSE 0
        END::INT AS peak_rank_order,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(PR.name, '')
+           ELSE ''
+       END AS peak_rank_name,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(AR.name, '')
+           ELSE ''
+       END AS avg_rank_name,
+       CASE
+           WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR COALESCE(UG.show_rank, FALSE) = TRUE THEN COALESCE(AR."order", 0)
+           ELSE 0
+       END::INT AS avg_rank_order,
        COALESCE(UG.in_game_name, '') AS in_game_name,
        R.can_substitute,
        R.can_lobby_host,
@@ -199,6 +211,7 @@ JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN user_games AS UG ON P.user_id = UG.user_id AND UG.game_id = GM.game_id
 LEFT JOIN game_ranks AS GR ON UG.current_rank = GR.id
 LEFT JOIN game_ranks AS PR ON UG.peak_rank = PR.id
+LEFT JOIN game_ranks AS AR ON UG.avg_rank = AR.id
 WHERE P.lobby_id = sqlc.arg(lobby_id)
 ORDER BY P.team_number ASC NULLS LAST, U.discord_name ASC;
 

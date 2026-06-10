@@ -105,12 +105,12 @@ function formatPlayerCount(count: number) {
   return `${count} ${count === 1 ? "Player" : "Players"}`;
 }
 
-/** Per-player skill value used for team averages — mirrors backend (current + peak) / 2. */
+/** Per-player skill value used for team averages — mirrors backend stored avg_rank_order. */
 function playerSkillOrder(player: LobbyPlayer): number | null {
-  if (player.current_rank_order <= 0 || player.peak_rank_order <= 0) {
+  if (player.avg_rank_order <= 0) {
     return null;
   }
-  return (player.current_rank_order + player.peak_rank_order) / 2;
+  return player.avg_rank_order;
 }
 
 /** Maps a numeric skill value to the closest game rank name by order distance. */
@@ -257,7 +257,7 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
         const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, team.team_number);
         options.push({
           value: player.user_id,
-          label: formatSwapCandidateLabel(player.discord_name, category, player.current_rank_name),
+          label: formatSwapCandidateLabel(player.discord_name, category, player.avg_rank_name),
         });
       }
     }
@@ -274,7 +274,7 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
       const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, null);
       options.push({
         value: player.user_id,
-        label: formatSwapCandidateLabel(player.discord_name, category, player.current_rank_name),
+        label: formatSwapCandidateLabel(player.discord_name, category, player.avg_rank_name),
       });
     }
   }
@@ -288,7 +288,7 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
     }
     options.push({
       value: registration.user_id,
-      label: formatSwapCandidateLabel(registration.discord_name, "Unplaced", registration.current_rank_name),
+      label: formatSwapCandidateLabel(registration.discord_name, "Unplaced", registration.avg_rank_name),
     });
   }
 
@@ -432,8 +432,8 @@ function PlayerCard({
           </p>
         </div>
         <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Current Rank</p>
-          <p className="text-xs text-[var(--color-text-soft)]">{registration.current_rank_name || EMPTY_VALUE}</p>
+          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Average Rank</p>
+          <p className="text-xs text-[var(--color-text-soft)]">{registration.avg_rank_name || EMPTY_VALUE}</p>
         </div>
         <div>
           <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
@@ -493,6 +493,8 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
     in_game_name: player.in_game_name,
     pronouns: player.pronouns,
     current_rank_name: player.current_rank_name,
+    peak_rank_name: player.peak_rank_name,
+    avg_rank_name: player.avg_rank_name,
     can_substitute: player.can_substitute,
     can_lobby_host: player.can_lobby_host,
     duo_request: player.duo_request,
@@ -1892,6 +1894,10 @@ export default function EventGroupPage() {
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Current rank</p>
               <p className="text-[var(--color-text-soft)]">{selectedRegistration.current_rank_name || EMPTY_VALUE}</p>
+            </div>
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Average rank</p>
+              <p className="text-[var(--color-text-soft)]">{selectedRegistration.avg_rank_name || EMPTY_VALUE}</p>
             </div>
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Peak rank</p>

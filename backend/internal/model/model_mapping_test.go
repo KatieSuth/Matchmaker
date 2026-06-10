@@ -347,6 +347,40 @@ func TestMapDbUserToUser_NilOptionalFields(t *testing.T) {
 }
 
 // ============================================================
+// MapDbGetGamesForUserRowToUserGame
+// ============================================================
+
+func TestMapDbGetGamesForUserRowToUserGame_NilAvgRankName(t *testing.T) {
+	row := db.GetGamesForUserRow{
+		UserID:   uuid.New(),
+		GameID:   uuid.New(),
+		GameName: "Valorant",
+	}
+
+	result := model.MapDbGetGamesForUserRowToUserGame(row)
+
+	assert.Equal(t, "", result.AvgRankName)
+	assert.Nil(t, result.AvgRank)
+}
+
+func TestMapDbGetGamesForUserRowToUserGame_WithAvgRankName(t *testing.T) {
+	avgRank := uuid.New()
+	avgRankName := "Diamond 3"
+	row := db.GetGamesForUserRow{
+		UserID:      uuid.New(),
+		GameID:      uuid.New(),
+		GameName:    "Valorant",
+		AvgRank:     &avgRank,
+		AvgRankName: &avgRankName,
+	}
+
+	result := model.MapDbGetGamesForUserRowToUserGame(row)
+
+	assert.Equal(t, avgRankName, result.AvgRankName)
+	assert.Equal(t, &avgRank, result.AvgRank)
+}
+
+// ============================================================
 // MapDbUserGamesToUserGames
 // ============================================================
 
@@ -641,6 +675,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 		Pronouns:        "they/them",
 		CurrentRankName:  "Gold 1",
 		CurrentRankOrder: 12,
+		PeakRankName:     "Platinum 2",
 		PeakRankOrder:    15,
 		CanSubstitute:    true,
 		CanLobbyHost:     false,
@@ -655,6 +690,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	assert.Equal(t, "they/them", result.Pronouns)
 	assert.Equal(t, "Gold 1", result.CurrentRankName)
 	assert.Equal(t, 12, result.CurrentRankOrder)
+	assert.Equal(t, "Platinum 2", result.PeakRankName)
 	assert.Equal(t, 15, result.PeakRankOrder)
 	assert.True(t, result.CanSubstitute)
 	assert.False(t, result.CanLobbyHost)

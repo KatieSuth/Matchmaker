@@ -10,12 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// sortLobbyPlayersByRankDesc orders team players highest current rank first for API responses.
+// sortLobbyPlayersByRankDesc orders team players highest average rank first for API responses.
 func sortLobbyPlayersByRankDesc(players []model.LobbyPlayer) []model.LobbyPlayer {
 	sorted := append([]model.LobbyPlayer(nil), players...)
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].CurrentRankOrder != sorted[j].CurrentRankOrder {
-			return sorted[i].CurrentRankOrder > sorted[j].CurrentRankOrder
+		if sorted[i].AvgRankOrder != sorted[j].AvgRankOrder {
+			return sorted[i].AvgRankOrder > sorted[j].AvgRankOrder
 		}
 		return sorted[i].DiscordName < sorted[j].DiscordName
 	})

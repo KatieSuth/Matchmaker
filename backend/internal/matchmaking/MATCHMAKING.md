@@ -36,7 +36,7 @@ Built by `mapRegistrationsToPlayers` in `store/teams_planning.go` from `GetMatch
 |-------|--------|----------|
 | `DiscordName` | `users.discord_name` | Mutual duo matching |
 | `DuoRequest` | `registrations.duo_request` | Mutual duo matching |
-| `AvgRank` | `(current_rank_order + peak_rank_order) / 2` | All skill comparisons |
+| `AvgRank` | `game_ranks.order` for stored `user_games.avg_rank` | All skill comparisons |
 | `CanSubstitute` | `registrations.can_substitute` | Sub pool eligibility; roster cap when n ≥ 2 |
 | `CanLobbyHost` | `registrations.can_lobby_host` | Lobby host selection |
 | `RegisteredGameCount` | Registrations across all games in the group | Tie-break |
@@ -63,13 +63,14 @@ Injected from `main.go` → `handler.New` → `CreateTeamsForGroup`. See [Fairne
 
 ## Skill value
 
-`AverageRankOrder(current, peak)` in `rank.go`:
+`user_games.avg_rank` stores a `game_ranks` row whose order is the floored average of current and peak:
 
 ```
-AvgRank = (current_rank_order + peak_rank_order) / 2.0
+floored_order = floor((current_rank_order + peak_rank_order) / 2.0)
+AvgRank = game_ranks.order for user_games.avg_rank
 ```
 
-Both orders must be present on the registration's `user_games` row. This single float drives sorting, roster selection, team snake drafts, and fairness checks.
+`AverageRankOrder` and `FlooredAverageRankOrder` in `rank.go` compute the numeric average and floored order when persisting or backfilling. Both current and peak ranks must be present on the `user_games` row. `UpsertGameForUser` writes `avg_rank`; matchmaking backfills any missing values before planning. This single value drives sorting, roster selection, team snake drafts, and fairness checks.
 
 ---
 

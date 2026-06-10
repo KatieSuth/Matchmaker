@@ -48,6 +48,8 @@ export interface UserGame {
   current_rank_name?: string;
   peak_rank: string | null;
   peak_rank_name?: string;
+  avg_rank?: string | null;
+  avg_rank_name?: string;
   show_rank: boolean;
   created_at: string;
   updated_at: string;
@@ -60,7 +62,8 @@ export interface EventRegistration {
   in_game_name: string;
   pronouns: string;
   current_rank_name: string;
-  peak_rank_name?: string;
+  peak_rank_name: string;
+  avg_rank_name: string;
   can_substitute: boolean;
   can_lobby_host: boolean;
   duo_request: string | null;
@@ -75,7 +78,10 @@ export interface LobbyPlayer {
   pronouns: string;
   current_rank_name: string;
   current_rank_order: number;
+  peak_rank_name: string;
   peak_rank_order: number;
+  avg_rank_name: string;
+  avg_rank_order: number;
   can_substitute: boolean;
   can_lobby_host: boolean;
   duo_request: string | null;

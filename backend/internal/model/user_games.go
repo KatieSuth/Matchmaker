@@ -16,6 +16,8 @@ type UserGame struct {
 	CurrentRankName string     `json:"current_rank_name"`
 	PeakRank        *uuid.UUID `json:"peak_rank"`
 	PeakRankName    string     `json:"peak_rank_name"`
+	AvgRank         *uuid.UUID `json:"avg_rank"`
+	AvgRankName     string     `json:"avg_rank_name"`
 	ShowRank        bool       `json:"show_rank"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
@@ -26,6 +28,10 @@ type UserGame struct {
  * this but handling it manually gives more flexibility)
  */
 func MapDbGetGamesForUserRowToUserGame(row db.GetGamesForUserRow) UserGame {
+	avgRankName := ""
+	if row.AvgRankName != nil {
+		avgRankName = *row.AvgRankName
+	}
 	return UserGame{
 		UserID:          row.UserID,
 		GameID:          row.GameID,
@@ -35,6 +41,8 @@ func MapDbGetGamesForUserRowToUserGame(row db.GetGamesForUserRow) UserGame {
 		CurrentRankName: row.CurrentRankName,
 		PeakRank:        row.PeakRank,
 		PeakRankName:    row.PeakRankName,
+		AvgRank:         row.AvgRank,
+		AvgRankName:     avgRankName,
 		ShowRank:        row.ShowRank,
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
@@ -56,6 +64,7 @@ func MapDbUserGameToUserGame(dbUserGame db.UserGame) UserGame {
 		InGameName:  &dbUserGame.InGameName,
 		CurrentRank: dbUserGame.CurrentRank,
 		PeakRank:    dbUserGame.PeakRank,
+		AvgRank:     dbUserGame.AvgRank,
 		ShowRank:    dbUserGame.ShowRank,
 		CreatedAt:   dbUserGame.CreatedAt,
 		UpdatedAt:   dbUserGame.UpdatedAt,

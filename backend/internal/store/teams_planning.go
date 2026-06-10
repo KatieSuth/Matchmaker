@@ -78,11 +78,15 @@ func mapRegistrationsToPlayers(rows []db.GetMatchmakingRegistrationsForEventRow,
 		if row.DiscordName != nil {
 			discordName = *row.DiscordName
 		}
+		avgOrder := int32(0)
+		if row.AvgRankOrder != nil {
+			avgOrder = *row.AvgRankOrder
+		}
 		players = append(players, matchmaking.Player{
 			UserID:              row.UserID,
 			DiscordName:         discordName,
 			DuoRequest:          row.DuoRequest,
-			AvgRank:             matchmaking.AverageRankOrder(int(row.CurrentRankOrder), int(row.PeakRankOrder)),
+			AvgRank:             float64(avgOrder),
 			CanSubstitute:       row.CanSubstitute,
 			CanLobbyHost:        row.CanLobbyHost,
 			RegisteredGameCount: regCounts[row.UserID],
@@ -112,6 +116,11 @@ func (s *PostgresStore) planTeamsForGroup(ctx context.Context, group db.EventGro
 		}
 		if len(regRows) == 0 {
 			continue
+		}
+
+		regRows, err = s.ensureAvgRanksForMatchmaking(ctx, regRows)
+		if err != nil {
+			return nil, fmt.Errorf("ensure avg ranks for event %s: %w", eventRow.ID.String(), err)
 		}
 
 		mode, err := s.q.GetGameModeById(ctx, eventRow.GameModeID)
