@@ -30,8 +30,8 @@ func newTestHandlerWithCookieDomain(t *testing.T, s store.Store, oauth2Cfg *oaut
 	require.NoError(t, err)
 
 	mmSettings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 	return handler.New("test", s, sc, oauth2Cfg, cookieDomain, "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl, mmSettings)

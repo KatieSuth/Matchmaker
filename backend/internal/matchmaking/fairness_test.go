@@ -11,19 +11,19 @@ import (
 
 func TestScaledFairnessThresholds(t *testing.T) {
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 	scaled := matchmaking.ScaledFairnessThresholds(settings, 10)
-	assert.InDelta(t, 3.2, scaled.OutlierGap, 0.01)
-	assert.InDelta(t, 1.6, scaled.TeamSeparation, 0.01)
+	assert.InDelta(t, 2.4, scaled.OutlierGap, 0.01)
+	assert.InDelta(t, 1.2, scaled.TeamSeparation, 0.01)
 }
 
 func TestIsLobbyUnfair_Outlier(t *testing.T) {
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 	team1 := intPtr(1)
@@ -111,13 +111,13 @@ func TestSplitRosterByTeamNumberForTest(t *testing.T) {
 
 func TestScaledFairnessThresholds_ZeroTierCountUsesBaseline(t *testing.T) {
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 	scaled := matchmaking.ScaledFairnessThresholds(settings, 0)
-	assert.Equal(t, 8.0, scaled.OutlierGap)
-	assert.Equal(t, 4.0, scaled.TeamSeparation)
+	assert.Equal(t, 6.0, scaled.OutlierGap)
+	assert.Equal(t, 3.0, scaled.TeamSeparation)
 }
 
 func intPtr(v int) *int {

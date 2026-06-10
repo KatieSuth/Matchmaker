@@ -26,7 +26,7 @@ func TestAssignBalanced_SnakeDraftAcrossLobbies(t *testing.T) {
 	assert.Len(t, lobbies[0].Roster, 4)
 	assert.Len(t, lobbies[1].Roster, 4)
 
-	// Snake: lobby 0 gets ranks 20,17,16,13; lobby 1 gets 19,18,15,14.
-	assert.Equal(t, 20.0, lobbies[0].Roster[0].AvgRank)
-	assert.Equal(t, 19.0, lobbies[1].Roster[0].AvgRank)
+	// Snake from low skill first: lobby 0 gets 13,16,17,20; lobby 1 gets 14,15,18,19.
+	assert.Equal(t, 13.0, lobbies[0].Roster[0].AvgRank)
+	assert.Equal(t, 14.0, lobbies[1].Roster[0].AvgRank)
 }

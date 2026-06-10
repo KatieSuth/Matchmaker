@@ -94,6 +94,7 @@ type Player struct {
 	TeamNumber *int32
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	EventID    uuid.UUID
 }
 
 type RefreshToken struct {

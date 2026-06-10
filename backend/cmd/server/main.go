@@ -179,7 +179,7 @@ func main() {
 		cookieDomain = "matchmaker.localhost"
 	}
 
-	fairnessOutlierGap := 8
+	fairnessOutlierGap := 6
 	if v := os.Getenv("FAIRNESS_OUTLIER_GAP"); v != "" {
 		fairnessOutlierGap, err = strconv.Atoi(v)
 		if err != nil || fairnessOutlierGap <= 0 {
@@ -187,7 +187,7 @@ func main() {
 		}
 	}
 
-	fairnessTeamSeparation := 4.0
+	fairnessTeamSeparation := 3.0
 	if v := os.Getenv("FAIRNESS_TEAM_SEPARATION"); v != "" {
 		fairnessTeamSeparation, err = strconv.ParseFloat(v, 64)
 		if err != nil || fairnessTeamSeparation <= 0 {

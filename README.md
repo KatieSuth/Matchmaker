@@ -175,8 +175,8 @@ curl https://matchmaker.localhost/api/health
 | `POSTGRES_PASSWORD`             | required, no default                                     | Postgres Database password                                                            |
 | `POSTGRES_USER`                 | required, no default                                     | Postgres Database username                                                            |
 | `REFRESH_EXPIRE_LIMIT`          | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens                              |
-| `FAIRNESS_OUTLIER_GAP`          | `8`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)   |
-| `FAIRNESS_TEAM_SEPARATION`      | `4`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count) |
+| `FAIRNESS_OUTLIER_GAP`          | `6`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)   |
+| `FAIRNESS_TEAM_SEPARATION`      | `3`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count) |
 | `FAIRNESS_REFERENCE_TIER_COUNT` | `25`                                                     | Tier count the fairness baselines are calibrated for (Valorant)                       |
 
 ---

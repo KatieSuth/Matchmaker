@@ -31,8 +31,8 @@ func TestPlanEvent_SingleLobby(t *testing.T) {
 		Slots:     4,
 	}
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 
@@ -63,8 +63,8 @@ func TestPlanEvent_RankedMode(t *testing.T) {
 		Slots:     4,
 	}
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 
@@ -104,8 +104,8 @@ func TestPlanEvent_MultiLobbyWithMandatorySubs(t *testing.T) {
 		Slots:     4,
 	}
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 
@@ -129,8 +129,8 @@ func TestPlanEvent_InsufficientPlayers(t *testing.T) {
 	players := []matchmaking.Player{{UserID: uuid.New(), AvgRank: 10, CreatedAt: time.Now()}}
 
 	_, err := matchmaking.PlanEvent(players, cfg, matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	})
 	require.Error(t, err)
@@ -162,8 +162,8 @@ func TestPlanEvent_PreservesMutualDuoOnSameTeamWhenSnakeAllows(t *testing.T) {
 		Slots:     4,
 	}
 	settings := matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 

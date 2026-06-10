@@ -9,7 +9,7 @@ func AssignBalanced(players []Player, lobbyCount, slotsPerLobby int) []LobbyPlan
 
 	needed := lobbyCount * slotsPerLobby
 	pool := selectBalancedRosterPool(players, needed)
-	sortPlayersByRankDesc(pool)
+	sortPlayersByRankAsc(pool)
 
 	for i, p := range pool {
 		lobbyIdx := snakeLobbyIndex(i, lobbyCount)

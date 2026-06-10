@@ -20,15 +20,15 @@ func playerAtRank(rank float64, canSub bool, gameCount int, at time.Time) matchm
 	}
 }
 
-func TestSelectBalancedRosterPool_CyclesHighMidLow(t *testing.T) {
+func TestSelectBalancedRosterPool_CyclesLowMidHigh(t *testing.T) {
 	now := time.Now()
 	high := playerAtRank(24, false, 1, now)
-	mid := playerAtRank(10, false, 1, now.Add(time.Minute))
+	midBand := playerAtRank(16, false, 1, now.Add(3*time.Minute))
 	low := playerAtRank(4, true, 1, now.Add(2*time.Minute))
 	players := []matchmaking.Player{
 		high,
-		playerAtRank(16, false, 1, now.Add(3*time.Minute)),
-		mid,
+		midBand,
+		playerAtRank(10, false, 1, now.Add(time.Minute)),
 		playerAtRank(6, false, 1, now.Add(4*time.Minute)),
 		low,
 	}
@@ -41,9 +41,10 @@ func TestSelectBalancedRosterPool_CyclesHighMidLow(t *testing.T) {
 	for _, p := range lobbies[0].Roster {
 		rosteredIDs[p.UserID] = true
 	}
-	assert.True(t, rosteredIDs[high.UserID])
-	assert.True(t, rosteredIDs[mid.UserID], "balanced roster should include mid-skill players")
+	// low → mid (closest to pool mean) → high: skills 4, 16, 24.
 	assert.True(t, rosteredIDs[low.UserID])
+	assert.True(t, rosteredIDs[midBand.UserID], "balanced roster should include a mid-band player from the mean pick")
+	assert.True(t, rosteredIDs[high.UserID])
 }
 
 func TestSelectBalancedRosterPool_SpansHighAndLowSkill(t *testing.T) {
@@ -78,7 +79,7 @@ func TestSelectBalancedRosterPool_SubstituteEligibilityDoesNotAffectSingleLobbyR
 	lobbies := matchmaking.AssignBalanced(players, 1, 1)
 	require.Len(t, lobbies, 1)
 	require.Len(t, lobbies[0].Roster, 1)
-	assert.Equal(t, highSub.UserID, lobbies[0].Roster[0].UserID)
+	assert.Equal(t, lowNonSub.UserID, lobbies[0].Roster[0].UserID)
 }
 
 func TestSelectRankedRosterPool_KeepsLowMajority(t *testing.T) {

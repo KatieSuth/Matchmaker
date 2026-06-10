@@ -36,8 +36,8 @@ func findLobbyTeamPlayer(detail model.EventGroupDetail, eventID uuid.UUID, teamN
 func insertPlayerForLobby(t *testing.T, ctx context.Context, tx db.DBTX, lobbyID, userID uuid.UUID, teamNumber *int32) {
 	t.Helper()
 	_, err := tx.Exec(ctx, `
-		INSERT INTO players (lobby_id, user_id, team_number, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
+		INSERT INTO players (lobby_id, user_id, team_number, event_id, created_at, updated_at)
+		VALUES ($1, $2, $3, (SELECT event_id FROM lobbies WHERE id = $1), NOW(), NOW())
 	`, lobbyID, userID, teamNumber)
 	require.NoError(t, err)
 }

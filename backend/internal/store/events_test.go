@@ -15,6 +15,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/test_util"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -279,8 +280,8 @@ func insertLobbyForEvent(t *testing.T, ctx context.Context, tx db.DBTX, eventID 
 
 func defaultMatchmakingSettings() matchmaking.Settings {
 	return matchmaking.Settings{
-		FairnessOutlierGap:         8,
-		FairnessTeamSeparation:     4,
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
 }
@@ -880,6 +881,31 @@ func TestCreateTeamsForGroup_NoLobbyHostFallsBackToFirstPlayer(t *testing.T) {
 	assert.Equal(t, p1.ID, lobbyHost)
 }
 
+func TestCreatePlayer_RejectsSecondLobbyInSameEvent(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	player := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	_, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+	lobby1 := insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
+	lobby2 := insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
+
+	insertPlayerForLobby(t, ctx, tx, lobby1, player.ID, teamNumberPtr(1))
+	_, err = tx.Exec(ctx, `
+		INSERT INTO players (lobby_id, user_id, team_number, event_id, created_at, updated_at)
+		VALUES ($1, $2, $3, (SELECT event_id FROM lobbies WHERE id = $1), NOW(), NOW())
+	`, lobby2, player.ID, int32(1))
+	require.Error(t, err)
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, "23505", pgErr.Code)
+	assert.Equal(t, "players_event_id_user_id_uidx", pgErr.ConstraintName)
+}
+
 func TestCreateTeamsForGroup_TeamsAlreadyCreated(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -993,6 +1019,11 @@ func TestGetEventGroupDetail_IncludesLobbiesAfterLockIn(t *testing.T) {
 	}
 	assert.False(t, placed[event.Unplaced[0].UserID])
 	_ = unplaced
+
+	nonHostDetail, err := s.GetEventGroupDetail(ctx, groupID, p1.ID)
+	require.NoError(t, err)
+	require.Len(t, nonHostDetail.Events, 1)
+	assert.Empty(t, nonHostDetail.Events[0].Unplaced)
 }
 
 func setGroupSubMin(t *testing.T, ctx context.Context, tx db.DBTX, groupID uuid.UUID, subMin int32) {

@@ -10,13 +10,13 @@ import (
 type balancedPickPhase int
 
 const (
-	balancedPickHigh balancedPickPhase = iota
+	balancedPickLow balancedPickPhase = iota
 	balancedPickMid
-	balancedPickLow
+	balancedPickHigh
 )
 
 // selectBalancedRosterPool chooses roster players without rank-first cutoff.
-// When trimming is required, players are taken in a high → mid → low cycle so the
+// When trimming is required, players are taken in a low → mid → high cycle so the
 // roster spans skill levels without excluding the middle of the pool.
 // can_substitute does not affect selection.
 func selectBalancedRosterPool(players []Player, needed int) []Player {
@@ -26,7 +26,7 @@ func selectBalancedRosterPool(players []Player, needed int) []Player {
 
 	remaining := append([]Player(nil), players...)
 	pool := make([]Player, 0, needed)
-	phase := balancedPickHigh
+	phase := balancedPickLow
 
 	for len(pool) < needed && len(remaining) > 0 {
 		sortPlayersByRankDesc(remaining)
@@ -42,7 +42,7 @@ func selectBalancedRosterPool(players []Player, needed int) []Player {
 	return pool
 }
 
-// balancedPickIndex returns the roster index to take for the current high/mid/low cycle phase.
+// balancedPickIndex returns the roster index to take for the current low/mid/high cycle phase.
 func balancedPickIndex(remaining []Player, phase balancedPickPhase) int {
 	n := len(remaining)
 	switch phase {

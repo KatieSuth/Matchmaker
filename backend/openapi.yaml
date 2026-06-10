@@ -1847,6 +1847,7 @@ components:
             $ref: "#/components/schemas/EventLobby"
         unplaced:
           type: array
+          description: Registered players not assigned to a team or sub pool. Populated for the event host only; empty for other viewers.
           items:
             $ref: "#/components/schemas/EventRegistration"
 

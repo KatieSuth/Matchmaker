@@ -73,9 +73,11 @@ func (s *PostgresStore) loadEventLobbiesAndUnplaced(
 	}
 
 	var unplaced []model.EventRegistration
-	for _, reg := range registrations {
-		if !placedUsers[reg.UserID] {
-			unplaced = append(unplaced, reg)
+	if viewerIsHost {
+		for _, reg := range registrations {
+			if !placedUsers[reg.UserID] {
+				unplaced = append(unplaced, reg)
+			}
 		}
 	}
 	if unplaced == nil {

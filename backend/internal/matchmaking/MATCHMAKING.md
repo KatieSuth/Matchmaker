@@ -127,13 +127,13 @@ Implemented in `balanced.go` and `roster.go`.
 
 If `needed ≥ len(players)`, everyone is rostered.
 
-When trimming is required (`needed < len(players)`), players are picked in a repeating **high → mid → low** cycle from the remaining pool:
+When trimming is required (`needed < len(players)`), players are picked in a repeating **low → mid → high** cycle from the remaining pool:
 
 | Phase | Selection |
 |-------|-----------|
-| High | Highest `AvgRank` in remaining (`index 0` after desc sort) |
+| Low | Lowest `AvgRank` in remaining (`index n-1` after desc sort) |
 | Mid | Player closest to the remaining pool mean `AvgRank` (ties → `CompareByRankThenAvailability`) |
-| Low | Lowest `AvgRank` in remaining (`index n-1`) |
+| High | Highest `AvgRank` in remaining (`index 0`) |
 
 `can_substitute` does **not** affect roster pool selection.
 
@@ -141,24 +141,24 @@ When trimming is required (`needed < len(players)`), players are picked in a rep
 
 | Pick | Phase | Skill |
 |------|-------|-------|
-| 1 | High | 24 |
-| 2 | Mid | 10 |
-| 3 | Low | 4 |
+| 1 | Low | 4 |
+| 2 | Mid | 16 |
+| 3 | High | 24 |
 
-Rank 16 is excluded, not rank 10.
+Rank 10 is excluded, not rank 16.
 
 ### Step 2 — Lobby distribution (`AssignBalanced`)
 
-The roster pool is sorted by skill descending, then assigned via **snake draft** across lobbies (`snakeLobbyIndex`):
+The roster pool is sorted by skill ascending, then assigned via **snake draft** across lobbies (`snakeLobbyIndex`), so lower-ranked players are drafted first:
 
 ```
 Round 0: L0, L1, L2, ...
 Round 1: L2, L1, L0, ...  (reversed)
 ```
 
-With one lobby, all picks go to that lobby in skill order.
+With one lobby, all picks go to that lobby in ascending skill order.
 
-**Example:** 8 players, 2 lobbies × 4 slots — lobby 0 gets skills 20, 17, 16, 13; lobby 1 gets 19, 18, 15, 14.
+**Example:** 8 players, 2 lobbies × 4 slots — lobby 0 gets skills 13, 16, 17, 20; lobby 1 gets 14, 15, 18, 19.
 
 ---
 
@@ -328,8 +328,8 @@ Parsed in `cmd/server/main.go`, passed through `handler.New` → `store.CreateTe
 
 | Variable                        | Default | Type  | Role                                                                                          |
 |---------------------------------|---------|-------|-----------------------------------------------------------------------------------------------|
-| `FAIRNESS_OUTLIER_GAP`          | `8`     | int   | Baseline max gap between 1st and 2nd highest skill in a lobby roster, at reference tier count |
-| `FAIRNESS_TEAM_SEPARATION`      | `4`     | float | Baseline max allowed difference between team average skills, at reference tier count          |
+| `FAIRNESS_OUTLIER_GAP`          | `6`     | int   | Baseline max gap between 1st and 2nd highest skill in a lobby roster, at reference tier count |
+| `FAIRNESS_TEAM_SEPARATION`      | `3`     | float | Baseline max allowed difference between team average skills, at reference tier count          |
 | `FAIRNESS_REFERENCE_TIER_COUNT` | `25`    | int   | Tier count the baseline values were calibrated for                                            |
 
 All three must be positive if set; invalid values cause startup failure.
@@ -346,7 +346,7 @@ All three must be positive if set; invalid values cause startup failure.
   → IsLobbyUnfair(lobby, settings, cfg.TierCount) per lobby
 ```
 
-`FairnessOutlierGap` and `FairnessTeamSeparation` are **baselines**, not absolute thresholds for every game. A 10-tier custom game uses `scale = 10/25 = 0.4`, so default outlier gap becomes `8 × 0.4 = 3.2` rank-order units.
+`FairnessOutlierGap` and `FairnessTeamSeparation` are **baselines**, not absolute thresholds for every game. A 10-tier custom game uses `scale = 10/25 = 0.4`, so default outlier gap becomes `6 × 0.4 = 2.4` rank-order units.
 
 ### Tuning guidance
 

@@ -139,8 +139,8 @@ func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby
 }
 
 const createPlayer = `-- name: CreatePlayer :exec
-INSERT INTO players (lobby_id, user_id, team_number, created_at, updated_at)
-VALUES ($1, $2, $3, NOW(), NOW())
+INSERT INTO players (lobby_id, user_id, team_number, event_id, created_at, updated_at)
+VALUES ($1, $2, $3, (SELECT event_id FROM lobbies WHERE id = $1), NOW(), NOW())
 `
 
 type CreatePlayerParams struct {
