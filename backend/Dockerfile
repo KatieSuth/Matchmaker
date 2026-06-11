@@ -18,8 +18,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # ── Stage 2: runner ────────────────────────────────────────────
 FROM scratch
 
+WORKDIR /
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /bin/server /server
+COPY --from=builder /app/sql/migrations /sql/migrations
 
 EXPOSE 8080
 
