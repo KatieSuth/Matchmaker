@@ -560,8 +560,8 @@ function TeamsPanel({
               {lobbyFairnessWarningMessage(lobby)}
             </div>
           )}
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
-            <span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.9375rem] font-semibold text-[var(--color-text)]">
+            <span className="min-w-0 break-words">
               Lobby {lobbyIndex + 1}
               {lobbyHostName(lobby, event) ? ` · Host: ${lobbyHostName(lobby, event)}` : ""}
             </span>
@@ -572,7 +572,7 @@ function TeamsPanel({
               const averageRank = isHostView ? teamAverageRankLabel(team.players, gameRanks) : EMPTY_VALUE;
               return (
               <div key={team.team_number} className="flex flex-col gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">
+                <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
                   Team {team.team_number}
                   {averageRank !== EMPTY_VALUE ? ` · Average: ${averageRank}` : ""}
                 </p>
@@ -612,7 +612,9 @@ function TeamsPanel({
           </div>
           {lobby.subs.length > 0 && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Substitutes</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+                Substitutes · {formatPlayerCount(lobby.subs.length)}
+              </p>
               {lobby.subs.map((player) => (
                 <PlayerCard
                   key={player.user_id}
@@ -647,7 +649,9 @@ function TeamsPanel({
       ))}
       {isHostView && (event.unplaced ?? []).length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-faint)]">Unplaced</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+            Unplaced · {formatPlayerCount((event.unplaced ?? []).length)}
+          </p>
           <p className="text-xs text-[var(--color-text-muted)]">
             Registered but not assigned to a team or sub pool for this game.
           </p>
@@ -1663,24 +1667,25 @@ export default function EventGroupPage() {
         ) : showAllEvents ? (
           <div className="flex flex-col gap-4">
             {group.events.map((event, index) => (
-              <div
-                key={event.id}
-                ref={(node) => {
-                  eventSectionRefs.current[event.id] = node;
-                }}
-                className="flex flex-col gap-3 scroll-mt-24"
-              >
-                <h2 className="relative flex items-center justify-between gap-2 text-sm font-semibold text-[var(--color-text)]">
-                  <span className="relative z-[1] flex min-w-0 shrink flex-wrap items-baseline gap-x-2 gap-y-0">
-                    <span className="shrink-0 whitespace-nowrap">Game {index + 1}</span>
-                    <span className="text-[0.65rem] font-normal uppercase tracking-wide text-[var(--color-text-faint)]">
-                      {event.game_mode_name}
-                    </span>
+              <div key={event.id}>
+                {index > 0 && (
+                  <hr className="mb-4 border-0 border-t-2 border-white/20" />
+                )}
+                <div
+                  ref={(node) => {
+                    eventSectionRefs.current[event.id] = node;
+                  }}
+                  className="flex flex-col gap-3 scroll-mt-24"
+                >
+                <h2 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 text-base font-semibold text-[var(--color-text)]">
+                  <span className="min-w-0 truncate">
+                    Game {index + 1}
+                    <span className="font-normal text-[var(--color-text-muted)]"> · {event.game_mode_name}</span>
                   </span>
-                  <span className="relative z-[1] shrink-0 text-center text-xs font-normal text-[var(--color-text-muted)]">
+                  <span className="shrink-0 whitespace-nowrap text-center text-xs font-normal text-[var(--color-text-muted)]">
                     {formatDateTime(event.start_time)}
                   </span>
-                  <span className="relative z-[1] shrink-0 text-right text-xs font-normal text-[var(--color-text-soft)]">
+                  <span className="shrink-0 justify-self-end whitespace-nowrap text-right text-xs font-normal text-[var(--color-text-soft)]">
                     {formatPlayerCount(event.registrations.length)}
                   </span>
                 </h2>
@@ -1737,22 +1742,21 @@ export default function EventGroupPage() {
                     Back to top
                   </button>
                 </div>
+                </div>
               </div>
             ))}
           </div>
         ) : activeEvent ? (
           <div className="flex flex-col gap-3">
-            <h2 className="relative flex items-center justify-between gap-2 text-sm font-semibold text-[var(--color-text)]">
-              <span className="relative z-[1] flex min-w-0 shrink flex-wrap items-baseline gap-x-2 gap-y-0">
-                <span className="shrink-0 whitespace-nowrap">Game {activeEventNumber}</span>
-                <span className="text-[0.65rem] font-normal uppercase tracking-wide text-[var(--color-text-faint)]">
-                  {activeEvent.game_mode_name}
-                </span>
+            <h2 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 text-base font-semibold text-[var(--color-text)]">
+              <span className="min-w-0 truncate">
+                Game {activeEventNumber}
+                <span className="font-normal text-[var(--color-text-muted)]"> · {activeEvent.game_mode_name}</span>
               </span>
-              <span className="relative z-[1] shrink-0 text-center text-xs font-normal text-[var(--color-text-muted)]">
+              <span className="shrink-0 whitespace-nowrap text-center text-xs font-normal text-[var(--color-text-muted)]">
                 {formatDateTime(activeEvent.start_time)}
               </span>
-              <span className="relative z-[1] shrink-0 text-right text-xs font-normal text-[var(--color-text-soft)]">
+              <span className="shrink-0 justify-self-end whitespace-nowrap text-right text-xs font-normal text-[var(--color-text-soft)]">
                 {formatPlayerCount(activeEvent.registrations.length)}
               </span>
             </h2>
