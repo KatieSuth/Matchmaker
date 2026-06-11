@@ -1,5 +1,8 @@
 # ── Stage 1: builder ───────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -9,7 +12,7 @@ COPY vendor/ ./vendor/
 
 # Build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-w -s" -o /bin/server ./cmd/server
 
 # ── Stage 2: runner ────────────────────────────────────────────
