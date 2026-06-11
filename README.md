@@ -208,10 +208,39 @@ make seed-events        # Dev-only: seed 20 groups and adjacent events (run afte
 make seed-registrations # Dev-only: seed event registrations (run after seed-events)
 make seed-all           # Dev-only: run all seed scripts in required order
 
+make seed-matchmaking-all HOST=YourDiscordName  # Dev-only: seed matchmaking test event groups (see below)
+make seed-matchmaking-cleanup                   # Dev-only: remove all matchmaking test data created by the script
+
 make gen-keys           # Generate new JWT, Cookie Hash, and Cookie Encrypt keys
 ```
 
 Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.
+
+### Matchmaking test data
+
+Seeds ~54 event groups with scenario-specific users (controlled counts, ranks, subs, and duo pairings) to exercise matchmaking manually. Each group is left open for you to review registrations and click **Lock In & Create Teams**. Users are owned by each scenario — not shared — so ranks stay stable across manual re-testing.
+
+**Prerequisites:** migrations applied; your host account must already exist in the database (log in via the app once).
+
+```bash
+make seed-matchmaking-all HOST=YourDiscordName
+```
+
+Replace `YourDiscordName` with your `users.discord_name` value. The script prints a table of `event_group.id` values with a short description of what each group is meant to test (insufficient players, single lobby, single lobby with overflow subs/unplaced, two lobbies with subs, fairness warnings, balanced vs ranked modes, etc.).
+
+Optional flags via direct CLI (not exposed in Makefile):
+
+```bash
+cd backend && go run ./cmd/scripts/matchmaking all --host=YourDiscordName
+cd backend && go run ./cmd/scripts/matchmaking all --host=YourDiscordName --json
+```
+
+Re-running is idempotent: existing scenario groups are skipped. To re-seed from scratch:
+
+```bash
+make seed-matchmaking-cleanup
+make seed-matchmaking-all HOST=YourDiscordName
+```
 
 ---
 

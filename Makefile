@@ -1,4 +1,4 @@
-.PHONY: up down build logs ps clean dev seed-users seed-events seed-registrations seed-all
+.PHONY: up down build logs ps clean dev seed-users seed-events seed-registrations seed-all seed-matchmaking-all seed-matchmaking-cleanup
 
 ## ── Production ────────────────────────────────────────────────
 
@@ -113,6 +113,14 @@ seed-registrations:
 
 # Run all local development seeders in required order
 seed-all: seed-users seed-events seed-registrations
+
+# Seed matchmaking test event groups for manual lock-in testing
+seed-matchmaking-all:
+	cd backend && go run ./cmd/scripts/matchmaking all --host=$(HOST)
+
+# Remove all matchmaking test data created by seed-matchmaking-all
+seed-matchmaking-cleanup:
+	cd backend && go run ./cmd/scripts/matchmaking cleanup
 	
 # Generate new secure keys
 gen-keys:
