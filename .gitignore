@@ -10,6 +10,7 @@ backend/internal/coverage.out
 
 # Docker
 .env
+docker-compose.*local.yml
 
 # OS
 .DS_Store
