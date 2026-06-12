@@ -151,7 +151,7 @@ tls-check:
 
 # Test the code (requires local Go install)
 test:
-	cd backend/internal && go test ./...
+	cd backend/internal && go test -p 1 ./...
 
 # Test the code in Docker (no local Go install required)
 test-docker:

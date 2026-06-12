@@ -25,7 +25,12 @@ services:
     environment:
       CGO_ENABLED: "0"
       DATABASE_URL_TESTS: postgres://testuser:testpass@db-test:5432/matchmaker_test
-    command: go test -mod=vendor ./internal/...
+      # The defaults below are test-only stand-ins so CI runs without a .env file.
+      COOKIE_HASH_KEY: ${COOKIE_HASH_KEY:-0101010101010101010101010101010101010101010101010101010101010101}
+      COOKIE_ENCRYPT_KEY: ${COOKIE_ENCRYPT_KEY:-0202020202020202020202020202020202020202020202020202020202020202}
+      JWT_SECRET: ${JWT_SECRET:-0303030303030303030303030303030303030303030303030303030303030303}
+      DISCORD_API_URL: ${DISCORD_API_URL:-https://discord.com/api}
+    command: go test -p 1 -mod=vendor ./internal/...
     depends_on:
       db-test:
         condition: service_healthy
