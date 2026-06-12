@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/hex"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
@@ -30,6 +32,26 @@ func fatalExit(msg string, args ...any) {
 	os.Exit(1)
 }
 
+// runHealthCheck performs an in-process HTTP probe of the local /health endpoint
+// and exits 0 on success or 1 on failure.
+func runHealthCheck() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/health")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+}
+
 // configureLogger sets process-wide slog defaults from GIN_MODE.
 // release mode uses production-safe verbosity; all other modes use dev/test verbosity.
 func configureLogger(ginEnv string) {
@@ -43,6 +65,12 @@ func configureLogger(ginEnv string) {
 }
 
 func main() {
+	// Lightweight health probe used by the container HEALTHCHECK
+	if len(os.Args) > 1 && os.Args[1] == "health" {
+		runHealthCheck()
+		return
+	}
+
 	ginEnv := os.Getenv("GIN_MODE")
 	configureLogger(ginEnv)
 
