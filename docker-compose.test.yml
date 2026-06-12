@@ -1,3 +1,4 @@
+# Ephemeral Postgres for the Go test suite.
 services:
   db-test:
     image: postgres:18-alpine

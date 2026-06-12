@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-matchmaker}
+name: matchmaker
 
 # Cap per-container log size so logs can't fill the host disk
 x-logging: &default-logging
@@ -28,7 +28,7 @@ services:
     container_name: db
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - ./.env
     volumes:
       - postgres_data:/var/lib/postgresql
     networks:
@@ -52,7 +52,16 @@ services:
     container_name: api
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - ./.env
+    environment:
+      PORT: ${API_PORT:-8080}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL_TESTS: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${DB_PORT:-5432}/${POSTGRES_DB}
+      # Public URLs derived from DOMAIN — override by setting the var in .env
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
+      FRONTEND_URL: ${FRONTEND_URL:-https://${DOMAIN:-matchmaker.localhost}}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-https://${DOMAIN:-matchmaker.localhost}/api/auth/discord_redirect}
+      DISCORD_API_URL: ${DISCORD_API_URL:-https://discord.com/api}
     depends_on:
       db:
         condition: service_healthy
@@ -75,13 +84,18 @@ services:
       args:
         NODE_VERSION: ${NODE_VERSION:-20}
         APP_PORT: ${FRONTEND_PORT:-3000}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://matchmaker.localhost/api}
-        NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-matchmaker.localhost}
-        NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: ${NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT:-604800}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN:-matchmaker.localhost}/api}
+        NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
+        NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: ${REFRESH_EXPIRE_LIMIT:-604800}
     container_name: frontend
     restart: unless-stopped
     env_file:
-      - ./frontend/.env
+      - ./.env
+    environment:
+      # Derived from DOMAIN / REFRESH_EXPIRE_LIMIT — override by setting in .env
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN:-matchmaker.localhost}/api}
+      NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
+      NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: ${REFRESH_EXPIRE_LIMIT:-604800}
     depends_on:
       api:
         condition: service_healthy
