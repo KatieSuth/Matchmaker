@@ -53,6 +53,8 @@ It's still very much in the early phases but is intended to one day support Valo
 
 For a local setup, create your `.env` files by copying the existing `.env.example` files in the `backend/` and `frontend/` directories, so that you have `backend/.env` and `frontend/.env`. See below for a list of the expected environment variables in each. You can use `make gen-keys` to generate JWT_SECRET, COOKIE_HASH_KEY, and COOKIE_ENCRYPT_KEY values; alternatively, you can use `openssl rand -hex 32`. Your PostgreSQL database will be initialized with whatever values you've provided, so ensure you've replaced each value (including the ones in the Database URLs) with the value you want it to be and that you've picked a strong password.
 
+There is also a root `.env.example`. Copying it to a root `.env` is optional for local development (sensible defaults are baked into the Compose files), but it lets you override Compose-level settings such as image registry/namespace/tag, build versions (Go, Node, Postgres, Caddy), exposed ports, the Docker network subnet, and the frontend public build args. Set `IMAGE` (the base repository) and `VERSION` here (or via `make` variables) before publishing images to Docker Hub.
+
 Update the URLs in the `.env` files. By default your domain is expected to be `matchmaker.localhost` but this can be changed in the Caddyfile.
 
 You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the `backend/.env file`. Add your redirect URI; by default, it should be `https://matchmaker.localhost/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
@@ -76,7 +78,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 ```bash
 # 3a. Copy the CA cert out of the caddy_data volume
-docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+docker exec caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
 # or run
 make export-ca
 ```
@@ -185,10 +187,12 @@ curl https://matchmaker.localhost/api/health
 
 ```bash
 make prod               # Build & start production containers (detached)
-make prod-no-cache      # Build production containers without cache and start
+make prod-no-cache      # Build production containers without cache and start (detached)
 make prod-build         # Build production images without starting
 make prod-logs          # Stream logs from all production containers
 make prod-ps            # Show running production containers
+make prod-down          # Stop and remove production containers
+make prod-down-v        # Stop and remove production containers and volumes
 
 make dev                # Start development containers with hot reload
 make dev-no-cache       # Build development containers without cache and start with hot reload
@@ -198,6 +202,13 @@ make dev-clean          # Remove development containers, images, and volumes
 make dev-build          # Build development containers without running
 make dev-logs           # Stream logs from all development containers
 make dev-ps             # Show running development containers
+
+make build              # Build production images tagged for the configured registry
+make push               # Push production images to the registry (run `docker login` first)
+make publish            # Build then push production images in one step
+make pull               # Pull the published images from the registry
+make build-multi        # Build multi-arch images (linux/amd64 + linux/arm64) into the build cache
+make push-multi         # Build and push the multi-arch manifest to the registry
 
 make health             # Quick API health check
 make test               # Run Go tests
@@ -215,6 +226,29 @@ make gen-keys           # Generate new JWT, Cookie Hash, and Cookie Encrypt keys
 ```
 
 Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.
+
+### Publishing images to Docker Hub
+
+The `api` and `frontend` services are tagged as `${IMAGE}-api:${VERSION}` and `${IMAGE}-frontend:${VERSION}`, where `IMAGE` is the base repository (registry/namespace/name) and `VERSION` is the tag (defaults to `latest`). Set those in the root `.env` or pass them as `make` variables, log in, then publish:
+
+```bash
+docker login
+make publish IMAGE=youruser/matchmaker VERSION=v1.0.0
+```
+
+`make publish` runs `make build` (production images via the production Dockerfiles) followed by `make push`. Use `make pull` on the target host to fetch the published images.
+
+#### Multi-architecture images
+
+To publish images that run on both `linux/amd64` and `linux/arm64` (e.g. Intel/AMD servers and ARM hosts like Apple Silicon or Raspberry Pi), use the Buildx-based targets backed by `docker-bake.hcl`. Create a builder once, then push:
+
+```bash
+docker buildx create --name multiarch --driver docker-container --use --bootstrap
+docker login
+make push-multi IMAGE=youruser/matchmaker VERSION=v1.0.0
+```
+
+`make push-multi` builds both architectures and pushes a single multi-arch manifest in one step (multi-platform images can't be loaded into the local Docker daemon, so use `make build-multi` only to warm the build cache). The platforms are defined in `docker-bake.hcl`, which reuses the build contexts, image names, and build args from the Compose files.
 
 ### Matchmaking test data
 

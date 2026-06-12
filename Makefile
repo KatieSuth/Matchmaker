@@ -1,6 +1,6 @@
 .PHONY: prod prod-no-cache prod-build prod-logs prod-ps prod-down prod-down-v \
         dev dev-no-cache dev-build dev-logs dev-ps dev-down dev-down-v dev-clean \
-        build push publish pull \
+        build push publish pull build-multi push-multi \
         health export-ca fix-certs tls-check test test-coverage \
         seed-users seed-events seed-registrations seed-all \
         seed-matchmaking-all seed-matchmaking-cleanup gen-keys
@@ -21,6 +21,10 @@ export COMPOSE_PROJECT_NAME := $(PROJECT)
 COMPOSE := docker compose
 DEV     := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 PROD    := $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml
+BAKE    := docker buildx bake -f docker-compose.yml -f docker-compose.prod.yml -f docker-bake.hcl
+
+# Caddy's container name
+CADDY   := caddy
 
 ## ── Production ────────────────────────────────────────────────
 
@@ -112,6 +116,17 @@ publish: build push
 pull:
 	$(PROD) pull api frontend
 
+# Build multi-arch images (linux/amd64 + linux/arm64) into the build cache.
+# Multi-platform builds can't be loaded into the local daemon — use push-multi
+# to publish. Requires a buildx builder with QEMU emulation, created once via:
+#   docker buildx create --name multiarch --driver docker-container --use --bootstrap
+build-multi:
+	$(BAKE)
+
+# Build and push the multi-arch manifest to the registry (run `docker login` first)
+push-multi:
+	$(BAKE) --push
+
 
 ## ── Utilities ─────────────────────────────────────────────────
 
@@ -121,13 +136,13 @@ health:
 
 # Export Caddy's local root CA for browser trust (see README Firefox steps)
 export-ca:
-	docker exec $(PROJECT)-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+	docker exec $(CADDY) cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
 	@echo "Wrote caddy-root.crt — import into Firefox (Authorities tab) if not already trusted"
 
 # Recover from expired/stuck Caddy TLS certs (stale lock or deleted cert files)
 fix-certs:
-	-docker exec $(PROJECT)-caddy rm -f /data/caddy/locks/issue_cert_$(DOMAIN).lock
-	docker restart $(PROJECT)-caddy
+	-docker exec $(CADDY) rm -f /data/caddy/locks/issue_cert_$(DOMAIN).lock
+	docker restart $(CADDY)
 	@bash scripts/tls-check.sh --wait $(DOMAIN)
 
 # Check TLS certificate served by Caddy
