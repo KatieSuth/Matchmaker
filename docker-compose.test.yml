@@ -1,16 +1,31 @@
-# Ephemeral Postgres for the Go test suite.
+# Ephemeral Postgres + Go test runner for the test suite.
+# Usage: docker compose -f docker-compose.test.yml run --rm test
+# Usage: make test-docker
 services:
   db-test:
-    image: postgres:18-alpine
+    image: postgres:${POSTGRES_VERSION:-18-alpine}
     container_name: matchmaker-db-test
     environment:
-      - POSTGRES_USER=testuser
-      - POSTGRES_PASSWORD=testpass
-      - POSTGRES_DB=matchmaker_test
-    ports:
-      - "${DB_PORT:-5432}:5432"
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: matchmaker_test
+    volumes:
+      - /var/lib/postgresql  # anonymous volume, removed by `down -v`
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U testuser -d matchmaker_test"]
       interval: 3s
       timeout: 3s
       retries: 5
+
+  test:
+    image: golang:${GO_VERSION:-1.25}-alpine
+    working_dir: /app
+    volumes:
+      - ./backend:/app:ro
+    environment:
+      CGO_ENABLED: "0"
+      DATABASE_URL_TESTS: postgres://testuser:testpass@db-test:5432/matchmaker_test
+    command: go test -mod=vendor ./internal/...
+    depends_on:
+      db-test:
+        condition: service_healthy

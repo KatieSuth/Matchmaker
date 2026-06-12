@@ -1,7 +1,7 @@
 .PHONY: prod prod-no-cache prod-build prod-logs prod-ps prod-down prod-down-v \
         dev dev-no-cache dev-build dev-logs dev-ps dev-down dev-down-v dev-clean \
         build push publish pull build-multi push-multi \
-        health export-ca fix-certs tls-check test test-coverage \
+        health export-ca fix-certs tls-check test test-coverage test-docker \
         seed-users seed-events seed-registrations seed-all \
         seed-matchmaking-all seed-matchmaking-cleanup gen-keys
 
@@ -149,9 +149,14 @@ fix-certs:
 tls-check:
 	@bash scripts/tls-check.sh $(DOMAIN)
 
-# Test the code
+# Test the code (requires local Go install)
 test:
 	cd backend/internal && go test ./...
+
+# Test the code in Docker (no local Go install required)
+test-docker:
+	docker compose -f docker-compose.test.yml run --rm test
+	docker compose -f docker-compose.test.yml down -v
 
 # Test the code and output coverage percentage, excluding generated files (./backend/internal/db/*, ./backend/internal/test_util/*, and ./backend/internal/store/mock_store.go)
 test-coverage:
