@@ -1,29 +1,26 @@
+# Development override: hot-reload images, source bind mounts, and directly exposed ports
 services:
   api:
+    image: ${IMAGE:-matchmaker}-api:${VERSION:-latest}-dev
     build:
-      context: ./backend
       dockerfile: Dockerfile.dev
-    command: ["air", "-c", ".air.toml"]
     environment:
       GIN_MODE: debug
     volumes:
       - ./backend:/app
     ports:
-      - "8080:8080"   # expose directly for debugging without Caddy
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
 
   frontend:
+    image: ${IMAGE:-matchmaker}-frontend:${VERSION:-latest}-dev
     build:
-      context: ./frontend
       dockerfile: Dockerfile.dev
-    command: ["sh", "-c", "rm -rf .next && npm run dev"]
-    env_file:
-      ./frontend/.env
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "3000:3000"   # expose directly for debugging without Caddy
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
 
   db:
     ports:
-      - "5432:5432"   # expose for local DB tools
+      - "${DB_PORT:-5432}:5432"   # expose for local DB tools

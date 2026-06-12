@@ -1,91 +1,138 @@
-.PHONY: up down build logs ps clean dev seed-users seed-events seed-registrations seed-all seed-matchmaking-all seed-matchmaking-cleanup
+.PHONY: prod prod-no-cache prod-build prod-logs prod-ps prod-down prod-down-v \
+        dev dev-no-cache dev-build dev-logs dev-ps dev-down dev-down-v dev-clean \
+        build push publish pull \
+        health export-ca fix-certs tls-check test test-coverage \
+        seed-users seed-events seed-registrations seed-all \
+        seed-matchmaking-all seed-matchmaking-cleanup gen-keys
+
+## ── Configuration ─────────────────────────────────────────────
+# IMAGE is the base repository (registry/namespace/name); each service appends
+# its own suffix, e.g. $(IMAGE)-api and $(IMAGE)-frontend.
+# Override on the command line, e.g. `make publish IMAGE=youruser/matchmaker VERSION=v1.2.3`
+IMAGE   ?= matchmaker
+VERSION ?= latest
+PROJECT ?= matchmaker
+DOMAIN  ?= matchmaker.localhost
+
+# Exported so Docker Compose picks them up during interpolation
+export IMAGE VERSION
+export COMPOSE_PROJECT_NAME := $(PROJECT)
+
+COMPOSE := docker compose
+DEV     := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
+PROD    := $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml
 
 ## ── Production ────────────────────────────────────────────────
 
-# Build images and start all services
+# Build images and start all services (detached)
 prod:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-	@echo "\n✅  Frontend → https://localhost:3000"
-	@echo "✅  API      → https://localhost:8080\n"
-	
+	$(PROD) up --build -d
+	@echo "\nApp → https://$(DOMAIN)\n"
+
+# Build without cache and start (detached)
 prod-no-cache:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache --pull
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up
-	@echo "\n✅  Frontend → https://localhost:3000"
-	@echo "✅  API      → https://localhost:8080\n"
+	$(PROD) build --no-cache --pull
+	$(PROD) up -d
+	@echo "\nApp → https://$(DOMAIN)\n"
 
 # Build images without starting
 prod-build:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+	$(PROD) build
 
 # Stream logs from all services
 prod-logs:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+	$(PROD) logs -f
 
 # Show running containers
 prod-ps:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+	$(PROD) ps
+
+# Stop and remove production containers
+prod-down:
+	$(PROD) down
+
+# Stop and remove production containers and volumes
+prod-down-v:
+	$(PROD) down -v
 
 
 ## ── Development (hot reload) ──────────────────────────────────
 
 # Start dev environment
 dev:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-	@echo "\n🔥  Dev mode — hot reload active"
-	@echo "    Frontend → https://matchmaker.localhost"
-	@echo "    API      → https://matchmaker.localhost/api\n"
-	
+	$(DEV) up --build
+	@echo "\nDev mode — hot reload active"
+	@echo "    App → https://$(DOMAIN)\n"
+
 # Start dev environment without cache
 dev-no-cache:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache --pull
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-	@echo "\n🔥  Dev mode — hot reload active"
-	@echo "    Frontend → https://matchmaker.localhost"
-	@echo "    API      → https://matchmaker.localhost/api\n"
-
-# Stop and remove dev containers
-dev-down:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
-
-# Stop and remove dev containers and volumes
-dev-down-v:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+	$(DEV) build --no-cache --pull
+	$(DEV) up
+	@echo "\nDev mode — hot reload active"
+	@echo "    App → https://$(DOMAIN)\n"
 
 # Build images without starting
 dev-build:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+	$(DEV) build
 
 # Stream logs from all services
 dev-logs:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+	$(DEV) logs -f
 
 # Show running containers
 dev-ps:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml ps
+	$(DEV) ps
+
+# Stop and remove dev containers
+dev-down:
+	$(DEV) down
+
+# Stop and remove dev containers and volumes
+dev-down-v:
+	$(DEV) down -v
 
 # Remove containers, images, and volumes
 dev-clean:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down --rmi all --volumes --remove-orphans
+	$(DEV) down --rmi all --volumes --remove-orphans
+
+
+## ── Publishing (Docker Hub) ───────────────────────────────────
+
+# Build production images tagged $(IMAGE)-<service>:$(VERSION)
+build: prod-build
+
+# Push production images (run `docker login` first)
+push:
+	$(PROD) push api frontend
+
+# Build then push in one step
+publish: build push
+
+# Pull the published images from the registry
+pull:
+	$(PROD) pull api frontend
+
+
+## ── Utilities ─────────────────────────────────────────────────
 
 # Check API health
 health:
-	@curl -sk https://matchmaker.localhost/api/health | python3 -m json.tool
+	@curl -sk https://$(DOMAIN)/api/health | python3 -m json.tool
 
 # Export Caddy's local root CA for browser trust (see README Firefox steps)
 export-ca:
-	docker exec matchmaker-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
-	@echo "✅  Wrote caddy-root.crt — import into Firefox (Authorities tab) if not already trusted"
+	docker exec $(PROJECT)-caddy cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
+	@echo "Wrote caddy-root.crt — import into Firefox (Authorities tab) if not already trusted"
 
 # Recover from expired/stuck Caddy TLS certs (stale lock or deleted cert files)
 fix-certs:
-	-docker exec matchmaker-caddy rm -f /data/caddy/locks/issue_cert_matchmaker.localhost.lock
-	docker restart matchmaker-caddy
-	@bash scripts/tls-check.sh --wait matchmaker.localhost
+	-docker exec $(PROJECT)-caddy rm -f /data/caddy/locks/issue_cert_$(DOMAIN).lock
+	docker restart $(PROJECT)-caddy
+	@bash scripts/tls-check.sh --wait $(DOMAIN)
 
 # Check TLS certificate served by Caddy
 tls-check:
-	@bash scripts/tls-check.sh matchmaker.localhost
+	@bash scripts/tls-check.sh $(DOMAIN)
 
 # Test the code
 test:

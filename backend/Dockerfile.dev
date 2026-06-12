@@ -1,6 +1,14 @@
+# syntax=docker/dockerfile:1
+
+ARG GO_VERSION=1.25
+ARG APP_PORT=8080
+
 FROM cosmtrek/air:latest AS air
 
-FROM golang:1.25-alpine
+FROM golang:${GO_VERSION}-alpine
+
+ARG APP_PORT
+
 WORKDIR /app
 
 # Copy the air binary from its official image — avoids needing network at build time
@@ -10,5 +18,5 @@ COPY go.mod go.sum* ./
 COPY vendor/ ./vendor/
 
 COPY . .
-EXPOSE 8080
+EXPOSE ${APP_PORT}
 CMD ["air", "-c", ".air.toml"]

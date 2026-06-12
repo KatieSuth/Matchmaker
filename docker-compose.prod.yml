@@ -1,8 +1,5 @@
 services:
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     environment:
       GIN_MODE: release
 
