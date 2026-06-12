@@ -49,7 +49,7 @@ func runMigrations(pool *pgxpool.Pool) {
 func LoadEnv(t *testing.T) {
 	t.Helper()
 	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "../..") // goes to backend/
+	dir := filepath.Join(filepath.Dir(filename), "../../..") // goes to repo root
 	_ = godotenv.Load(filepath.Join(dir, ".env"))
 }
 
@@ -90,7 +90,7 @@ func WithTestTx(t *testing.T, fn func(q *db.Queries, s *store.PostgresStore)) {
 	LoadEnv(t)
 	dsn := os.Getenv("DATABASE_URL_TESTS")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL is required")
+		log.Fatal("DATABASE_URL_TESTS is required")
 	}
 
 	pool, err := pgxpool.New(context.Background(), dsn)
