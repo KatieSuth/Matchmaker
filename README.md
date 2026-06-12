@@ -55,9 +55,9 @@ For a local setup, create your `.env` file by copying the existing `.env.example
 
 Updating the root `.env` is essential for local development and Docker runs alike. Defaults for Docker Compose are provided but can be overridden here.
 
-Update the URLs in the `.env` files. By default your domain is expected to be `matchmaker.localhost` but this can be changed in the Caddyfile.
+Update the URLs in the `.env` files. By default your domain is expected to be `matchmaker.localhost`, but this can be changed by setting the `DOMAIN` variable in the root `.env` file. Caddy and the derived URLs pick up that value automatically.
 
-You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the root `.env` file. Add your redirect URI; by default, it should be `https://matchmaker.localhost/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
+You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the root `.env` file. Add your redirect URI; it should be `https://${DOMAIN}/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
 
 ### Development (hot reload)
 
@@ -112,7 +112,7 @@ sudo update-ca-certificates
 ```
 1. In Firefox, go to about:config
 2. Search for network.dns.localDomains
-3. Set or add the value: matchmaker.localhost
+3. Set or add the value: your `${DOMAIN}`
 ```
 
 #### TLS troubleshooting (Firefox "security issue" / expired cert)
@@ -131,7 +131,7 @@ If Firefox still warns after `make fix-certs`, confirm `caddy-root.crt` is impor
 
 ## API Reference
 
-In a developer environment setup, the API is available at https://matchmaker.localhost/api/
+In a developer environment setup, the API is available at `https://${DOMAIN}/api/`
 
 The available paths are documented using the OpenAPI specification. See [openapi.yaml](https://github.com/KatieSuth/Matchmaker/blob/main/backend/openapi.yaml)
 
@@ -139,7 +139,7 @@ The available paths are documented using the OpenAPI specification. See [openapi
 
 ```bash
 # Health
-curl https://matchmaker.localhost/api/health
+curl https://${DOMAIN}/api/health
 ```
 
 ---
@@ -150,8 +150,8 @@ curl https://matchmaker.localhost/api/health
 
 | Variable                               | Default                             | Description                                                                       |
 |----------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
-| `NEXT_PUBLIC_API_URL`                  | `https://matchmaker.localhost/api`  | Gin API base URL                                                                  |
-| `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `matchmaker.localhost`              | Frontend host or origin (`allowedDevOrigins`, `auth_session` cookie `Domain`)     |
+| `NEXT_PUBLIC_API_URL`                  | `https://${DOMAIN}/api`             | Gin API base URL                                                                  |
+| `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `${DOMAIN}`                         | Frontend host or origin (`allowedDevOrigins`, `auth_session` cookie `Domain`)     |
 | `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 
@@ -162,14 +162,15 @@ curl https://matchmaker.localhost/api/health
 |---------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------|
 | `COOKIE_HASH_KEY`               | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                                 |
 | `COOKIE_ENCRYPT_KEY`            | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login                             |
-| `COOKIE_DOMAIN`                 | `matchmaker.localhost`                                   | The domain used for setting cookies on login                                          |
+| `COOKIE_DOMAIN`                 | `${DOMAIN}`                                              | The domain used for setting cookies on login                                          |
 | `DATABASE_URL`                  | required, no default                                     | URL to connect to the DB                                                              |
 | `DATABASE_URL_TESTS`            | no default                                               | URL to connect to the DB for testing                                                  |
 | `DISCORD_CLIENT_ID`             | required, no default                                     | Client ID provided by Discord developer portal app                                    |
 | `DISCORD_CLIENT_SECRET`         | required, no default                                     | Client Secret provided by Discord developer portal app                                |
-| `DISCORD_REDIRECT_URI`          | `https://matchmaker.localhost/api/auth/discord_redirect` | Discord redirect URI for OAuth2, configured in developer portal                       |
+| `DISCORD_REDIRECT_URI`          | `https://${DOMAIN}/api/auth/discord_redirect`            | Discord redirect URI for OAuth2, configured in developer portal                       |
 | `DISCORD_API_URL`               | `https://discord.com/api`                                | Discord API URL (for test flexibility)                                                |
-| `FRONTEND_URL`                  | `https://matchmaker.localhost`                           | CORS allowed origin                                                                   |
+| `DOMAIN`                        | `matchmaker.localhost`                                   | Public domain served by Caddy; the other public URLs above default to this value      |
+| `FRONTEND_URL`                  | `https://${DOMAIN}`                                      | CORS allowed origin                                                                   |
 | `GIN_MODE`                      | `release`                                                | `debug` or `release`                                                                  |
 | `JWT_SECRET`                    | required, no default                                     | A key for signing the JWT access tokens                                               |
 | `PORT`                          | `8080`                                                   | Server port                                                                           |
