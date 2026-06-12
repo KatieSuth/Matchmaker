@@ -1,4 +1,4 @@
-matchmaker.localhost {
+{env.DOMAIN} {
     # Backend
     handle /api/* {
         uri strip_prefix /api
