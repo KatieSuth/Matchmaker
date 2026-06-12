@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
-	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-contrib/cors"
@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
 
 	"golang.org/x/oauth2"
@@ -73,6 +74,12 @@ func main() {
 
 	ginEnv := os.Getenv("GIN_MODE")
 	configureLogger(ginEnv)
+
+	// Best-effort local env loading for development convenience.
+	// Existing process environment variables still take precedence.
+	_ = godotenv.Load()
+	_ = godotenv.Load("../.env")
+	_ = godotenv.Load("../../.env")
 
 	switch ginEnv {
 	case gin.ReleaseMode:

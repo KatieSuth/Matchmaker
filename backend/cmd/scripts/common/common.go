@@ -21,7 +21,9 @@ func NewSeedContext() *SeedContext {
 	// Best-effort local env loading for script convenience.
 	// Existing process environment variables still take precedence.
 	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../.env")
 	_ = godotenv.Load(".env.local")
+	_ = godotenv.Load("../.env.local")
 
 	primaryDSN := os.Getenv("DATABASE_URL")
 	fallbackDSN := os.Getenv("DATABASE_URL_TESTS")
