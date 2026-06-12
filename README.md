@@ -51,13 +51,13 @@ It's still very much in the early phases but is intended to one day support Valo
 
 ### Environment Setup
 
-For a local setup, create your `.env` files by copying the existing `.env.example` files in the `backend/` and `frontend/` directories, so that you have `backend/.env` and `frontend/.env`. See below for a list of the expected environment variables in each. You can use `make gen-keys` to generate JWT_SECRET, COOKIE_HASH_KEY, and COOKIE_ENCRYPT_KEY values; alternatively, you can use `openssl rand -hex 32`. Your PostgreSQL database will be initialized with whatever values you've provided, so ensure you've replaced each value (including the ones in the Database URLs) with the value you want it to be and that you've picked a strong password.
+For a local setup, create your `.env` file by copying the existing `.env.example` in the repository root to `.env`. See below for a list of the expected environment variables. You can use `make gen-keys` to generate JWT_SECRET, COOKIE_HASH_KEY, and COOKIE_ENCRYPT_KEY values; alternatively, you can use `openssl rand -hex 32`. Your PostgreSQL database will be initialized with whatever values you've provided, so ensure you've replaced each value (including the ones in the Database URLs) with the value you want it to be and that you've picked a strong password.
 
-There is also a root `.env.example`. Copying it to a root `.env` is optional for local development (sensible defaults are baked into the Compose files), but it lets you override Compose-level settings such as image registry/namespace/tag, build versions (Go, Node, Postgres, Caddy), exposed ports, the Docker network subnet, and the frontend public build args. Set `IMAGE` (the base repository) and `VERSION` here (or via `make` variables) before publishing images to Docker Hub.
+Updating the root `.env` is essential for local development and Docker runs alike. Defaults for Docker Compose are provided but can be overridden here.
 
 Update the URLs in the `.env` files. By default your domain is expected to be `matchmaker.localhost` but this can be changed in the Caddyfile.
 
-You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the `backend/.env file`. Add your redirect URI; by default, it should be `https://matchmaker.localhost/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
+You will also need to create a Discord application: https://discord.com/developers/applications. Once you've created it, navigate to the OAuth2 tab and create/copy the Client ID and Secret into the appropriate places in the root `.env` file. Add your redirect URI; by default, it should be `https://matchmaker.localhost/api/auth/discord_redirect`. You do not need to generate an OAuth2 URL; the application fills in the scopes it needs in `backend/cmd/server/main.go` (it only uses identify and guilds).
 
 ### Development (hot reload)
 
@@ -156,7 +156,7 @@ curl https://matchmaker.localhost/api/health
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 
 
-### Backend (`backend/.env.example`)
+### Environment Variables (`.env.example`)
 
 | Variable                        | Default                                                  | Description                                                                           |
 |---------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------|
