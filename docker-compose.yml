@@ -68,7 +68,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:${API_PORT:-8080}/health || exit 1"]
+      test: ["CMD", "/server", "health"]
       interval: 10s
       timeout: 5s
       retries: 5
