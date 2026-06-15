@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: testuser
       POSTGRES_PASSWORD: testpass
       POSTGRES_DB: matchmaker_test
+    ports:
+      - "54321:5432"
     volumes:
       - /var/lib/postgresql  # anonymous volume, removed by `down -v`
     healthcheck:

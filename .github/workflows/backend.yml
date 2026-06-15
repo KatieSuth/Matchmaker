@@ -25,15 +25,13 @@ jobs:
       - name: Start Test Database
         working-directory: .
         run: |
-          docker compose -f docker-compose.test.yml up -d
-          # Give Postgres a few seconds to initialize
-          sleep 5
+          docker compose -f docker-compose.test.yml up -d --wait db-test
 
       - name: Run Go Tests with Filtered Coverage
         working-directory: ./backend/internal
         env:
           # Database link for your test_util package 
-          DATABASE_URL_TESTS: "postgres://testuser:testpass@localhost:5432/matchmaker_test?sslmode=disable"
+          DATABASE_URL_TESTS: "postgres://testuser:testpass@localhost:54321/matchmaker_test?sslmode=disable"
           
           # Server Config 
           PORT: 8080
@@ -51,7 +49,7 @@ jobs:
           FRONTEND_URL: "http://localhost:3000"
         run: |
           PKGS=$(go list ./... | grep -vE "db|test_util")
-          go test -v -coverprofile=coverage.out $PKGS
+          go test -p 1 -v -coverprofile=coverage.out $PKGS
           sed -i '/mock_store.go/d' coverage.out
           PCT=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "COVERAGE_PCT=$PCT" >> $GITHUB_ENV
