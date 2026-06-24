@@ -1,14 +1,59 @@
+# Production override: hardened runtime (non-root, no privilege escalation,
+# read-only root filesystem) plus resource limits to prevent exhaustion.
 services:
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     environment:
       GIN_MODE: release
+    # scratch image has no shell/wget — probe via the server binary instead
+    healthcheck:
+      test: ["CMD", "/server", "health"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    env_file:
-      ./frontend/.env
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    # Next.js writes the runtime image/render cache and temp files
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  db:
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  caddy:
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 32M

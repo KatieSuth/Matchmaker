@@ -1,5 +1,20 @@
+# Version control & docs
+.git
+.gitignore
+*.md
+
+# Dependencies & build output (reinstalled/rebuilt in the image)
 node_modules
 .next
-.git
-*.md
-.env*.local
+
+# Secrets & local env (provided at runtime via env_file)
+.env
+.env.*
+
+# Docker metadata (not needed inside the build context)
+Dockerfile*
+.dockerignore
+
+# IDE / editor metadata
+.vscode/
+.idea/

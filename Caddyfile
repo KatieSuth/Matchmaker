@@ -1,12 +1,12 @@
-matchmaker.localhost {
+{$DOMAIN} {
     # Backend
     handle /api/* {
         uri strip_prefix /api
-        reverse_proxy api:8080
+        reverse_proxy api:{$API_PORT}
     }
 
     # Frontend
     handle {
-        reverse_proxy frontend:3000
+        reverse_proxy frontend:{$FRONTEND_PORT}
     }
 }

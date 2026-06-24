@@ -7,12 +7,14 @@ import (
 	"context"
 	"encoding/hex"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
-	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-contrib/cors"
@@ -20,6 +22,7 @@ import (
 	"github.com/gorilla/securecookie"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
 
 	"golang.org/x/oauth2"
@@ -28,6 +31,26 @@ import (
 func fatalExit(msg string, args ...any) {
 	slog.Error(msg, args...)
 	os.Exit(1)
+}
+
+// runHealthCheck performs an in-process HTTP probe of the local /health endpoint
+// and exits 0 on success or 1 on failure.
+func runHealthCheck() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/health")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
 }
 
 // configureLogger sets process-wide slog defaults from GIN_MODE.
@@ -43,8 +66,20 @@ func configureLogger(ginEnv string) {
 }
 
 func main() {
+	// Lightweight health probe used by the container HEALTHCHECK
+	if len(os.Args) > 1 && os.Args[1] == "health" {
+		runHealthCheck()
+		return
+	}
+
 	ginEnv := os.Getenv("GIN_MODE")
 	configureLogger(ginEnv)
+
+	// Best-effort local env loading for development convenience.
+	// Existing process environment variables still take precedence.
+	_ = godotenv.Load()
+	_ = godotenv.Load("../.env")
+	_ = godotenv.Load("../../.env")
 
 	switch ginEnv {
 	case gin.ReleaseMode:

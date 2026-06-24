@@ -1,3 +1,25 @@
+# Version control & docs
 .git
+.gitignore
 *.md
+
+# Secrets & local env (provided at runtime via env_file)
+.env
+.env.*
+
+# Docker metadata (not needed inside the build context)
+Dockerfile*
+.dockerignore
+.air.toml
+
+# Hot-reload / build scratch space
 tmp/
+
+# Compiled binaries, test binaries & coverage artifacts
+*.test
+*.cover
+*.out
+
+# IDE / editor metadata
+.vscode/
+.idea/
