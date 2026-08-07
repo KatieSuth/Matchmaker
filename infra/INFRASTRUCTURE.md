@@ -10,9 +10,7 @@ and how to **operate** / **integrate** with it.
 
 **How-to deploy** (accounts, apply, images): [README.md](README.md).
 
-This documentation is intended for a **public** repository: architecture and threat model are
-fine to commit. Never commit `terraform.tfvars`, `backend.hcl`, API tokens, DSNs, passwords,
-or environment-specific `*.run.app` URLs.
+Never commit `terraform.tfvars`, `backend.hcl`, API tokens, DSNs, passwords, or environment-specific `*.run.app` URLs.
 
 Local development stays on Docker Compose (Caddy + Postgres). Production replaces that edge
 and database with managed services; the same API and frontend container images are reused.
@@ -84,7 +82,7 @@ Reconsider those when you need multi-env CI deploy, stronger edge WAF, or SQL HA
 
 ## Operator vs automation boundary
 
-**You create manually (never automated by this repo):**
+**Created manually (never automated by this repo):**
 
 - Google Cloud account, billing account, GCP project
 - Cloudflare account/zone (or access to an existing one), API token
@@ -190,7 +188,7 @@ Common labels: `app=matchmaker`, `env=prod`, `managed_by=terraform`.
 ### Runtime (Terraform-managed)
 
 | Identity                        | Roles                                                         | Why                                                         |
-|---------------------------- ----|---------------------------------------------------------------|-------------------------------------------------------------|
+|---------------------------------|---------------------------------------------------------------|-------------------------------------------------------------|
 | `matchmaker-api` SA             | `roles/cloudsql.client`, `roles/secretmanager.secretAccessor` | Connect to SQL; read secrets                                |
 | `matchmaker-frontend` SA        | `roles/secretmanager.secretAccessor`                          | Read origin-verify / optional Sentry DSN                    |
 | `allUsers` on both Run services | `roles/run.invoker`                                           | Public HTTPS invoke (Cloudflare is not identity-aware here) |
