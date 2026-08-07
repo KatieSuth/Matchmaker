@@ -9,7 +9,7 @@
 
 Matchmaker is a free, open-source web application for organizing custom competitive games over Discord. It does this by allowing a game organizer to configure events that players can sign up to join, and it will ask players to provide their competitive rank (to be seen by the organizer but by default hidden to other players for privacy--can be configured in preferences). Once the organizer is ready, they can click a button to create 2 teams of the configured player count and sort players into those teams or a substitute pool as fairly as possibly based on their provided competitive ranks. It will also allow the organizer to make manual edits to the teams as needed.
 
-It's still very much in the early phases but is intended to one day support Valorant and League of Legends, along with the ability for users to create their own custom settings for non-supported games or modify supported games (for example, 3v3 games instead of 5v5 games). See the roadmap for more information on where things are at & where we're going.
+It's now available live at https://matchmaker.games and currently supports Valorant and League of Legends. Eventually, users will have the ability to create their own custom settings for non-supported games or modify supported games (for example, 3v3 games instead of 5v5 games). See the roadmap for more information on where things are at & where we're going.
 
 # Roadmap
 - [x] Initial infrastructure setup (containers, DB, etc)
