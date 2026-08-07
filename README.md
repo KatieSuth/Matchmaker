@@ -3,7 +3,7 @@
 [![Backend Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/c21c84f4fba3f91f41a5be25dd59326a/raw/matchmaker-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
 [![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/frontend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
 
-[Matchmaker](https://matchmaker.games/my_events)
+[Matchmaker](https://matchmaker.games)
 
 # Matchmaker
 
