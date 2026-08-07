@@ -1,0 +1,9 @@
+# Copy to backend.hcl (gitignored) after creating the state bucket, then fill in:
+#   cp backend.hcl.example backend.hcl
+#   # edit backend.hcl — bucket must match the GCS bucket from infra/README Phase 1
+#   make infra-init   # runs: terraform init -backend-config=backend.hcl
+#
+# Example (uncomment and replace YOUR_PROJECT_ID):
+
+bucket = "YOUR_PROJECT_ID-tf-state"
+prefix = "matchmaker/prod"

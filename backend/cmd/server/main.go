@@ -1,22 +1,32 @@
 // Command server is the HTTP API for Matchmaker: loads configuration from the environment,
-// runs database migrations, wires PostgreSQL and Discord OAuth, and serves Gin routes
+// optionally runs database migrations, wires PostgreSQL and Discord OAuth, and serves Gin routes
 // (public auth, JWT-protected REST handlers, CORS, and structured request logging).
+//
+// Subcommands:
+//
+//	health  — local HTTP probe for container HEALTHCHECK
+//	migrate — run goose migrations and exit (used in production via Cloud Run Job)
 package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+	_ "time/tzdata" // embed IANA zones; scratch image has no /usr/share/zoneinfo
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/middleware"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
@@ -53,6 +63,53 @@ func runHealthCheck() {
 	}
 }
 
+// autoMigrateEnabled is true unless AUTO_MIGRATE is explicitly false/0/no/off.
+// Local Compose leaves it unset (migrate on API start). Production Cloud Run sets AUTO_MIGRATE=false
+// and runs migrations via `server migrate` (Cloud Run Job) instead.
+func autoMigrateEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("AUTO_MIGRATE")))
+	switch v {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+func runGooseUp(sqlDB *sql.DB) {
+	if err := goose.SetDialect("postgres"); err != nil {
+		fatalExit("failed to set goose dialect", "error", err)
+	}
+	goose.SetBaseFS(nil) // use OS filesystem
+	if err := goose.Up(sqlDB, "sql/migrations"); err != nil {
+		fatalExit("failed to run migrations", "error", err)
+	}
+}
+
+// runMigrateOnly connects, applies migrations, and exits (production deploy path).
+func runMigrateOnly() {
+	_ = godotenv.Load()
+	_ = godotenv.Load("../.env")
+	_ = godotenv.Load("../../.env")
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		fatalExit("DATABASE_URL is required")
+	}
+
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		fatalExit("db connect failed", "error", err)
+	}
+	defer pool.Close()
+
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+
+	runGooseUp(sqlDB)
+	slog.Info("migrations applied successfully")
+}
+
 // configureLogger sets process-wide slog defaults from GIN_MODE.
 // release mode uses production-safe verbosity; all other modes use dev/test verbosity.
 func configureLogger(ginEnv string) {
@@ -81,6 +138,11 @@ func main() {
 	_ = godotenv.Load("../.env")
 	_ = godotenv.Load("../../.env")
 
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		runMigrateOnly()
+		return
+	}
+
 	switch ginEnv {
 	case gin.ReleaseMode:
 		gin.SetMode(gin.ReleaseMode)
@@ -102,25 +164,33 @@ func main() {
 		fatalExit("DATABASE_URL is required")
 	}
 
-	pool, err := pgxpool.New(context.Background(), dsn)
+	poolCfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		fatalExit("invalid DATABASE_URL", "error", err)
+	}
+	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			fatalExit("invalid DB_MAX_CONNS", "error", err)
+		}
+		poolCfg.MaxConns = int32(n)
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
 	if err != nil {
 		fatalExit("db connect failed", "error", err)
 	}
 	defer pool.Close()
 
-	// Run migrations
-
 	// wrap the existing pgxpool in a *sql.DB interface without opening a second connection
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer sqlDB.Close()
 
-	if err := goose.SetDialect("postgres"); err != nil {
-		fatalExit("failed to set goose dialect", "error", err)
-	}
-
-	goose.SetBaseFS(nil) // use OS filesystem
-	if err := goose.Up(sqlDB, "sql/migrations"); err != nil {
-		fatalExit("failed to run migrations", "error", err)
+	// Local/dev: migrate on start. Production: AUTO_MIGRATE=false; use `server migrate` Job.
+	if autoMigrateEnabled() {
+		runGooseUp(sqlDB)
+	} else {
+		slog.Info("skipping auto-migrate (AUTO_MIGRATE disabled)")
 	}
 
 	s := store.NewPostgresStore(pool)
@@ -244,18 +314,50 @@ func main() {
 		FairnessReferenceTierCount: fairnessReferenceTierCount,
 	}
 
+	// Optional: reject direct origin traffic when set (Cloudflare Worker injects the header).
+	originVerifySecret := os.Getenv("ORIGIN_VERIFY_SECRET")
+
+	trustedProxies := []string{"172.20.0.0/16"}
+	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
+		parts := strings.Split(v, ",")
+		trustedProxies = make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				trustedProxies = append(trustedProxies, p)
+			}
+		}
+	}
+
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			Environment:      ginEnv,
+			TracesSampleRate: 0,
+		}); err != nil {
+			fatalExit("sentry init failed", "error", err)
+		}
+		defer sentry.Flush(2 * time.Second)
+	}
+
 	// Handlers
 	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings)
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())
-	r.SetTrustedProxies([]string{"172.20.0.0/16"})
+	r.Use(middleware.OriginVerify(originVerifySecret))
+	if os.Getenv("SENTRY_DSN") != "" {
+		r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		fatalExit("invalid TRUSTED_PROXIES", "error", err)
+	}
 
 	// CORS — allow the Next.js origin
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{frontendURL},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Origin-Verify"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))

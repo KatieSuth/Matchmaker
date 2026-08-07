@@ -119,6 +119,7 @@ func TestLoginHandler_Success(t *testing.T) {
 		}
 	}
 	require.NotNil(t, stateCookie, "oauth_state cookie should be set")
+	assert.Equal(t, handler.OAuthStateCookieMaxAge, stateCookie.MaxAge)
 }
 
 func TestLoginHandler_GenerateStateFailure(t *testing.T) {

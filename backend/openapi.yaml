@@ -7,6 +7,11 @@ info:
     After completing the OAuth2 flow, clients receive a short-lived JWT access token
     and a long-lived HttpOnly refresh token cookie.
 
+    Production (behind Cloudflare): when `ORIGIN_VERIFY_SECRET` is set, requests must
+    include a matching `X-Origin-Verify` header (injected by the edge Worker). Missing
+    or wrong values return 403. `GET /health` is exempt for platform probes. Local
+    Compose leaves the secret unset, so this gate is inactive in development.
+
 tags:
   - name: health
     description: Service health
@@ -28,6 +33,9 @@ paths:
       tags: [health]
       summary: Health check
       operationId: health
+      description: >
+        Always reachable without auth. Also exempt from the production
+        `X-Origin-Verify` gate so Cloud Run / Docker probes succeed.
       responses:
         "200":
           description: Service is healthy

@@ -22,4 +22,6 @@ ENV NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=$NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT
 ENV NEXT_TELEMETRY_DISABLED=1
 
 EXPOSE ${APP_PORT}
-CMD ["sh", "-c", "rm -rf .next && npm run dev"]
+# Reinstall on start so the anonymous /app/node_modules volume picks up package.json changes
+# (bind-mounting ./frontend would otherwise leave a stale volume without new deps like @sentry/nextjs).
+CMD ["sh", "-c", "npm install && rm -rf .next && npm run dev"]

@@ -14,6 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// OAuthStateCookieMaxAge is the Discord OAuth CSRF cookie lifetime in seconds.
+// Sized to tolerate Cloud Run cold starts during the Discord round-trip.
+const OAuthStateCookieMaxAge = 900
+
 // generateAccessTokenForRefresh is swappable in tests to cover refresh error paths.
 var generateAccessTokenForRefresh = model.GenerateAccessToken
 
@@ -96,7 +100,7 @@ func (h *Handler) LoginHandler(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("oauth_state", encoded, 300, "/", h.cookieDomain, true, true)
+	c.SetCookie("oauth_state", encoded, OAuthStateCookieMaxAge, "/", h.cookieDomain, true, true)
 	c.Redirect(http.StatusTemporaryRedirect, h.oauth2Config.AuthCodeURL(state))
 }
 

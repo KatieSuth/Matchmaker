@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars (gitignored). Fill after Phase 0 account setup (see infra/README.md)
+# Account/signup is MANUAL — this file only configures Terraform against existing accounts.
+#
+# Secrets belong HERE (not in the repo). Generate hex app keys with:
+#   make gen-keys
+#   # or: openssl rand -hex 32
+# DB password / origin-verify can be any strong secret (openssl rand -hex 32 is fine).
+# Values still end up in Terraform state (GCS); keep the state bucket private.
+
+project_id         = "your-gcp-project-id"
+region             = "us-central1"
+domain             = "matchmaker.games"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
+alert_email        = "you@example.com"
+
+cloudflare_account_id = "your-cloudflare-account-id"
+cloudflare_zone_id    = "your-cloudflare-zone-id"
+cloudflare_api_token  = "your-cloudflare-api-token"
+
+discord_client_id     = "your-discord-client-id"
+discord_client_secret = "your-discord-client-secret"
+
+# App / DB secrets (required)
+db_password          = "replace-with-strong-password"          # openssl rand -hex 32
+jwt_secret           = "replace-with-64-hex-chars"             # openssl rand -hex 32
+cookie_hash_key      = "replace-with-64-hex-chars"             # openssl rand -hex 32
+cookie_encrypt_key   = "replace-with-64-hex-chars"             # openssl rand -hex 32
+origin_verify_secret = "replace-with-strong-secret"            # openssl rand -hex 32
+
+# Optional — leave empty to disable Sentry on that service
+sentry_dsn_api      = ""
+sentry_dsn_frontend = ""

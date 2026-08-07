@@ -3,6 +3,8 @@
 [![Backend Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/c21c84f4fba3f91f41a5be25dd59326a/raw/matchmaker-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
 [![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/frontend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
 
+[Matchmaker](https://matchmaker.games/my_events)
+
 # Matchmaker
 
 Matchmaker is a free, open-source web application for organizing custom competitive games over Discord. It does this by allowing a game organizer to configure events that players can sign up to join, and it will ask players to provide their competitive rank (to be seen by the organizer but by default hidden to other players for privacy--can be configured in preferences). Once the organizer is ready, they can click a button to create 2 teams of the configured player count and sort players into those teams or a substitute pool as fairly as possibly based on their provided competitive ranks. It will also allow the organizer to make manual edits to the teams as needed.
@@ -17,14 +19,15 @@ It's still very much in the early phases but is intended to one day support Valo
 - [x] One-off event sign-up for players
 - [x] One-off event admin team creation
 - [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
-- [ ] 1.0 web hosting with public availability
+- [x] 1.0 web hosting with public availability
 - [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Discord server membership requirement as host option
 - [ ] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Opt-in notifications for updates regarding events
 - [ ] Allow hosts to ban users from their events
 - [ ] Host option to auto create teams X time before match
-- [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, etc.)
+- [ ] "Available Games" dashboard tab populated based on server membership/upcoming games
+- [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, user-defined, etc.)
 - [ ] Non-Discord login support
 - [ ] Tournament bracket event support
 
@@ -41,7 +44,8 @@ It's still very much in the early phases but is intended to one day support Valo
 | Container     | Docker, Docker Compose v2            |
 | Dev DX        | `air` (Go), `next dev` (Node)        |
 | Database      | Postgres, pgx (v5), Goose            |
-| Load balancer | Caddy                                |
+| Local edge    | Caddy (Compose)                      |
+| Production    | GCP Cloud Run + Cloud SQL + Cloudflare Worker — [runbook](infra/README.md), [design](infra/INFRASTRUCTURE.md) |
 
 ---
 
@@ -146,7 +150,9 @@ curl https://${DOMAIN}/api/health
 
 ## Environment Variables
 
-### Frontend (`frontend/.env.example`)
+Frontend and API settings live in the **root** [`.env.example`](.env.example) (Compose interpolates `NEXT_PUBLIC_*` from `DOMAIN`).
+
+### Frontend (from root `.env` / Compose)
 
 | Variable                               | Default                             | Description                                                                       |
 |----------------------------------------|-------------------------------------|-----------------------------------------------------------------------------------|
@@ -154,6 +160,8 @@ curl https://${DOMAIN}/api/health
 | `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `${DOMAIN}`                         | Frontend host or origin (`allowedDevOrigins`, `auth_session` cookie `Domain`)     |
 | `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
+| `ORIGIN_VERIFY_SECRET`                 | unset (gate off)                    | When set (Cloud Run), requires `X-Origin-Verify`; `/health` exempt                |
+| `SENTRY_DSN`                           | unset                               | When set, enables Sentry in the Next.js server runtime                            |
 
 
 ### Environment Variables (`.env.example`)
@@ -165,6 +173,7 @@ curl https://${DOMAIN}/api/health
 | `COOKIE_DOMAIN`                 | `${DOMAIN}`                                              | The domain used for setting cookies on login                                          |
 | `DATABASE_URL`                  | required, no default                                     | URL to connect to the DB                                                              |
 | `DATABASE_URL_TESTS`            | no default                                               | URL to connect to the DB for testing                                                  |
+| `DB_MAX_CONNS`                  | unset (pgx default)                                      | Optional pgx pool max connections (prod sets `5`)                                     |
 | `DISCORD_CLIENT_ID`             | required, no default                                     | Client ID provided by Discord developer portal app                                    |
 | `DISCORD_CLIENT_SECRET`         | required, no default                                     | Client Secret provided by Discord developer portal app                                |
 | `DISCORD_REDIRECT_URI`          | `https://${DOMAIN}/api/auth/discord_redirect`            | Discord redirect URI for OAuth2, configured in developer portal                       |
@@ -173,14 +182,22 @@ curl https://${DOMAIN}/api/health
 | `FRONTEND_URL`                  | `https://${DOMAIN}`                                      | CORS allowed origin                                                                   |
 | `GIN_MODE`                      | `release`                                                | `debug` or `release`                                                                  |
 | `JWT_SECRET`                    | required, no default                                     | A key for signing the JWT access tokens                                               |
+| `ORIGIN_VERIFY_SECRET`          | unset (gate off)                                         | When set, require `X-Origin-Verify` (Cloudflare Worker); `/health` exempt             |
 | `PORT`                          | `8080`                                                   | Server port                                                                           |
 | `POSTGRES_DB`                   | required, no default                                     | Postgres Database name                                                                |
 | `POSTGRES_PASSWORD`             | required, no default                                     | Postgres Database password                                                            |
 | `POSTGRES_USER`                 | required, no default                                     | Postgres Database username                                                            |
 | `REFRESH_EXPIRE_LIMIT`          | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens                              |
+| `SENTRY_DSN`                    | unset                                                    | When set, enables Sentry error reporting                                              |
+| `TRUSTED_PROXIES`               | `172.20.0.0/16`                                          | Comma-separated CIDRs trusted for `X-Forwarded-For` (Gin)                             |
 | `FAIRNESS_OUTLIER_GAP`          | `6`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)   |
 | `FAIRNESS_TEAM_SEPARATION`      | `3`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count) |
 | `FAIRNESS_REFERENCE_TIER_COUNT` | `25`                                                     | Tier count the fairness baselines are calibrated for (Valorant)                       |
+
+### Production (GCP)
+
+- **How to deploy:** [infra/README.md](infra/README.md) (accounts, Terraform, images, teardown). You create GCP / Cloudflare / Sentry / Discord accounts manually.
+- **What / why:** [infra/INFRASTRUCTURE.md](infra/INFRASTRUCTURE.md) (architecture, Terraform layout, Worker, origin-verify, cost decisions).
 
 ---
 
@@ -224,6 +241,16 @@ make seed-matchmaking-all HOST=YourDiscordName  # Dev-only: seed matchmaking tes
 make seed-matchmaking-cleanup                   # Dev-only: remove all matchmaking test data created by the script
 
 make gen-keys           # Generate new JWT, Cookie Hash, and Cookie Encrypt keys
+
+# GCP / Terraform (see infra/README.md — accounts are created manually)
+make infra-init         # terraform init (requires backend.hcl)
+make infra-fmt          # terraform fmt
+make infra-validate     # terraform validate
+make infra-plan         # terraform plan
+make infra-apply        # terraform apply
+make infra-destroy      # terraform destroy
+make gcp-push GCP_PROJECT=... DOMAIN=matchmaker.games   # build/push images to Artifact Registry
+make gcp-deploy GCP_PROJECT=... DOMAIN=matchmaker.games  # push + update Cloud Run
 ```
 
 Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.
