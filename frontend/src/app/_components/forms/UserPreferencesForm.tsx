@@ -1,7 +1,7 @@
 "use client";
 
 // Editable profile: region, pronouns, and per-game accounts (user games). Used as /my_account.
-import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
@@ -12,6 +12,7 @@ import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
+import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 import { UserGameEditor } from "@/app/_components/forms/UserGameEditor";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
@@ -166,6 +167,8 @@ export default function UserPreferencesForm() {
   const [persistedGameIds, setPersistedGameIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  /** Non-null while the leave-confirm sheet is open; value is the blocked in-app href. */
+  const [leaveHref, setLeaveHref] = useState<string | null>(null);
   // sessionStorage is client-only; server snapshot is false to avoid hydration mismatch
   const hasPendingEventRedirect = useSyncExternalStore(
     () => () => {},
@@ -195,6 +198,50 @@ export default function UserPreferencesForm() {
   const takenGameIds = useMemo(() => 
     watchedGames?.map((g: any) => g.game_id).filter(Boolean) ?? [], 
   [watchedGames]);
+
+  const closeLeaveSheet = useCallback(() => setLeaveHref(null), []);
+
+  const confirmLeave = useCallback(() => {
+    if (!leaveHref) return;
+    const href = leaveHref;
+    setLeaveHref(null);
+    consumePostLoginRedirect();
+    router.push(href);
+  }, [leaveHref, router]);
+
+  // Warn before abandoning a pending event deep-link via in-app navigation
+  useEffect(() => {
+    if (!user?.new_user || !hasPendingEventRedirect) return;
+
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+
+      const hrefAttr = anchor.getAttribute("href");
+      if (!hrefAttr || hrefAttr.startsWith("#")) return;
+
+      let url: URL;
+      try {
+        url = new URL(hrefAttr, window.location.origin);
+      } catch {
+        return;
+      }
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === "/my_account") return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      setLeaveHref(url.pathname + url.search);
+    };
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [user?.new_user, hasPendingEventRedirect]);
 
   // Fetch game list and user's games in parallel once user is ready
   useEffect(() => {
@@ -287,11 +334,44 @@ export default function UserPreferencesForm() {
       api_permission: false,
     });
 
+  const leaveSheet = (
+    <ResponsiveSheet
+      isOpen={leaveHref !== null}
+      onClose={closeLeaveSheet}
+      title="Leave profile setup?"
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-[var(--color-text-soft)]">
+          You haven't finished setting up your profile yet. If you leave now, you won't be taken to the event you came here for.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={confirmLeave}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors"
+          >
+            Leave
+          </button>
+          <button
+            type="button"
+            onClick={closeLeaveSheet}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
+          >
+            Stay
+          </button>
+        </div>
+      </div>
+    </ResponsiveSheet>
+  );
+
   if (authLoading || !user || allGames === null || userGames === null) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
-      </div>
+      <>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
+        </div>
+        {leaveSheet}
+      </>
     );
   }
 
@@ -311,7 +391,7 @@ export default function UserPreferencesForm() {
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
             {user.new_user
               ? hasPendingEventRedirect
-                ? "Let's get your profile set up. Fill in the info below, including the games you want to play, and then you can register for the event you came here for."
+                ? "Let's get your profile set up. Fill in the info below, click \"Save Profile\", and then you can register for the event you came here for. Don't forget to add the games you want to play!"
                 : "Let's get your profile set up. Please fill in the info below. Don't forget to add the games you want to play!"
               : "Manage your profile, pronouns, and game accounts."}
           </p>
@@ -469,11 +549,13 @@ export default function UserPreferencesForm() {
               {isDirty && status !== "saving" && (
                 <span className="absolute top-0 left-0 right-0 h-px bg-top-edge opacity-40" />
               )}
-              {status === "saving" ? "Saving…" : "Save changes"}
+              {status === "saving" ? "Saving…" : user.new_user ? "Save Profile" : "Save changes"}
             </button>
           </div>
         </form>
       </div>
+
+      {leaveSheet}
     </div>
   );
 }
