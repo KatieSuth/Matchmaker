@@ -1,7 +1,7 @@
 "use client";
 
 // Editable profile: region, pronouns, and per-game accounts (user games). Used as /my_account.
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
@@ -16,7 +16,7 @@ import { UserGameEditor } from "@/app/_components/forms/UserGameEditor";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { inputCls } from "@/app/_lib/styles";
-import { consumePostLoginRedirect } from "@/app/_lib/postLoginRedirect";
+import { consumePostLoginRedirect, peekPostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
 import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame } from "@/app/_services/users";
 
@@ -166,6 +166,12 @@ export default function UserPreferencesForm() {
   const [persistedGameIds, setPersistedGameIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  // sessionStorage is client-only; server snapshot is false to avoid hydration mismatch
+  const hasPendingEventRedirect = useSyncExternalStore(
+    () => () => {},
+    () => peekPostLoginRedirect() !== null,
+    () => false,
+  );
 
   const {
     register,
@@ -300,10 +306,14 @@ export default function UserPreferencesForm() {
         {/* page header */}
         <div className="mb-8" style={{ animation: "var(--animate-rise-1)" }}>
           <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">
-            Settings
+            {user.new_user ? "Welcome to Matchmaker!" : "Settings"}
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Manage your profile, pronouns, and game accounts.
+            {user.new_user
+              ? hasPendingEventRedirect
+                ? "Let's get your profile set up. Fill in the info below, including the games you want to play, and then you can register for the event you came here for."
+                : "Let's get your profile set up. Please fill in the info below. Don't forget to add the games you want to play!"
+              : "Manage your profile, pronouns, and game accounts."}
           </p>
         </div>
 
