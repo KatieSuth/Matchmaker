@@ -342,7 +342,7 @@ export default function UserPreferencesForm() {
     >
       <div className="flex flex-col gap-4">
         <p className="text-sm text-[var(--color-text-soft)]">
-          You haven't finished setting up your profile yet. If you leave now, you won't be taken to the event you came here for.
+          You haven&apos;t finished setting up your profile yet. If you leave now, you won&apos;t be taken to the event you came here for.
         </p>
         <div className="flex justify-end gap-2">
           <button
