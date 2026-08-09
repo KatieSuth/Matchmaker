@@ -175,10 +175,8 @@ function formatPlacementCategory(
     return "Unplaced";
   }
   if (teamNumber === null) {
-    if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
-      return "Subs";
-    }
-    return `Lobby ${targetLobbyIndex + 1} · Subs`;
+    // Substitutes are a single per-game pool in the UI (not per lobby).
+    return "Subs";
   }
   const displayTeam = sequentialTeamNumber(targetLobbyIndex, teamNumber);
   if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
@@ -206,12 +204,16 @@ function isTeamAssignedPlacement(
 }
 
 /** True when a player is in a lobby sub pool. */
-function isSubPlacement(placement?: PlayerPlacement): boolean {
+function isSubPlacement(
+  placement?: PlayerPlacement,
+): placement is PlayerPlacement & { lobbyId: string; teamNumber: null } {
   return !!placement && placement.lobbyId !== null && placement.teamNumber === null;
 }
 
 /** True when a player is registered but not on a team or sub pool. */
-function isUnplacedPlacement(placement?: PlayerPlacement): boolean {
+function isUnplacedPlacement(
+  placement?: PlayerPlacement,
+): placement is PlayerPlacement & { lobbyId: null; teamNumber: undefined } {
   return !!placement && placement.teamNumber === undefined;
 }
 
@@ -239,7 +241,7 @@ function buildLobbyHostVolunteers(
   return volunteers;
 }
 
-/** Lists eligible swap targets for a player, excluding same-team roster mates and same-lobby subs. */
+/** Lists eligible swap targets for a player, excluding same-team roster mates and other substitutes when the source is a sub. */
 function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): SelectOption[] {
   const options: SelectOption[] = [];
   const lobbies = event.lobbies ?? [];
@@ -272,10 +274,8 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
       if (player.user_id === source.userId) {
         continue;
       }
-      if (sourceIsUnplaced) {
-        continue;
-      }
-      if (source.teamNumber === null && source.lobbyId === lobby.id) {
+      // Unplaced cannot swap with subs; subs cannot swap with other game subs.
+      if (sourceIsUnplaced || sourceIsSub) {
         continue;
       }
       const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, null);
@@ -290,7 +290,8 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
     if (registration.user_id === source.userId) {
       continue;
     }
-    if (sourceIsSub) {
+    // Sub↔unplaced and unplaced↔unplaced are rejected by the backend.
+    if (sourceIsSub || sourceIsUnplaced) {
       continue;
     }
     options.push({
@@ -354,7 +355,12 @@ function PlayerCard({
     label: "Show More Details",
     onSelect: () => onShowDetails(registration),
   });
-  if (isHostView && isTeamAssignedPlacement(placement) && onSwap) {
+  if (
+    isHostView &&
+    placement &&
+    (isTeamAssignedPlacement(placement) || isSubPlacement(placement) || isUnplacedPlacement(placement)) &&
+    onSwap
+  ) {
     menuOptions.push({
       label: "Swap",
       onSelect: () => onSwap(placement),
@@ -774,9 +780,11 @@ export default function EventGroupPage() {
   const [pendingSwap, setPendingSwap] = useState<PlayerPlacement | null>(null);
   const [pendingLobbyHostChange, setPendingLobbyHostChange] = useState<PendingLobbyHostChange | null>(null);
   const [swapTargetUserId, setSwapTargetUserId] = useState("");
+  const [swapError, setSwapError] = useState<string | null>(null);
   const [moveToSubsSheetOpen, setMoveToSubsSheetOpen] = useState(false);
   const [pendingMoveToSubs, setPendingMoveToSubs] = useState<PlayerPlacement | null>(null);
   const [moveToSubsLobbyId, setMoveToSubsLobbyId] = useState("");
+  const [moveToSubsError, setMoveToSubsError] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
   const [pingStatus, setPingStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
@@ -970,6 +978,7 @@ export default function EventGroupPage() {
   const openSwapSheet = useCallback((placement: PlayerPlacement) => {
     setPendingSwap(placement);
     setSwapTargetUserId("");
+    setSwapError(null);
     setSwapSheetOpen(true);
   }, []);
 
@@ -977,6 +986,7 @@ export default function EventGroupPage() {
     setSwapSheetOpen(false);
     setPendingSwap(null);
     setSwapTargetUserId("");
+    setSwapError(null);
   }, []);
 
   const closeLobbyHostConfirm = useCallback(() => {
@@ -1035,11 +1045,12 @@ export default function EventGroupPage() {
     if (!pendingSwap || !swapTargetUserId) return;
     try {
       setWorking(true);
+      setSwapError(null);
       await swapPlayers(pendingSwap.eventId, pendingSwap.userId, swapTargetUserId);
       await loadGroup();
       closeSwapSheet();
     } catch (err) {
-      setPageError(extractApiError(err, "Could not complete that action."));
+      setSwapError(extractApiError(err, "Could not complete that action."));
     } finally {
       setWorking(false);
     }
@@ -1049,6 +1060,7 @@ export default function EventGroupPage() {
     setMoveToSubsSheetOpen(false);
     setPendingMoveToSubs(null);
     setMoveToSubsLobbyId("");
+    setMoveToSubsError(null);
   }, []);
 
   const handleMoveToUnplaced = (placement: PlayerPlacement) => {
@@ -1068,6 +1080,7 @@ export default function EventGroupPage() {
     }
     setPendingMoveToSubs(placement);
     setMoveToSubsLobbyId("");
+    setMoveToSubsError(null);
     setMoveToSubsSheetOpen(true);
   };
 
@@ -1075,11 +1088,12 @@ export default function EventGroupPage() {
     if (!pendingMoveToSubs || !moveToSubsLobbyId) return;
     try {
       setWorking(true);
+      setMoveToSubsError(null);
       await moveUnplacedToSubs(pendingMoveToSubs.eventId, pendingMoveToSubs.userId, moveToSubsLobbyId);
       await loadGroup();
       closeMoveToSubsSheet();
     } catch (err) {
-      setPageError(extractApiError(err, "Could not complete that action."));
+      setMoveToSubsError(extractApiError(err, "Could not complete that action."));
     } finally {
       setWorking(false);
     }
@@ -2149,16 +2163,24 @@ export default function EventGroupPage() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--color-text-soft)]">
-            Choose a player from another team, lobby, sub pool, or unplaced list to swap with.
-            Use Move to unplaced or Move to subs for substitute and unplaced players.
+            Choose a player from another team, lobby, the substitutes list, or unplaced to swap with.
+            Swapping an unplaced player onto a roster seat moves that roster player to substitutes when they can sub, otherwise they become unplaced.
           </p>
           <Select
             value={swapTargetUserId}
-            onChange={setSwapTargetUserId}
+            onChange={(value) => {
+              setSwapTargetUserId(value);
+              setSwapError(null);
+            }}
             options={swapCandidateOptions}
             placeholder={swapCandidateOptions.length === 0 ? "No swap candidates" : "— Select player —"}
             disabled={working || swapCandidateOptions.length === 0}
           />
+          {swapError && (
+            <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
+              {swapError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -2192,11 +2214,19 @@ export default function EventGroupPage() {
           </p>
           <Select
             value={moveToSubsLobbyId}
-            onChange={setMoveToSubsLobbyId}
+            onChange={(value) => {
+              setMoveToSubsLobbyId(value);
+              setMoveToSubsError(null);
+            }}
             options={moveToSubsLobbyOptions}
             placeholder={moveToSubsLobbyOptions.length === 0 ? "No lobbies" : "— Select lobby —"}
             disabled={working || moveToSubsLobbyOptions.length === 0}
           />
+          {moveToSubsError && (
+            <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
+              {moveToSubsError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"

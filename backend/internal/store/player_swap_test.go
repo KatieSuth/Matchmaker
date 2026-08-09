@@ -91,7 +91,7 @@ func TestSameSubPoolPlacementForTest(t *testing.T) {
 		store.SwapPlacementForTest{Placed: false},
 		store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: nil},
 	))
-	assert.False(t, store.SameSubPoolPlacementForTest(
+	assert.True(t, store.SameSubPoolPlacementForTest(
 		store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: nil},
 		store.SwapPlacementForTest{Placed: true, LobbyID: otherLobby, TeamNumber: nil},
 	))
@@ -108,23 +108,31 @@ func TestSameSubPoolPlacementForTest(t *testing.T) {
 func TestResolveSwapDestinationForTest(t *testing.T) {
 	lobbyID := uuid.New()
 	team1 := teamNumberPtr(1)
+	unplacedSlot := store.SwapPlacementForTest{Placed: false}
+	rosterSlot := store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: team1}
+	subSlot := store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: nil}
 
-	unplaced := store.ResolveSwapDestinationForTest(store.SwapPlacementForTest{Placed: false}, true)
-	assert.False(t, unplaced.Placed)
+	// Taking an unplaced slot with no prior roster seat → unplaced.
+	assert.False(t, store.ResolveSwapDestinationForTest(unplacedSlot, unplacedSlot, true).Placed)
 
-	nonSubToSub := store.ResolveSwapDestinationForTest(
-		store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: nil},
-		false,
-	)
+	// Non-sub cannot take a sub slot → unplaced.
+	nonSubToSub := store.ResolveSwapDestinationForTest(rosterSlot, subSlot, false)
 	assert.False(t, nonSubToSub.Placed)
 
-	roster := store.ResolveSwapDestinationForTest(
-		store.SwapPlacementForTest{Placed: true, LobbyID: lobbyID, TeamNumber: team1},
-		false,
-	)
+	// Taking a roster seat keeps that seat.
+	roster := store.ResolveSwapDestinationForTest(unplacedSlot, rosterSlot, false)
 	assert.True(t, roster.Placed)
 	assert.Equal(t, lobbyID, roster.LobbyID)
 	assert.Equal(t, team1, roster.TeamNumber)
+
+	// Roster player who can sub, displaced by unplaced → own lobby sub pool.
+	toSub := store.ResolveSwapDestinationForTest(rosterSlot, unplacedSlot, true)
+	assert.True(t, toSub.Placed)
+	assert.Equal(t, lobbyID, toSub.LobbyID)
+	assert.Nil(t, toSub.TeamNumber)
+
+	// Roster player who cannot sub, displaced by unplaced → unplaced.
+	assert.False(t, store.ResolveSwapDestinationForTest(rosterSlot, unplacedSlot, false).Placed)
 }
 
 func findLobbyTeamPlayers(detail model.EventGroupDetail, eventID uuid.UUID, teamNumber int) []model.LobbyPlayer {
@@ -508,6 +516,42 @@ func TestSwapPlayersForEvent_SameSubPool(t *testing.T) {
 	assert.Equal(t, "Cannot swap players in the same sub pool", swapErr.Message)
 }
 
+func TestSwapPlayersForEvent_CrossLobbySameSubPool(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+
+	for i := 0; i < 8; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
+	}
+	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+
+	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
+	require.NoError(t, err)
+	eventBefore, ok := findEventInDetail(detail, eventID)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(eventBefore.Lobbies), 2)
+
+	subA := createTestUser(t, ctx, s)
+	subB := createTestUser(t, ctx, s)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subA.ID, games[0].ID, true, false)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subB.ID, games[0].ID, true, false)
+	insertPlayerForLobby(t, ctx, tx, eventBefore.Lobbies[0].ID, subA.ID, nil)
+	insertPlayerForLobby(t, ctx, tx, eventBefore.Lobbies[1].ID, subB.ID, nil)
+
+	err = s.SwapPlayersForEvent(ctx, eventID, host.ID, subA.ID, subB.ID, defaultMatchmakingSettings())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrInvalidPlayerSwap)
+	var swapErr *store.SwapValidationError
+	require.ErrorAs(t, err, &swapErr)
+	assert.Equal(t, "Cannot swap players in the same sub pool", swapErr.Message)
+}
+
 func TestSwapPlayersForEvent_SameTeam(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -605,6 +649,68 @@ func TestSwapPlayersForEvent_RosterWithUnplaced(t *testing.T) {
 		}
 	}
 	assert.True(t, rosterNowUnplaced)
+	assert.True(t, unplacedNowRoster)
+}
+
+func TestSwapPlayersForEvent_RosterCanSubWithUnplacedBecomesSub(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+
+	for i := 0; i < 5; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
+	}
+	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+
+	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
+	require.NoError(t, err)
+	require.Len(t, detail.Events[0].Unplaced, 1)
+	unplacedID := detail.Events[0].Unplaced[0].UserID
+	rosterPlayer, lobbyID, ok := findLobbyTeamPlayer(detail, eventID, 1)
+	require.True(t, ok)
+
+	_, err = tx.Exec(ctx, `
+		UPDATE registrations SET can_substitute = true WHERE event_id = $1 AND user_id = $2
+	`, eventID, rosterPlayer.UserID)
+	require.NoError(t, err)
+
+	require.NoError(t, s.SwapPlayersForEvent(ctx, eventID, host.ID, rosterPlayer.UserID, unplacedID, defaultMatchmakingSettings()))
+
+	after, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
+	require.NoError(t, err)
+
+	var rosterNowSub bool
+	var unplacedNowRoster bool
+	for _, event := range after.Events {
+		if event.ID != eventID {
+			continue
+		}
+		for _, lobby := range event.Lobbies {
+			for _, team := range lobby.Teams {
+				for _, player := range team.Players {
+					if player.UserID == unplacedID {
+						unplacedNowRoster = true
+					}
+				}
+			}
+			if lobby.ID == lobbyID {
+				for _, sub := range lobby.Subs {
+					if sub.UserID == rosterPlayer.UserID {
+						rosterNowSub = true
+					}
+				}
+			}
+		}
+		for _, stillUnplaced := range event.Unplaced {
+			assert.NotEqual(t, rosterPlayer.UserID, stillUnplaced.UserID)
+		}
+	}
+	assert.True(t, rosterNowSub)
 	assert.True(t, unplacedNowRoster)
 }
 

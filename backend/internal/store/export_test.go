@@ -72,8 +72,12 @@ var SameSubPoolPlacementForTest = func(a, b SwapPlacementForTest) bool {
 }
 
 // ResolveSwapDestinationForTest exposes resolveSwapDestination for black-box unit tests.
-var ResolveSwapDestinationForTest = func(source SwapPlacementForTest, canSubstitute bool) SwapPlacementForTest {
-	return swapPlacementToTest(resolveSwapDestination(swapPlacementFromTest(source), canSubstitute))
+var ResolveSwapDestinationForTest = func(ownPrevious, counterpart SwapPlacementForTest, canSubstitute bool) SwapPlacementForTest {
+	return swapPlacementToTest(resolveSwapDestination(
+		swapPlacementFromTest(ownPrevious),
+		swapPlacementFromTest(counterpart),
+		canSubstitute,
+	))
 }
 
 // RecomputeLobbyAfterSwapForTest exposes recomputeLobbyAfterSwap for integration tests.

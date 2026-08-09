@@ -111,8 +111,8 @@ func (s *PostgresStore) SwapPlayersForEvent(
 		return &SwapValidationError{Message: "Cannot swap between substitutes and unplaced players"}
 	}
 
-	newA := resolveSwapDestination(placeB, regA.canSubstitute)
-	newB := resolveSwapDestination(placeA, regB.canSubstitute)
+	newA := resolveSwapDestination(placeA, placeB, regA.canSubstitute)
+	newB := resolveSwapDestination(placeB, placeA, regB.canSubstitute)
 
 	lobbyRows, err := s.q.GetLobbiesForEvent(ctx, &eventID)
 	if err != nil {
@@ -204,30 +204,33 @@ func sameTeamPlacement(a, b swapPlacement) bool {
 	return *a.teamNumber == *b.teamNumber
 }
 
-// sameSubPoolPlacement reports whether both players are substitutes in the same lobby sub pool.
+// sameSubPoolPlacement reports whether both players are substitutes for this game.
+// Substitutes are treated as one per-game pool in the product UI, even though rows are stored per lobby.
 func sameSubPoolPlacement(a, b swapPlacement) bool {
 	if !a.placed || !b.placed {
-		return false
-	}
-	if a.lobbyID != b.lobbyID {
 		return false
 	}
 	return a.teamNumber == nil && b.teamNumber == nil
 }
 
-// resolveSwapDestination maps the other player's slot onto this player.
+// resolveSwapDestination maps the counterpart's slot onto this player.
 // Non-substitute players landing in a sub slot become unplaced instead.
-func resolveSwapDestination(source swapPlacement, canSubstitute bool) swapPlacement {
-	if !source.placed {
+// Roster players displaced by an unplaced player move into their lobby's sub
+// pool when they can substitute; otherwise they become unplaced.
+func resolveSwapDestination(ownPrevious, counterpart swapPlacement, canSubstitute bool) swapPlacement {
+	if !counterpart.placed {
+		if ownPrevious.placed && ownPrevious.teamNumber != nil && canSubstitute {
+			return swapPlacement{placed: true, lobbyID: ownPrevious.lobbyID, teamNumber: nil}
+		}
 		return swapPlacement{placed: false}
 	}
-	if source.teamNumber == nil && !canSubstitute {
+	if counterpart.teamNumber == nil && !canSubstitute {
 		return swapPlacement{placed: false}
 	}
 	return swapPlacement{
 		placed:     true,
-		lobbyID:    source.lobbyID,
-		teamNumber: source.teamNumber,
+		lobbyID:    counterpart.lobbyID,
+		teamNumber: counterpart.teamNumber,
 	}
 }
 
