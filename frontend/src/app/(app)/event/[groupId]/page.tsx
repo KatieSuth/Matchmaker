@@ -14,7 +14,7 @@ import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
 import { EventForm } from "@/app/_components/forms/EventForm";
 import { UserGameEditor, UserGameEditorValue } from "@/app/_components/forms/UserGameEditor";
 import { useAuth } from "@/app/_context/AuthContext";
-import { EMPTY_VALUE } from "@/app/_lib/constants";
+import { EMPTY_VALUE, NO_SUBSTITUTES_MESSAGE } from "@/app/_lib/constants";
 import {
   buildDiscordPingMessage,
   resolveLobbyHostDiscordName,
@@ -551,6 +551,10 @@ function TeamsPanel({
     return null;
   }
 
+  const substituteEntries = lobbies.flatMap((lobby, lobbyIndex) =>
+    lobby.subs.map((player) => ({ lobby, lobbyIndex, player })),
+  );
+
   return (
     <div className="flex flex-col gap-4">
       {lobbies.map((lobby, lobbyIndex) => (
@@ -611,43 +615,50 @@ function TeamsPanel({
             );
             })}
           </div>
-          {lobby.subs.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-                Substitutes · {formatPlayerCount(lobby.subs.length)}
-              </p>
-              {lobby.subs.map((player) => (
-                <PlayerCard
-                  key={player.user_id}
-                  registration={lobbyPlayerAsRegistration(player, event.id)}
-                  gameNumber={gameNumber}
-                  eventRegion={eventRegion}
-                  currentUserRegion={currentUserRegion}
-                  isHostView={isHostView}
-                  currentUserId={currentUserId}
-                  canEditRegistration={false}
-                  allowRegistrationDelete={false}
-                  onShowDetails={onShowDetails}
-                  onDeleteRegistrationForGame={onDeleteRegistrationForGame}
-                  onDeleteAllFromUser={onDeleteAllFromUser}
-                  showDuoRequest
-                  placement={{
-                    eventId: event.id,
-                    userId: player.user_id,
-                    discordName: player.discord_name || "Unknown user",
-                    lobbyId: lobby.id,
-                    sourceLobbyIndex: lobbyIndex,
-                    teamNumber: null,
-                  }}
-                  onSwap={onSwapPlayer}
-                  onMoveToUnplaced={onMoveToUnplaced}
-                  onMoveToSubs={onMoveToSubs}
-                />
-              ))}
-            </div>
-          )}
         </div>
       ))}
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+          Substitutes
+          {substituteEntries.length > 0
+            ? ` · ${formatPlayerCount(substituteEntries.length)}`
+            : ""}
+        </p>
+        {substituteEntries.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/[0.08] py-8 text-center text-sm text-[var(--color-text-muted)]">
+            {NO_SUBSTITUTES_MESSAGE}
+          </div>
+        ) : (
+          substituteEntries.map(({ lobby, lobbyIndex, player }) => (
+            <PlayerCard
+              key={player.user_id}
+              registration={lobbyPlayerAsRegistration(player, event.id)}
+              gameNumber={gameNumber}
+              eventRegion={eventRegion}
+              currentUserRegion={currentUserRegion}
+              isHostView={isHostView}
+              currentUserId={currentUserId}
+              canEditRegistration={false}
+              allowRegistrationDelete={false}
+              onShowDetails={onShowDetails}
+              onDeleteRegistrationForGame={onDeleteRegistrationForGame}
+              onDeleteAllFromUser={onDeleteAllFromUser}
+              showDuoRequest
+              placement={{
+                eventId: event.id,
+                userId: player.user_id,
+                discordName: player.discord_name || "Unknown user",
+                lobbyId: lobby.id,
+                sourceLobbyIndex: lobbyIndex,
+                teamNumber: null,
+              }}
+              onSwap={onSwapPlayer}
+              onMoveToUnplaced={onMoveToUnplaced}
+              onMoveToSubs={onMoveToSubs}
+            />
+          ))
+        )}
+      </div>
       {isHostView && (event.unplaced ?? []).length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">

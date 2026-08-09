@@ -1,3 +1,4 @@
+import { NO_SUBSTITUTES_MESSAGE } from "@/app/_lib/constants";
 import {
   EventGroupDetail,
   EventGroupEvent,
@@ -86,7 +87,7 @@ function buildGameSection(event: EventGroupEvent, gameIndex: number, gameCount: 
   const subs = lobbies.flatMap((lobby) => lobby.subs);
   parts.push("### Substitutes");
   if (subs.length === 0) {
-    parts.push("There are no substitutes available");
+    parts.push(NO_SUBSTITUTES_MESSAGE);
   } else {
     for (const player of subs) {
       if (player.discord_name) {
