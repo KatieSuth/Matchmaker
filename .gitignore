@@ -31,3 +31,5 @@ infra/terraform/*.auto.tfvars
 infra/terraform/*.auto.tfvars.json
 !infra/terraform/*.tfvars.example
 
+# Local
+deploy.sh
