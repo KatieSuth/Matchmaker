@@ -15,6 +15,11 @@ import { EventForm } from "@/app/_components/forms/EventForm";
 import { UserGameEditor, UserGameEditorValue } from "@/app/_components/forms/UserGameEditor";
 import { useAuth } from "@/app/_context/AuthContext";
 import { EMPTY_VALUE } from "@/app/_lib/constants";
+import {
+  buildDiscordPingMessage,
+  resolveLobbyHostDiscordName,
+  sequentialTeamNumber,
+} from "@/app/_lib/discordPings";
 import { inputCls } from "@/app/_lib/styles";
 import { extractApiError, fetchGameRanks } from "@/app/_services/games";
 import {
@@ -175,10 +180,11 @@ function formatPlacementCategory(
     }
     return `Lobby ${targetLobbyIndex + 1} · Subs`;
   }
+  const displayTeam = sequentialTeamNumber(targetLobbyIndex, teamNumber);
   if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
-    return `Team ${teamNumber}`;
+    return `Team ${displayTeam}`;
   }
-  return `Lobby ${targetLobbyIndex + 1} · Team ${teamNumber}`;
+  return `Lobby ${targetLobbyIndex + 1} · Team ${displayTeam}`;
 }
 
 /** Formats a swap dropdown option as "Name (Category) · Rank". */
@@ -212,6 +218,7 @@ function isUnplacedPlacement(placement?: PlayerPlacement): boolean {
 /** Lists team players in a lobby who volunteered to host, excluding the selected player. */
 function buildLobbyHostVolunteers(
   lobby: EventLobby,
+  lobbyIndex: number,
   excludeUserId: string,
   lobbyHostId?: string | null,
 ): LobbyHostVolunteer[] {
@@ -224,7 +231,7 @@ function buildLobbyHostVolunteers(
       volunteers.push({
         userId: player.user_id,
         discordName: player.discord_name || "Unknown user",
-        teamNumber: team.team_number,
+        teamNumber: sequentialTeamNumber(lobbyIndex, team.team_number),
         isCurrentHost: !!lobbyHostId && player.user_id === lobbyHostId,
       });
     }
@@ -505,14 +512,7 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
 
 /** Resolves the lobby host's display name from roster, subs, or unplaced players. */
 function lobbyHostName(lobby: EventLobby, event: EventGroupEvent): string | null {
-  if (!lobby.host_id) return null;
-  const allPlayers = [
-    ...lobby.teams.flatMap((team) => team.players),
-    ...lobby.subs,
-    ...event.unplaced,
-  ];
-  const host = allPlayers.find((p) => p.user_id === lobby.host_id);
-  return host?.discord_name ?? null;
+  return resolveLobbyHostDiscordName(lobby, event);
 }
 
 function TeamsPanel({
@@ -570,10 +570,11 @@ function TeamsPanel({
           <div className="grid gap-3 sm:grid-cols-2">
             {lobby.teams.map((team) => {
               const averageRank = isHostView ? teamAverageRankLabel(team.players, gameRanks) : EMPTY_VALUE;
+              const displayTeamNumber = sequentialTeamNumber(lobbyIndex, team.team_number);
               return (
               <div key={team.team_number} className="flex flex-col gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Team {team.team_number}
+                  Team {displayTeamNumber}
                   {averageRank !== EMPTY_VALUE ? ` · Average: ${averageRank}` : ""}
                 </p>
                 {team.players.map((player) => (
@@ -766,6 +767,7 @@ export default function EventGroupPage() {
   const [pendingMoveToSubs, setPendingMoveToSubs] = useState<PlayerPlacement | null>(null);
   const [moveToSubsLobbyId, setMoveToSubsLobbyId] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
+  const [pingStatus, setPingStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
     selected_event_ids: [],
     per_event: {},
@@ -855,6 +857,12 @@ export default function EventGroupPage() {
     const timer = window.setTimeout(() => setShareStatus("idle"), 1600);
     return () => window.clearTimeout(timer);
   }, [shareStatus]);
+
+  useEffect(() => {
+    if (pingStatus === "idle") return;
+    const timer = window.setTimeout(() => setPingStatus("idle"), 1600);
+    return () => window.clearTimeout(timer);
+  }, [pingStatus]);
 
   const activeEvent = useMemo(
     () => group?.events.find((event) => event.id === activeEventId) ?? group?.events[0] ?? null,
@@ -986,6 +994,7 @@ export default function EventGroupPage() {
 
       const lobby = (event.lobbies ?? []).find((item) => item.id === placement.lobbyId);
       if (!lobby) return;
+      const lobbyIndex = (event.lobbies ?? []).findIndex((item) => item.id === placement.lobbyId);
 
       const player = lobby.teams
         .flatMap((team) => team.players)
@@ -999,7 +1008,12 @@ export default function EventGroupPage() {
 
       setPendingLobbyHostChange({
         placement,
-        volunteerOptions: buildLobbyHostVolunteers(lobby, placement.userId, lobby.host_id),
+        volunteerOptions: buildLobbyHostVolunteers(
+          lobby,
+          lobbyIndex >= 0 ? lobbyIndex : 0,
+          placement.userId,
+          lobby.host_id,
+        ),
       });
       setLobbyHostConfirmOpen(true);
     },
@@ -1091,6 +1105,16 @@ export default function EventGroupPage() {
       setShareStatus("success");
     } catch {
       setShareStatus("error");
+    }
+  };
+
+  const handleCopyDiscordPings = async () => {
+    if (!group) return;
+    try {
+      await navigator.clipboard.writeText(buildDiscordPingMessage(group));
+      setPingStatus("success");
+    } catch {
+      setPingStatus("error");
     }
   };
 
@@ -1418,6 +1442,36 @@ export default function EventGroupPage() {
                   </div>
                 )}
               </div>
+              {isHost && hasAnyLobbies && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyDiscordPings()}
+                    className={[
+                      "rounded-lg border px-3 py-2 text-sm font-medium",
+                      pingStatus === "success"
+                        ? "border-emerald-500/35 bg-white/[0.03] text-emerald-400"
+                        : pingStatus === "error"
+                          ? "border-[var(--color-text-danger)]/35 bg-white/[0.03] text-[var(--color-text-danger)]"
+                          : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
+                    ].join(" ")}
+                  >
+                    Copy Discord Pings
+                  </button>
+                  {pingStatus !== "idle" && (
+                    <div
+                      className={[
+                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.45)]",
+                        pingStatus === "success"
+                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
+                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
+                      ].join(" ")}
+                    >
+                      {pingStatus === "success" ? "Ping message copied" : "Copy failed"}
+                    </div>
+                  )}
+                </div>
+              )}
               {isHost && (
                 <>
                   <button
