@@ -12,8 +12,10 @@ import (
 // DashboardEvent is a single card on the "my events" list (keyset-paginated).
 type DashboardEvent struct {
 	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
 	GameName         string    `json:"game_name"`
 	GameMode         string    `json:"game_mode"`
+	Region           string    `json:"region"`
 	EventDate        time.Time `json:"event_date"`
 	HostID           uuid.UUID `json:"host_id"`
 	HostName         string    `json:"host_name"`
@@ -91,6 +93,7 @@ type EventGroupEvent struct {
 // EventGroupDetail is the full host/participant view for a group: header plus each game.
 type EventGroupDetail struct {
 	ID               uuid.UUID         `json:"id"`
+	Name             string            `json:"name"`
 	OwnerID          uuid.UUID         `json:"owner_id"`
 	OwnerName        string            `json:"owner_name"`
 	OwnerPronouns    string            `json:"owner_pronouns"`
@@ -113,10 +116,16 @@ type EventGroupDetail struct {
  * this but handling it manually gives more flexibility)
  */
 func MapDbGetEventsForUserRowToDashboardEvent(row db.GetEventsForUserRow) DashboardEvent {
+	name := ""
+	if row.Name != nil {
+		name = *row.Name
+	}
 	return DashboardEvent{
 		ID:               row.ID,
+		Name:             name,
 		GameName:         row.GameName,
 		GameMode:         row.GameMode,
+		Region:           row.Region,
 		EventDate:        row.EventDate,
 		HostID:           row.HostID,
 		HostName:         row.HostName,
@@ -207,8 +216,13 @@ func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) Lobby
 }
 
 func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetailByIdRow, events []EventGroupEvent) EventGroupDetail {
+	name := ""
+	if row.Name != nil {
+		name = *row.Name
+	}
 	return EventGroupDetail{
 		ID:               row.ID,
+		Name:             name,
 		OwnerID:          row.OwnerID,
 		OwnerName:        row.OwnerName,
 		OwnerPronouns:    row.OwnerPronouns,

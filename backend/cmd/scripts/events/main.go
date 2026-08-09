@@ -187,6 +187,7 @@ func main() {
 			RegistrationOpen: registrationOpen,
 			Region:           groupRegion,
 			SortLogic:        "balanced",
+			Name:             nil,
 		})
 		if err != nil {
 			common.Fatal("failed creating event group", "index", i, "error", err)

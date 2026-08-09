@@ -592,7 +592,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateEventResponse"
         "400":
-          description: Invalid payload, invalid UUID, invalid datetime, or unknown game mode
+          description: Invalid payload, invalid UUID, invalid datetime, unknown game mode, or invalid name (too long / invalid characters)
           content:
             application/json:
               schema:
@@ -674,7 +674,7 @@ paths:
         "204":
           description: Event group settings updated successfully
         "400":
-          description: Invalid `groupId` or invalid request body
+          description: Invalid `groupId` or invalid request body (including invalid name)
           content:
             application/json:
               schema:
@@ -1546,14 +1546,23 @@ components:
     DashboardEvent:
       type: object
       description: Compact event-group card shown on user dashboards
-      required: [id, game_name, game_mode, event_date, host_id, host_name, registered_count, registration_open]
+      required: [id, name, game_name, game_mode, region, event_date, host_id, host_name, registered_count, registration_open]
       properties:
         id:
           type: string
           format: uuid
+        name:
+          type: string
+          maxLength: 50
+          description: >
+            Optional custom event-group title. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Responses always include this field; "" means no custom name.
         game_name:
           type: string
         game_mode:
+          type: string
+        region:
           type: string
         event_date:
           type: string
@@ -1705,6 +1714,13 @@ components:
           type: boolean
         sort_logic:
           $ref: "#/components/schemas/SortLogic"
+        name:
+          type: string
+          maxLength: 50
+          description: >
+            Optional custom event-group title. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Omit or send empty/whitespace to leave unset (stored as null).
 
     CreateEventResponse:
       type: object
@@ -1745,6 +1761,13 @@ components:
           description: Omit or send empty string to keep the current value.
         registration_open:
           type: boolean
+        name:
+          type: string
+          maxLength: 50
+          description: >
+            Optional custom event-group title. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Omit or send empty/whitespace to clear (stored as null).
         events:
           type: array
           minItems: 1
@@ -1954,6 +1977,7 @@ components:
       type: object
       required:
         - id
+        - name
         - owner_id
         - owner_name
         - owner_pronouns
@@ -1973,6 +1997,13 @@ components:
         id:
           type: string
           format: uuid
+        name:
+          type: string
+          maxLength: 50
+          description: >
+            Optional custom event-group title. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Responses always include this field; "" means no custom name.
         owner_id:
           type: string
           format: uuid

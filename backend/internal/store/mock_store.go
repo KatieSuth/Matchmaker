@@ -46,9 +46,9 @@ type MockStore struct {
 
 	// events
 	GetEventsForUserFn               func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
-	CreateEventGroupWithEventsFn     func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
+	CreateEventGroupWithEventsFn     func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
 	GetEventGroupDetailFn            func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
-	UpdateEventGroupSettingsFn       func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error
+	UpdateEventGroupSettingsFn       func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error
 	DeleteEventGroupFn               func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SetEventGroupRegistrationOpenFn  func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
 	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
@@ -134,8 +134,8 @@ func (m *MockStore) ConsumeOneTimeCode(ctx context.Context, code string) (uuid.U
 	return m.ConsumeOneTimeCodeFn(ctx, code)
 }
 
-func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
-	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, startTime, gamesToRun)
+func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, name, startTime, gamesToRun)
 }
 
 func (m *MockStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
@@ -146,8 +146,8 @@ func (m *MockStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID u
 	return m.GetEventGroupDetailFn(ctx, groupID, viewerID)
 }
 
-func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error {
-	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, eventUpdates)
+func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error {
+	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, name, eventUpdates)
 }
 
 func (m *MockStore) DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {

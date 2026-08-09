@@ -1353,9 +1353,13 @@ export default function EventGroupPage() {
           <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-[var(--color-text)] tracking-tight">{group.game_name}</h1>
+              <h1 className="text-xl font-semibold text-[var(--color-text)] tracking-tight">
+                {group.name.trim() ? group.name : group.game_name}
+              </h1>
               <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                {group.game_mode_name} · {group.region}
+                {group.name.trim()
+                  ? `${group.game_name} · ${group.game_mode_name} · ${group.region}`
+                  : `${group.game_mode_name} · ${group.region}`}
               </p>
               <p className="text-xs text-[var(--color-text-faint)] mt-1">
                 First event: {firstEventStart ? formatDateTime(firstEventStart) : "Not scheduled"}
@@ -1892,6 +1896,7 @@ export default function EventGroupPage() {
             game_mode_id: e.game_mode_id,
           }))}
           initialValues={{
+            name: group.name,
             game_id: group.game_id,
             region: group.region,
             sub_min: group.sub_min,

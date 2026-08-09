@@ -92,7 +92,7 @@ func TestCreateEventHandler_StoreError(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			return uuid.Nil, errors.New("db exploded")
 		},
 	}
@@ -112,7 +112,7 @@ func TestCreateEventHandler_GameModeNotFound(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			return uuid.Nil, pgx.ErrNoRows
 		},
 	}
@@ -200,13 +200,14 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			assert.Equal(t, gameModeID, inGameModeID)
 			assert.Equal(t, int32(0), subMin)
 			assert.True(t, registrationOpen)
 			assert.Equal(t, "AMER", region)
 			assert.Equal(t, "balanced", sortLogic)
+			assert.Equal(t, "", name)
 			assert.Equal(t, int32(3), gamesToRun)
 			want, err := time.Parse(time.RFC3339, startAt)
 			require.NoError(t, err)
@@ -223,6 +224,94 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	}
 	got := test_util.DecodeJSON[response](t, w)
 	require.Equal(t, groupID.String(), got.GroupID)
+}
+
+func TestCreateEventHandler_NameTooLong(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	longName := strings.Repeat("a", 51)
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true,
+	  "name": "` + longName + `"
+	}`
+
+	storeCalled := false
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+			storeCalled = true
+			return uuid.Nil, nil
+		},
+	}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, storeCalled, "store must not be called when name is too long")
+}
+
+func TestCreateEventHandler_NameInvalidChars(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true,
+	  "name": "bad\nname"
+	}`
+
+	storeCalled := false
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+			storeCalled = true
+			return uuid.Nil, nil
+		},
+	}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, storeCalled)
+}
+
+func TestCreateEventHandler_NameRejectsHTML(t *testing.T) {
+	userID := uuid.New()
+	gameModeID := uuid.New()
+	body := `{
+	  "game_mode_id": "` + gameModeID.String() + `",
+	  "region": "AMER",
+	  "start_time": "` + startTimeHoursFromNow(48) + `",
+	  "sub_min": 0,
+	  "games_to_run": 3,
+	  "registration_open": true,
+	  "name": "<script>alert(1)</script>"
+	}`
+
+	storeCalled := false
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+			storeCalled = true
+			return uuid.Nil, nil
+		},
+	}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, storeCalled)
 }
 
 func TestCreateEventHandler_SortLogicInvalid(t *testing.T) {
@@ -268,7 +357,7 @@ func TestCreateEventHandler_SortLogicDefaultsToBalanced(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			assert.Equal(t, "balanced", sortLogic)
 			return groupID, nil
 		},
@@ -332,7 +421,7 @@ func TestCreateEventHandler_StoreInvalidSortLogic(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			return uuid.Nil, store.ErrInvalidSortLogic
 		},
 	}
@@ -353,7 +442,7 @@ func TestCreateEventHandler_UserIDAsUUID(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			return groupID, nil
 		},
@@ -395,7 +484,7 @@ func TestCreateEventHandler_SortLogicRanked(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
 			assert.Equal(t, "ranked", sortLogic)
 			return groupID, nil
 		},
@@ -550,7 +639,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, updates []store.GroupEventUpdate) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, updates []store.GroupEventUpdate) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
 					require.Len(t, updates, 1)
@@ -576,11 +665,12 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, updates []store.GroupEventUpdate) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, name string, updates []store.GroupEventUpdate) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
 			assert.Equal(t, "ranked", sortLogic)
 			assert.False(t, registrationOpen)
+			assert.Equal(t, "", name)
 			require.Len(t, updates, 1)
 			assert.Equal(t, evID, updates[0].EventID)
 			assert.Equal(t, modeID, updates[0].GameModeID)
@@ -589,6 +679,83 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	}, nil, "")
 	h.UpdateEventGroupSettingsHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpdateEventGroupSettingsHandler_NameTooLong(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	longName := strings.Repeat("a", 51)
+	storeCalled := false
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"` + longName + `","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate) error {
+			storeCalled = true
+			return nil
+		},
+	}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, storeCalled, "store must not be called when name is too long")
+}
+
+func TestUpdateEventGroupSettingsHandler_NameInvalidChars(t *testing.T) {
+	gid := uuid.New()
+	uid := uuid.New()
+	storeCalled := false
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"A < B >","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate) error {
+			storeCalled = true
+			return nil
+		},
+	}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, storeCalled, "store must not be called when name has invalid characters")
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidEventID(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"events":[{"event_id":"not-a-uuid","start_time":"2099-01-01T12:00:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidEventIDNilUUID(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"events":[{"event_id":"00000000-0000-0000-0000-000000000000","start_time":"2099-01-01T12:00:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_InvalidStartTime(t *testing.T) {
+	gid := uuid.New()
+	c, w := test_util.NewGinContext(http.MethodPatch, "/events/x")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"AMER","sub_min":1,"sort_logic":"balanced","registration_open":true,"events":[{"event_id":"44444444-4444-4444-4444-444444444444","start_time":"not-a-time","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateEventGroupSettingsHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestUpdateEventGroupSettingsHandler_MissingRegistrationOpen(t *testing.T) {

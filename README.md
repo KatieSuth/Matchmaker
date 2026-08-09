@@ -311,7 +311,7 @@ make seed-matchmaking-all HOST=YourDiscordName
 
 The built-in team balancer is a great resource if you have exactly 10 players and just don't know how to configure the teams. If you have a pool of more than 10 players and could potentially be running multiple games at once though, it cannot be used to fairly determine who should be in which lobby. That said, this isn't just for enormous Discord servers that will have tens of players joining at once; it can also be used to determine good 2v2 or 3v3 matches from a pool of available competitors for Skirmish or other modes.
 
-### You've got a lot of roadmap there and not a lot of journey. Is this thing ever going to be done?
+### You've got a lot of roadmap there and not a lot of journey. Is (the thing on the roadmap I'm waiting for) ever going to be done?
 
 This application currently has one developer and I work on it when I can, so things might take a while. Thanks for the interest though and please feel free to add issues & contribute! I will review them as I'm able.
 
@@ -352,6 +352,10 @@ A warning usually means one of two things:
 If you are the event host, you can also see each team's average rank on the team headers to judge balance yourself.
 
 Fairness warnings are a heads-up, not a failure — the teams are still playable. The host can always adjust rosters manually if something looks off.
+
+### Why does my event name hit the 50-character limit so fast when I use emojis?
+
+Event names are capped at 50 characters. Ordinary letters and numbers usually count as one character each, but many emojis (and especially ones made of several parts, like some family or flag emojis) count as more than one toward that limit even though they look like a single symbol on screen. That’s just how computers store those characters; it isn’t a bug in the counter. The counter on the form shows how much of the limit you have left; if it turns red, shorten the name or use fewer emojis.
 
 ### How can teams be edited?
 

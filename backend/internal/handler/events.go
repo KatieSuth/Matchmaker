@@ -8,10 +8,13 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
+	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+const eventGroupNameMaxRunes = 50
 
 type createEventRequest struct {
 	GameModeID       string `json:"game_mode_id"`
@@ -21,6 +24,7 @@ type createEventRequest struct {
 	GamesToRun       int32  `json:"games_to_run"`
 	RegistrationOpen bool   `json:"registration_open"`
 	SortLogic        string `json:"sort_logic"`
+	Name             string `json:"name"`
 }
 
 type patchGroupEventItem struct {
@@ -34,6 +38,7 @@ type updateEventGroupSettingsRequest struct {
 	SubMin           int32                 `json:"sub_min"`
 	SortLogic        string                `json:"sort_logic"`
 	RegistrationOpen *bool                 `json:"registration_open"`
+	Name             string                `json:"name"`
 	Events           []patchGroupEventItem `json:"events"`
 }
 
@@ -163,6 +168,32 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		return
 	}
 
+	name, err := textinput.NormalizeOptional(body.Name, eventGroupNameMaxRunes)
+	if err != nil {
+		if errors.Is(err, textinput.ErrTooLong) {
+			slog.WarnContext(c.Request.Context(), "name too long in CreateEventHandler", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "name must be at most 50 characters",
+			})
+			return
+		}
+		if errors.Is(err, textinput.ErrInvalidChars) {
+			slog.WarnContext(c.Request.Context(), "name has invalid characters in CreateEventHandler", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "name contains invalid characters",
+			})
+			return
+		}
+		slog.WarnContext(c.Request.Context(), "invalid name in CreateEventHandler", "user_id", userUUID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "name is invalid",
+		})
+		return
+	}
+
 	groupID, err := h.store.CreateEventGroupWithEvents(
 		c.Request.Context(),
 		userUUID,
@@ -171,6 +202,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		body.RegistrationOpen,
 		region,
 		sortLogic,
+		name,
 		startTime,
 		body.GamesToRun,
 	)
@@ -305,7 +337,33 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		})
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, eventUpdates)
+	name, err := textinput.NormalizeOptional(body.Name, eventGroupNameMaxRunes)
+	if err != nil {
+		if errors.Is(err, textinput.ErrTooLong) {
+			slog.WarnContext(c.Request.Context(), "name too long in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "name must be at most 50 characters",
+			})
+			return
+		}
+		if errors.Is(err, textinput.ErrInvalidChars) {
+			slog.WarnContext(c.Request.Context(), "name has invalid characters in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "name contains invalid characters",
+			})
+			return
+		}
+		slog.WarnContext(c.Request.Context(), "invalid name in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "name is invalid",
+		})
+		return
+	}
+
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, name, eventUpdates)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):

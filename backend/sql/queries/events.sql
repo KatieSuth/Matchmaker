@@ -1,5 +1,5 @@
 -- name: CreateEventGroup :one
-INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
+INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
@@ -7,6 +7,7 @@ VALUES (
     $3,
     $4,
     $5,
+    $6,
     NOW(),
     NOW()
 )
@@ -94,6 +95,7 @@ SELECT
     EG.registration_open,
     EG.region,
     EG.sort_logic,
+    EG.name,
     EG.created_at,
     EG.updated_at
 FROM event_groups AS EG
@@ -139,7 +141,7 @@ WHERE E.group_id = $1;
 
 -- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, name = $6, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
@@ -285,7 +287,9 @@ WITH grouped AS (
         H.id AS host_id,
         COALESCE(H.discord_name, '') AS host_name,
         COUNT(DISTINCT RA.user_id)::INT AS registered_count,
-        EG.registration_open
+        EG.registration_open,
+        EG.name,
+        EG.region
     FROM events AS E
     JOIN event_groups AS EG ON EG.id = E.group_id
     JOIN game_modes AS GM ON GM.id = E.game_mode_id
@@ -307,7 +311,7 @@ WITH grouped AS (
         AND (NOT sqlc.arg(has_from)::BOOL OR E.start_time >= sqlc.arg(from_time)::TIMESTAMPTZ)
         AND (NOT sqlc.arg(has_to)::BOOL OR E.start_time < sqlc.arg(to_time)::TIMESTAMPTZ)
         AND (NOT sqlc.arg(has_game_id)::BOOL OR G.id = sqlc.arg(game_id)::UUID)
-    GROUP BY EG.id, G.name, H.id, H.discord_name, EG.registration_open
+    GROUP BY EG.id, G.name, H.id, H.discord_name, EG.registration_open, EG.name, EG.region
 )
 SELECT *
 FROM grouped

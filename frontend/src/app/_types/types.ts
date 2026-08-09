@@ -121,6 +121,7 @@ export type EventSortLogic = "balanced" | "ranked";
 
 export interface EventGroupDetail {
   id: string;
+  name: string;
   owner_id: string;
   owner_name: string;
   /** Non-empty when the host has enabled public pronouns; otherwise "". */
@@ -152,8 +153,10 @@ export interface UpsertGroupRegistrationRequest {
 
 export interface Event {
   id: string;
+  name: string;
   game_name: string;
   game_mode: string | null;
+  region: string;
   event_date: string;
   host_name: string;
   host_id: string;

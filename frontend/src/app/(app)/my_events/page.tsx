@@ -195,13 +195,13 @@ function EventCard({ event, currentUserId, isHostingList, hostingIds }: EventCar
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-[var(--color-text)] text-sm leading-snug truncate group-hover:text-white transition-colors">
-              {event.game_name}
+              {event.name.trim() ? event.name : event.game_name}
             </p>
-            {event.game_mode && (
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
-                {event.game_mode}
-              </p>
-            )}
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+              {event.name.trim()
+                ? [event.game_name, event.game_mode, event.region].filter(Boolean).join(" · ")
+                : [event.game_mode, event.region].filter(Boolean).join(" · ")}
+            </p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {isAlsoHosting && (

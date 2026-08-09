@@ -280,8 +280,10 @@ func TestUsersMeEventsHandler_Success(t *testing.T) {
 
 	event := model.DashboardEvent{
 		ID:               uuid.New(),
+		Name:             "",
 		GameName:         "Valorant",
 		GameMode:         "5v5",
+		Region:           "AMER",
 		EventDate:        time.Now().UTC(),
 		HostID:           userID,
 		HostName:         "host",

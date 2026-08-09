@@ -42,6 +42,7 @@ type EventGroup struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	SortLogic           string
+	Name                *string
 }
 
 type Game struct {

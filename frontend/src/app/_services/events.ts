@@ -15,6 +15,7 @@ export interface CreateEventRequest {
   games_to_run: number;
   registration_open: boolean;
   sort_logic: EventSortLogic;
+  name?: string;
 }
 
 export interface CreateEventResponse {
@@ -37,6 +38,7 @@ export interface UpdateEventGroupRequest {
   sub_min: number;
   sort_logic: EventSortLogic;
   registration_open: boolean;
+  name?: string;
   events: PatchGroupEventScheduleItem[];
 }
 

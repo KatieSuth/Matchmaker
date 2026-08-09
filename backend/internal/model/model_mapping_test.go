@@ -488,8 +488,10 @@ func TestMapDbGetEventsForUserRowToDashboardEvent_MapsAllFields(t *testing.T) {
 	hid := uuid.New()
 	input := db.GetEventsForUserRow{
 		ID:               eid,
+		Name:             nil,
 		GameName:         "Game",
 		GameMode:         "5v5",
+		Region:           "AMER",
 		EventDate:        now,
 		HostID:           hid,
 		HostName:         "host",
@@ -498,13 +500,20 @@ func TestMapDbGetEventsForUserRowToDashboardEvent_MapsAllFields(t *testing.T) {
 	}
 	result := model.MapDbGetEventsForUserRowToDashboardEvent(input)
 	assert.Equal(t, eid, result.ID)
+	assert.Equal(t, "", result.Name)
 	assert.Equal(t, "Game", result.GameName)
+	assert.Equal(t, "5v5", result.GameMode)
+	assert.Equal(t, "AMER", result.Region)
 	assert.Equal(t, "5v5", result.GameMode)
 	assert.Equal(t, now, result.EventDate)
 	assert.Equal(t, hid, result.HostID)
 	assert.Equal(t, "host", result.HostName)
 	assert.Equal(t, 3, result.RegisteredCount)
-	assert.True(t, result.RegistrationOpen)
+	custom := "Custom Night"
+	inputNamed := input
+	inputNamed.Name = &custom
+	named := model.MapDbGetEventsForUserRowToDashboardEvent(inputNamed)
+	assert.Equal(t, "Custom Night", named.Name)
 }
 
 func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_DiscordNamePointer(t *testing.T) {
@@ -620,12 +629,14 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 		RegistrationOpen: false,
 		Region:           "AMER",
 		SortLogic:        "ranked",
+		Name:             nil,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	events := []model.EventGroupEvent{{ID: uuid.New()}}
 	result := model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row, events)
 	assert.Equal(t, row.ID, result.ID)
+	assert.Equal(t, "", result.Name)
 	assert.Equal(t, oid, result.OwnerID)
 	assert.Equal(t, "owner", result.OwnerName)
 	assert.Equal(t, "they/them", result.OwnerPronouns)
@@ -641,6 +652,11 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, now, result.CreatedAt)
 	assert.Equal(t, now, result.UpdatedAt)
 	assert.Equal(t, events, result.Events)
+
+	title := "Friday Scrims"
+	row.Name = &title
+	named := model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row, events)
+	assert.Equal(t, "Friday Scrims", named.Name)
 }
 
 func TestMapDbGetLobbiesForEventRowToEventLobby(t *testing.T) {

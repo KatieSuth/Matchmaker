@@ -75,7 +75,7 @@ func TestCreateEventGroupWithEvents_Success(t *testing.T) {
 	gamesToRun := int32(3)
 	subMin := int32(2)
 
-	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, subMin, true, "EMEA", "ranked", start, gamesToRun)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, subMin, true, "EMEA", "ranked", "", start, gamesToRun)
 	require.NoError(t, err)
 	require.NotEqual(t, uuid.Nil, groupID)
 
@@ -84,17 +84,19 @@ func TestCreateEventGroupWithEvents_Success(t *testing.T) {
 	var regOpen bool
 	var ownerID uuid.UUID
 	var gotSort string
+	var gotName *string
 	err = tx.QueryRow(ctx, `
-		SELECT region, sub_min, registration_open, owner_id, sort_logic
+		SELECT region, sub_min, registration_open, owner_id, sort_logic, name
 		FROM event_groups WHERE id = $1`,
 		groupID,
-	).Scan(&region, &gotSubMin, &regOpen, &ownerID, &gotSort)
+	).Scan(&region, &gotSubMin, &regOpen, &ownerID, &gotSort, &gotName)
 	require.NoError(t, err)
 	assert.Equal(t, "ranked", gotSort)
 	assert.Equal(t, "EMEA", region)
 	assert.Equal(t, subMin, gotSubMin)
 	assert.True(t, regOpen)
 	assert.Equal(t, user.ID, ownerID)
+	assert.Nil(t, gotName)
 
 	var firstMode uuid.UUID
 	err = tx.QueryRow(ctx, `
@@ -126,13 +128,39 @@ func TestCreateEventGroupWithEvents_Success(t *testing.T) {
 	}
 }
 
+func TestCreateEventGroupWithEvents_WithName(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	user := createTestUser(t, ctx, s)
+
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modes, err := s.GetGameModes(ctx, games[0].ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, modes)
+
+	start := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, modes[0].ID, 0, true, "AMER", "balanced", "Friday Scrims", start, 1)
+	require.NoError(t, err)
+
+	var gotName *string
+	err = tx.QueryRow(ctx, `SELECT name FROM event_groups WHERE id = $1`, groupID).Scan(&gotName)
+	require.NoError(t, err)
+	require.NotNil(t, gotName)
+	assert.Equal(t, "Friday Scrims", *gotName)
+
+	detail, err := s.GetEventGroupDetail(ctx, groupID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Friday Scrims", detail.Name)
+}
+
 func TestCreateEventGroupWithEvents_UnknownGameMode(t *testing.T) {
 	s, _ := createEventTestStoreTx(t)
 	ctx := context.Background()
 
 	user := createTestUser(t, ctx, s)
 
-	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "AMER", "balanced", time.Now().UTC(), 1)
+	_, err := s.CreateEventGroupWithEvents(ctx, user.ID, uuid.New(), 1, false, "AMER", "balanced", "", time.Now().UTC(), 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
 }
@@ -149,7 +177,7 @@ func TestCreateEventGroupWithEvents_InvalidSortLogic(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, modes)
 
-	_, err = s.CreateEventGroupWithEvents(ctx, user.ID, modes[0].ID, 0, true, "AMER", "lobster", time.Now().UTC().Add(24*time.Hour), 1)
+	_, err = s.CreateEventGroupWithEvents(ctx, user.ID, modes[0].ID, 0, true, "AMER", "lobster", "", time.Now().UTC().Add(24*time.Hour), 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSortLogic)
 }
@@ -170,7 +198,7 @@ func TestCreateEventGroupWithEvents_SingleGame(t *testing.T) {
 	mode := modes[0]
 
 	start := time.Date(2026, 5, 1, 9, 30, 0, 0, time.UTC)
-	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, 1, true, "APAC", "balanced", start, 1)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, user.ID, mode.ID, 1, true, "APAC", "balanced", "", start, 1)
 	require.NoError(t, err)
 
 	var n int
@@ -513,7 +541,7 @@ func TestUpdateEventGroupSettings_Success(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5, "ranked", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, " EU-West ", 5, "ranked", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.NoError(t, err)
 	var region string
 	var subMin int32
@@ -538,7 +566,7 @@ func TestUpdateEventGroupSettings_Forbidden(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0, "", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, other.ID, "AMER", 0, "", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
@@ -553,7 +581,7 @@ func TestUpdateEventGroupSettings_Invalid(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0, "", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "  ", 0, "", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -568,7 +596,7 @@ func TestUpdateEventGroupSettings_InvalidNegativeSubMin(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1, "", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", -1, "", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSubMin)
 }
@@ -578,7 +606,7 @@ func TestUpdateEventGroupSettings_NotFound(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 
-	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0, "", false,
+	err := s.UpdateEventGroupSettings(ctx, uuid.New(), host.ID, "AMER", 0, "", false, "",
 		patchEventUpdates(uuid.New(), uuid.New(), time.Now().UTC().Add(time.Hour)))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
@@ -594,7 +622,7 @@ func TestUpdateEventGroupSettings_InvalidSortLogic(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "not-a-mode", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "not-a-mode", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidSortLogic)
 }
@@ -612,7 +640,7 @@ func TestUpdateEventGroupSettings_PreservesSortLogicWhenEmpty(t *testing.T) {
 	_, err = tx.Exec(ctx, `UPDATE event_groups SET sort_logic = 'ranked' WHERE id = $1`, groupID)
 	require.NoError(t, err)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "LATAM", 1, "", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "LATAM", 1, "", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.NoError(t, err)
 
 	var region string
@@ -634,7 +662,7 @@ func TestUpdateEventGroupSettings_UpdatesGameModeWithinSameGame(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeA.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, patchEventUpdates(eventID, modeBID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, modeBID, evStart))
 	require.NoError(t, err)
 	var stored uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT game_mode_id FROM events WHERE id = $1`, eventID).Scan(&stored)
@@ -654,7 +682,7 @@ func TestUpdateEventGroupSettings_RejectsGameModeFromOtherGame(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeGameA.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, patchEventUpdates(eventID, modeGameB.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, modeGameB.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrGameModeWrongGame)
 }
@@ -669,7 +697,7 @@ func TestUpdateEventGroupSettings_NewGameModeNotFound(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, patchEventUpdates(eventID, uuid.New(), evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, uuid.New(), evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrGameModeNotFound)
 }
@@ -684,7 +712,7 @@ func TestUpdateEventGroupSettings_SetsRegistrationClosed(t *testing.T) {
 	evStart := time.Now().UTC().Add(24 * time.Hour)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, evStart)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", false, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", false, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.NoError(t, err)
 	var open bool
 	err = tx.QueryRow(ctx, `SELECT registration_open FROM event_groups WHERE id = $1`, groupID).Scan(&open)
@@ -705,7 +733,7 @@ func TestUpdateEventGroupSettings_OpenBlockedByExistingTeams(t *testing.T) {
 	require.NoError(t, err)
 	insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, patchEventUpdates(eventID, mode.ID, evStart))
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, mode.ID, evStart))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrOpenRegistrationTeams)
 }
@@ -1172,7 +1200,7 @@ func TestUpdateEventGroupSettings_EmptyEventUpdates(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, nil)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 	_ = eventID
@@ -1187,7 +1215,7 @@ func TestUpdateEventGroupSettings_EventStartInPast(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true,
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "",
 		patchEventUpdates(eventID, mode.ID, time.Now().UTC().Add(-time.Hour)))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventStartInPast)
@@ -1204,7 +1232,7 @@ func TestUpdateEventGroupSettings_DuplicateEventIDs(t *testing.T) {
 	evStart := time.Now().UTC().Add(48 * time.Hour)
 	updates := append(patchEventUpdates(eventID, mode.ID, evStart), patchEventUpdates(eventID, mode.ID, evStart)...)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, updates)
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", updates)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }

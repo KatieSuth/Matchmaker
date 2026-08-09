@@ -13,9 +13,12 @@ import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { REGIONS } from "@/app/_lib/constants";
 import { DATEPICKER_PORTAL_ID, datepickerStyles, inputCls } from "@/app/_lib/styles";
+import { codePointLength, optionalFreeTextSchema } from "@/app/_lib/textInput";
 import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { Game, GameMode } from "@/app/_types/types";
+
+const EVENT_NAME_MAX_RUNES = 50;
 
 export type EventFormEditScheduleRow = {
   id: string;
@@ -42,6 +45,7 @@ function buildEventFormSchema(mode: "create" | "edit") {
       : z.string().optional();
 
   return z.object({
+    name: optionalFreeTextSchema(EVENT_NAME_MAX_RUNES),
     game_id: z.string().min(1, "Game is required."),
     game_mode_id:
       mode === "create"
@@ -319,6 +323,7 @@ export function EventForm({
 
   const defaultValues = useMemo(
     (): EventFormValues => ({
+      name: initialValues?.name ?? "",
       game_id: initialValues?.game_id ?? "",
       game_mode_id: initialValues?.game_mode_id ?? "",
       region: initialValues?.region ?? "",
@@ -343,6 +348,9 @@ export function EventForm({
   });
 
   const watchedGameId = useWatch({ control, name: "game_id" });
+  const watchedName = useWatch({ control, name: "name" }) ?? "";
+  const nameCodePoints = codePointLength(watchedName);
+  const nameOverLimit = nameCodePoints > EVENT_NAME_MAX_RUNES;
 
   const [games, setGames] = useState<Game[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
@@ -479,6 +487,7 @@ export function EventForm({
           games_to_run: data.games_to_run,
           registration_open: data.registration_open,
           sort_logic: data.sort_logic,
+          name: data.name,
         });
         onCancel();
         router.push(`/event/${result.group_id}`);
@@ -506,6 +515,7 @@ export function EventForm({
         sub_min: data.sub_min,
         sort_logic: data.sort_logic,
         registration_open: data.registration_open,
+        name: data.name,
         events: perGameDraft.map((row) => ({
           event_id: row.eventId,
           start_time: new Date(row.startLocal).toISOString(),
@@ -549,6 +559,34 @@ export function EventForm({
           Times are entered in your local timezone:{" "}
           <span className="text-[var(--color-text-soft)]">{userTz}</span>
         </p>
+
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="event-form-name"
+            className={`text-xs font-medium tracking-wide ${
+              nameOverLimit ? "text-[var(--color-text-danger)]" : "text-[var(--color-text-soft)]"
+            }`}
+          >
+            Event name ({nameCodePoints}/{EVENT_NAME_MAX_RUNES})
+          </label>
+          <Controller
+            name="name"
+            control={control}
+            render={({ field }) => (
+              <input
+                {...field}
+                id="event-form-name"
+                type="text"
+                autoComplete="off"
+                placeholder="Optional custom title"
+                className={inputCls}
+              />
+            )}
+          />
+          {errors.name && (
+            <p className="text-xs text-[var(--color-text-danger)]">{errors.name.message}</p>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">

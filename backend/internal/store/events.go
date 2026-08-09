@@ -182,12 +182,16 @@ func isValidSortLogic(s string) bool {
 	return s == "balanced" || s == "ranked"
 }
 
-func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
 	if !isValidSortLogic(sortLogic) {
 		return uuid.Nil, ErrInvalidSortLogic
 	}
 
 	var groupID uuid.UUID
+	var namePtr *string
+	if name != "" {
+		namePtr = &name
+	}
 
 	err := s.WithTx(ctx, func(tx Store) error {
 		txStore, ok := tx.(*PostgresStore)
@@ -209,6 +213,7 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 			RegistrationOpen: registrationOpen,
 			Region:           region,
 			SortLogic:        sortLogic,
+			Name:             namePtr,
 		})
 		if err != nil {
 			return fmt.Errorf("create event group: %w", err)
@@ -286,7 +291,7 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, eventUpdates []GroupEventUpdate) error {
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error {
 	if len(eventUpdates) == 0 {
 		return ErrInvalidGroupEvents
 	}
@@ -378,12 +383,17 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 			}
 		}
 
+		var namePtr *string
+		if name != "" {
+			namePtr = &name
+		}
 		_, err = txStore.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
 			ID:               groupID,
 			Region:           strings.TrimSpace(region),
 			SubMin:           subMin,
 			SortLogic:        effectiveSort,
 			RegistrationOpen: registrationOpen,
+			Name:             namePtr,
 		})
 		if err != nil {
 			return fmt.Errorf("update event group settings: %w", err)
