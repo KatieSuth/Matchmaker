@@ -749,7 +749,7 @@ export default function EventGroupPage() {
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
-  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [showAllEvents, setShowAllEvents] = useState(true);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [registrationEditorOpen, setRegistrationEditorOpen] = useState(false);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
@@ -785,6 +785,8 @@ export default function EventGroupPage() {
   const [toast, setToast] = useState<string | null>(null);
   const topAnchorRef = useRef<HTMLDivElement | null>(null);
   const eventSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  /** Prevents re-opening the registration form after the user cancels an auto-open. */
+  const didAutoOpenRegistrationRef = useRef(false);
 
   const loadGroup = useCallback(async (signal?: AbortSignal) => {
     if (!groupId) return;
@@ -837,6 +839,10 @@ export default function EventGroupPage() {
       ac.abort();
     };
   }, [authLoading, groupId, isAuthenticated, loadGroup]);
+
+  useEffect(() => {
+    didAutoOpenRegistrationRef.current = false;
+  }, [groupId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1169,6 +1175,30 @@ export default function EventGroupPage() {
     await loadGroup();
   };
 
+  // Auto-open register form for guests who aren't registered yet (same as clicking Register Now).
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user || !group || loading) return;
+    if (didAutoOpenRegistrationRef.current || registrationEditorOpen) return;
+    if (isHost || myRegistrationsByEvent.size > 0 || !group.registration_open) return;
+
+    didAutoOpenRegistrationRef.current = true;
+    const timer = window.setTimeout(() => {
+      void handleOpenRegistrationSheet();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // handleOpenRegistrationSheet closes over the latest group/registrations for this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once per group visit via ref guard
+  }, [
+    authLoading,
+    group,
+    isAuthenticated,
+    isHost,
+    loading,
+    myRegistrationsByEvent.size,
+    registrationEditorOpen,
+    user,
+  ]);
+
   const deleteAllRegistrationsForUserInGroup = async (targetUserId: string) => {
     if (!group) return;
     const eventIds = group.events
@@ -1475,7 +1505,7 @@ export default function EventGroupPage() {
                 }}
                 className={[
                   "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  activeEvent?.id === event.id
+                  !showAllEvents && activeEvent?.id === event.id
                     ? "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
                     : "border-white/10 bg-white/[0.02] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)]",
                 ].join(" ")}
@@ -1504,7 +1534,7 @@ export default function EventGroupPage() {
                 disabled={working}
                 className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 disabled:opacity-40"
               >
-                Cancel
+                Cancel Registration
               </button>
             ) : (
               <span
