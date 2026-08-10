@@ -1436,6 +1436,62 @@ export default function EventGroupPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {isHost && hasAnyLobbies && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyDiscordPings()}
+                    className={[
+                      "rounded-lg border px-3 py-2 text-sm font-medium",
+                      pingStatus === "success"
+                        ? "border-emerald-500/35 bg-white/[0.03] text-emerald-400"
+                        : pingStatus === "error"
+                          ? "border-[var(--color-text-danger)]/35 bg-white/[0.03] text-[var(--color-text-danger)]"
+                          : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
+                    ].join(" ")}
+                  >
+                    Copy Discord Pings
+                  </button>
+                  {pingStatus !== "idle" && (
+                    <div
+                      className={[
+                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.45)]",
+                        pingStatus === "success"
+                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
+                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
+                      ].join(" ")}
+                    >
+                      {pingStatus === "success" ? "Ping message copied" : "Copy failed"}
+                    </div>
+                  )}
+                </div>
+              )}
+              {isHost && (
+                <button
+                  type="button"
+                  disabled={working}
+                  onClick={() => {
+                    if (!group.registration_open && hasAnyLobbies) {
+                      setWarningSheetOpen(true);
+                      return;
+                    }
+                    void withHostAction(() => createTeams(group.id));
+                  }}
+                  className={[
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    "disabled:opacity-40 disabled:cursor-not-allowed",
+                    !group.registration_open && hasAnyLobbies
+                      ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
+                      : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
+                  ].join(" ")}
+                >
+                  {group.registration_open
+                    ? "Lock In & Create Teams"
+                    : hasAnyLobbies
+                      ? "Delete teams"
+                      : "Create teams"}
+                </button>
+              )}
               <div className="relative">
                 <button
                   type="button"
@@ -1488,71 +1544,22 @@ export default function EventGroupPage() {
                   </div>
                 )}
               </div>
-              {isHost && hasAnyLobbies && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyDiscordPings()}
-                    className={[
-                      "rounded-lg border px-3 py-2 text-sm font-medium",
-                      pingStatus === "success"
-                        ? "border-emerald-500/35 bg-white/[0.03] text-emerald-400"
-                        : pingStatus === "error"
-                          ? "border-[var(--color-text-danger)]/35 bg-white/[0.03] text-[var(--color-text-danger)]"
-                          : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
-                    ].join(" ")}
-                  >
-                    Copy Discord Pings
-                  </button>
-                  {pingStatus !== "idle" && (
-                    <div
-                      className={[
-                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.45)]",
-                        pingStatus === "success"
-                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
-                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
-                      ].join(" ")}
-                    >
-                      {pingStatus === "success" ? "Ping message copied" : "Copy failed"}
-                    </div>
-                  )}
-                </div>
-              )}
-              {isHost && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setEditSheetOpen(true)}
-                    className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-[var(--color-text-soft)] hover:bg-white/[0.08]"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    disabled={working}
-                    onClick={() => {
-                      if (!group.registration_open && hasAnyLobbies) {
-                        setWarningSheetOpen(true);
-                        return;
-                      }
-                      void withHostAction(() => createTeams(group.id));
-                    }}
-                    className={[
-                      "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                      "disabled:opacity-40 disabled:cursor-not-allowed",
-                      !group.registration_open && hasAnyLobbies
-                        ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
-                        : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
-                    ].join(" ")}
-                  >
-                    {group.registration_open
-                      ? "Lock In & Create Teams"
-                      : hasAnyLobbies
-                        ? "Delete teams"
-                        : "Create teams"}
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => setEditSheetOpen(true)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]"
+                aria-label="Event settings"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M6.4 1.6h3.2l.35 1.4a4.8 4.8 0 0 1 1.15.66l1.4-.45 1.6 2.77-1.05 1.02c.07.33.1.67.1 1 0 .33-.03.67-.1 1l1.05 1.02-1.6 2.77-1.4-.45a4.8 4.8 0 0 1-1.15.66l-.35 1.4H6.4l-.35-1.4a4.8 4.8 0 0 1-1.15-.66l-1.4.45L2 10.62l1.05-1.02A4.9 4.9 0 0 1 2.95 8c0-.33.03-.67.1-1L2 5.98 3.6 3.21l1.4.45c.35-.27.73-.5 1.15-.66L6.4 1.6Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -1990,10 +1997,11 @@ export default function EventGroupPage() {
       <ResponsiveSheet
         isOpen={editSheetOpen}
         onClose={() => setEditSheetOpen(false)}
-        title="Edit event settings"
+        title={isHost ? "Edit event settings" : "Event settings"}
       >
         <EventForm
           mode="edit"
+          readOnly={!isHost}
           eventGroupId={group.id}
           editSchedule={group.events.map((e) => ({
             id: e.id,
@@ -2009,10 +2017,14 @@ export default function EventGroupPage() {
             sort_logic: group.sort_logic,
           }}
           onCancel={() => setEditSheetOpen(false)}
-          onSubmitted={() => {
-            void loadGroup();
-            setToast("Event settings updated.");
-          }}
+          onSubmitted={
+            isHost
+              ? () => {
+                  void loadGroup();
+                  setToast("Event settings updated.");
+                }
+              : undefined
+          }
         />
       </ResponsiveSheet>
 

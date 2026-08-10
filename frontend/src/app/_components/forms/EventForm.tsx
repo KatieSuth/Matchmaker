@@ -79,6 +79,8 @@ interface EventFormProps {
   /** Edit only: current games from GET /events/:groupId (drives per-game time + mode UI). */
   editSchedule?: EventFormEditScheduleRow[];
   onSubmitted?: () => void;
+  /** Edit only: view settings without mutation controls (non-host). */
+  readOnly?: boolean;
 }
 
 function toDateTimeLocalValue(date: Date): string {
@@ -124,6 +126,7 @@ function EventFormDateTimePicker({
   id,
   disallowPast,
   placeholderText = "Select date & time",
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -132,6 +135,7 @@ function EventFormDateTimePicker({
   id?: string;
   disallowPast?: boolean;
   placeholderText?: string;
+  disabled?: boolean;
 }) {
   const selected = parseLocalDateTimeString(value);
   const filterTime = (time: Date) => {
@@ -162,6 +166,7 @@ function EventFormDateTimePicker({
       filterTime={disallowPast ? filterTime : undefined}
       popperPlacement="bottom-start"
       popperProps={{ strategy: "fixed" }}
+      disabled={disabled}
     />
   );
 }
@@ -248,9 +253,10 @@ const MATCHMAKING_MODE_OPTIONS: readonly MatchmakingModeOption[] = [
 interface MatchmakingModeFieldProps {
   value: "balanced" | "ranked";
   onChange: (next: "balanced" | "ranked") => void;
+  disabled?: boolean;
 }
 
-function MatchmakingModeField({ value, onChange }: MatchmakingModeFieldProps) {
+function MatchmakingModeField({ value, onChange, disabled = false }: MatchmakingModeFieldProps) {
   return (
     <div
       className="flex flex-col gap-2"
@@ -262,10 +268,16 @@ function MatchmakingModeField({ value, onChange }: MatchmakingModeFieldProps) {
         return (
           <label
             key={opt.value}
-            className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+            className={`flex gap-3 rounded-lg border p-3 transition-colors ${
+              disabled
+                ? "cursor-not-allowed opacity-60"
+                : "cursor-pointer"
+            } ${
               selected
                 ? "border-[var(--color-accent-blue)]/50 bg-[var(--color-accent-blue)]/10"
-                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
+                : disabled
+                  ? "border-white/10 bg-white/[0.02]"
+                  : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
             }`}
           >
             <input
@@ -273,6 +285,7 @@ function MatchmakingModeField({ value, onChange }: MatchmakingModeFieldProps) {
               name="sort_logic_form"
               value={opt.value}
               checked={selected}
+              disabled={disabled}
               onChange={() => onChange(opt.value)}
               className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-accent-blue)]"
             />
@@ -311,6 +324,7 @@ export function EventForm({
   initialValues,
   editSchedule,
   onSubmitted,
+  readOnly = false,
 }: EventFormProps) {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -464,6 +478,7 @@ export function EventForm({
   }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated, mode]);
 
   const onValidSubmit = async (data: EventFormValues) => {
+    if (readOnly) return;
     setSubmitError(null);
     if (!user?.id) {
       setSubmitError("You must be signed in to create an event.");
@@ -535,7 +550,7 @@ export function EventForm({
   };
 
   const onConfirmDelete = async () => {
-    if (mode !== "edit" || !eventGroupId) return;
+    if (readOnly || mode !== "edit" || !eventGroupId) return;
     setDeleteError(null);
     try {
       setIsDeleting(true);
@@ -552,9 +567,13 @@ export function EventForm({
 
   return (
     <>
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit(onValidSubmit)} noValidate>
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={readOnly ? (e) => e.preventDefault() : handleSubmit(onValidSubmit)}
+        noValidate
+      >
         <p className="text-xs text-[var(--color-text-muted)]">
-          Times are entered in your local timezone:{" "}
+          {readOnly ? "Times are shown in your local timezone: " : "Times are entered in your local timezone: "}
           <span className="text-[var(--color-text-soft)]">{userTz}</span>
         </p>
 
@@ -578,6 +597,8 @@ export function EventForm({
                 autoComplete="off"
                 placeholder="Optional custom title"
                 className={inputCls}
+                disabled={readOnly}
+                readOnly={readOnly}
               />
             )}
           />
@@ -603,7 +624,7 @@ export function EventForm({
                     setModes([]);
                     setModesError(null);
                   }}
-                  disabled={mode === "edit" || gamesLoading || !user?.id || !!gamesError}
+                  disabled={readOnly || mode === "edit" || gamesLoading || !user?.id || !!gamesError}
                   placeholder={gamesLoading ? "Loading games..." : "Select game"}
                   options={games.map((game) => ({ value: game.id, label: game.name }))}
                 />
@@ -616,7 +637,7 @@ export function EventForm({
             ) : (
               gamesError && <p className="text-xs text-[var(--color-text-danger)]">{gamesError}</p>
             )}
-            {mode === "edit" && (
+            {mode === "edit" && !readOnly && (
               <p className="text-xs text-[var(--color-text-faint)]">
                 Game cannot be changed. Adjust date, time, and mode for each scheduled game below.
               </p>
@@ -668,6 +689,7 @@ export function EventForm({
                 <Select
                   value={field.value ?? ""}
                   onChange={field.onChange}
+                  disabled={readOnly}
                   placeholder="Select region"
                   options={REGIONS.map((r) => ({ value: r, label: r }))}
                 />
@@ -716,7 +738,11 @@ export function EventForm({
               name="sort_logic"
               control={control}
               render={({ field }) => (
-                <MatchmakingModeField value={field.value} onChange={field.onChange} />
+                <MatchmakingModeField
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={readOnly}
+                />
               )}
             />
             {errors.sort_logic && (
@@ -735,6 +761,7 @@ export function EventForm({
                     value={field.value}
                     min={0}
                     onChange={field.onChange}
+                    disabled={readOnly}
                     hint="Additional lobbies are created only after this many subs are available per lobby."
                   />
                 )}
@@ -795,7 +822,9 @@ export function EventForm({
               Games in this series
             </p>
             <p className="text-xs text-[var(--color-text-faint)]">
-              Each row applies to one scheduled game. Times use your local timezone ({userTz}).
+              {readOnly
+                ? `Each row is one scheduled game. Times use your local timezone (${userTz}).`
+                : `Each row applies to one scheduled game. Times use your local timezone (${userTz}).`}
             </p>
             <div className="flex flex-col gap-4">
               {perGameDraft.map((row, index) => (
@@ -821,6 +850,7 @@ export function EventForm({
                           );
                         }}
                         disallowPast={false}
+                        disabled={readOnly}
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -834,7 +864,7 @@ export function EventForm({
                             prev.map((r) => (r.eventId === row.eventId ? { ...r, modeId: nextMode } : r))
                           );
                         }}
-                        disabled={!watchedGameId || modesLoading || !!modesError}
+                        disabled={readOnly || !watchedGameId || modesLoading || !!modesError}
                         placeholder={
                           !watchedGameId
                             ? "Select game first"
@@ -866,6 +896,7 @@ export function EventForm({
                 }
                 checked={field.value}
                 onChange={field.onChange}
+                disabled={readOnly}
               />
             )}
           />
@@ -873,45 +904,57 @@ export function EventForm({
 
         {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}
 
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div>
-            {mode === "edit" && (
+        {readOnly ? (
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <div>
+              {mode === "edit" && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  disabled={isSubmitting || isDeleting}
+                  className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Delete Event
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsDeleteConfirmOpen(true)}
+                onClick={onCancel}
                 disabled={isSubmitting || isDeleting}
-                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
               >
-                Delete Event
+                Cancel
               </button>
-            )}
+              <button
+                type="submit"
+                disabled={isSubmitting || isDeleting}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
+              >
+                {isSubmitting
+                  ? mode === "create"
+                    ? "Creating..."
+                    : "Saving..."
+                  : mode === "create"
+                    ? "Create Event"
+                    : "Save Settings"}
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSubmitting || isDeleting}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting || isDeleting}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
-          >
-            {isSubmitting
-              ? mode === "create"
-                ? "Creating..."
-                : "Saving..."
-              : mode === "create"
-                ? "Create Event"
-                : "Save Settings"}
-          </button>
-          </div>
-        </div>
+        )}
       </form>
-      {isDeleteConfirmOpen && (
+      {!readOnly && isDeleteConfirmOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--color-bg)] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.7)]">
             <h3 className="text-base font-semibold text-[var(--color-text)]">Delete Event</h3>
