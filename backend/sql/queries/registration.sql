@@ -1,6 +1,7 @@
 -- name: GetRegistrationDataByEventId :many
 SELECT R.*, 
-    U.discord_name, 
+    U.discord_name,
+    COALESCE(U.display_name, '') AS display_name,
     CASE 
 		WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
 		ELSE ''

@@ -1,12 +1,13 @@
 -- name: CreateUser :one
-INSERT INTO users (id, created_at, updated_at, discord_id, discord_name, image_url)
+INSERT INTO users (id, created_at, updated_at, discord_id, discord_name, image_url, display_name)
 VALUES (
     gen_random_uuid(),
     NOW(),
     NOW(),
     $1,
     $2,
-    $3
+    $3,
+    $4
 )
 RETURNING *;
 
@@ -22,11 +23,12 @@ SELECT * FROM users WHERE id = $1;
 -- name: UpdateUser :one
 UPDATE users
 SET updated_at = NOW(),
-    pronouns = $1,
-    show_pronouns = $2,
-    region = $3,
+    display_name = $1,
+    pronouns = $2,
+    show_pronouns = $3,
+    region = $4,
     new_user = false
-WHERE id = $4
+WHERE id = $5
 RETURNING *;
 
 -- name: UpdateUserFromLogin :one

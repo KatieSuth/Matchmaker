@@ -5,6 +5,7 @@ export interface User {
     discord_id: string;
     discord_name: string | null;
     image_url: string | null;
+    display_name: string | null;
     pronouns: string | null
     show_pronouns: boolean
     region: string | null
@@ -59,6 +60,7 @@ export interface EventRegistration {
   event_id: string;
   user_id: string;
   discord_name: string;
+  display_name: string;
   in_game_name: string;
   pronouns: string;
   current_rank_name: string;
@@ -74,6 +76,7 @@ export interface EventRegistration {
 export interface LobbyPlayer {
   user_id: string;
   discord_name: string;
+  display_name: string;
   in_game_name: string;
   pronouns: string;
   current_rank_name: string;
@@ -124,6 +127,7 @@ export interface EventGroupDetail {
   name: string;
   owner_id: string;
   owner_name: string;
+  owner_display_name: string;
   /** Non-empty when the host has enabled public pronouns; otherwise "". */
   owner_pronouns: string;
   game_mode_id: string;
@@ -159,6 +163,7 @@ export interface Event {
   region: string;
   event_date: string;
   host_name: string;
+  host_display_name: string;
   host_id: string;
   registered_count: number;
   registration_open: boolean;

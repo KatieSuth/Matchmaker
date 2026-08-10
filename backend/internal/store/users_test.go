@@ -90,12 +90,29 @@ func TestCreateNewUser_Success(t *testing.T) {
 			Avatar:   "avatar-hash",
 		}
 
-		user, err := s.CreateNewUser(context.Background(), discordUser)
+		user, err := s.CreateNewUser(context.Background(), discordUser, nil)
 		require.NoError(t, err)
 		assert.NotEqual(t, uuid.Nil, user.ID)
 		assert.Equal(t, &discordUser.ID, user.DiscordID)
 		assert.Equal(t, &discordUser.Username, user.DiscordName)
 		assert.Equal(t, &discordUser.Avatar, user.ImageUrl)
+		assert.Nil(t, user.DisplayName)
+	})
+}
+
+func TestCreateNewUser_WithDisplayName(t *testing.T) {
+	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
+		displayName := "Ada Lovelace"
+		discordUser := model.DiscordUser{
+			ID:       "discord-new-dn",
+			Username: "ada",
+			Avatar:   "avatar-hash",
+		}
+
+		user, err := s.CreateNewUser(context.Background(), discordUser, &displayName)
+		require.NoError(t, err)
+		require.NotNil(t, user.DisplayName)
+		assert.Equal(t, displayName, *user.DisplayName)
 	})
 }
 
@@ -106,7 +123,7 @@ func TestCreateNewUser_DuplicateDiscordID(t *testing.T) {
 		_, err := s.CreateNewUser(context.Background(), model.DiscordUser{
 			ID:       "discord-dup",
 			Username: "seconduser",
-		})
+		}, nil)
 		assert.Error(t, err)
 	})
 }
@@ -151,11 +168,26 @@ func TestUpdateUser_UpdatesPronouns(t *testing.T) {
 		pronouns := "they/them"
 		region := "EU"
 
-		updated, err := s.UpdateUser(context.Background(), seeded.ID, &pronouns, true, &region)
+		updated, err := s.UpdateUser(context.Background(), seeded.ID, nil, &pronouns, true, &region)
 		require.NoError(t, err)
 		assert.Equal(t, &pronouns, updated.Pronouns)
 		assert.True(t, updated.ShowPronouns)
 		assert.Equal(t, &region, updated.Region)
+		assert.Nil(t, updated.DisplayName)
+	})
+}
+
+func TestUpdateUser_UpdatesDisplayName(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-upd-dn", "dnuser")
+		displayName := "Display"
+		pronouns := "they/them"
+		region := "EU"
+
+		updated, err := s.UpdateUser(context.Background(), seeded.ID, &displayName, &pronouns, true, &region)
+		require.NoError(t, err)
+		require.NotNil(t, updated.DisplayName)
+		assert.Equal(t, displayName, *updated.DisplayName)
 	})
 }
 
@@ -163,7 +195,7 @@ func TestUpdateUser_NotFound(t *testing.T) {
 	test_util.WithTestTx(t, func(_ *db.Queries, s *store.PostgresStore) {
 		pronouns := "she/her"
 		region := "AMER"
-		_, err := s.UpdateUser(context.Background(), uuid.New(), &pronouns, false, &region)
+		_, err := s.UpdateUser(context.Background(), uuid.New(), nil, &pronouns, false, &region)
 		assert.Error(t, err)
 	})
 }

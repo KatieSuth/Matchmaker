@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
+	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
 )
 
@@ -167,8 +168,16 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 	user, err = h.store.GetUserByDiscordID(c.Request.Context(), discordUser.ID, true)
 	if err != nil {
 		slog.InfoContext(c.Request.Context(), "user not found, creating new account", "discord_id", discordUser.ID)
-		//couldn't find the user, create them
-		user, err = h.store.CreateNewUser(c.Request.Context(), discordUser)
+		// Seed optional display_name from Discord global_name; never fail signup on normalize errors.
+		var displayNamePtr *string
+		rawGlobalName := ""
+		if discordUser.GlobalName != nil {
+			rawGlobalName = *discordUser.GlobalName
+		}
+		if normalized, normErr := textinput.NormalizeOptional(rawGlobalName, userDisplayNameMaxRunes); normErr == nil && normalized != "" {
+			displayNamePtr = &normalized
+		}
+		user, err = h.store.CreateNewUser(c.Request.Context(), discordUser, displayNamePtr)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "failed to create new user", "discord_id", discordUser.ID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{

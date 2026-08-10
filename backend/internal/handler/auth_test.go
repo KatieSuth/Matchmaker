@@ -320,7 +320,7 @@ func TestDiscordCallbackHandler_CreateNewUserFails(t *testing.T) {
 		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
 			return model.User{}, errors.New("not found")
 		},
-		CreateNewUserFn: func(context.Context, model.DiscordUser) (model.User, error) {
+		CreateNewUserFn: func(context.Context, model.DiscordUser, *string) (model.User, error) {
 			return model.User{}, errors.New("create failed")
 		},
 	}
@@ -380,7 +380,7 @@ func TestDiscordCallbackHandler_NewUserSuccess(t *testing.T) {
 		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
 			return model.User{}, errors.New("not found")
 		},
-		CreateNewUserFn: func(context.Context, model.DiscordUser) (model.User, error) {
+		CreateNewUserFn: func(context.Context, model.DiscordUser, *string) (model.User, error) {
 			return model.User{ID: userID, NewUser: true}, nil
 		},
 		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {

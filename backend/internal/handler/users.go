@@ -9,9 +9,20 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
+	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+const userDisplayNameMaxRunes = 50
+
+type updateUsersMeRequest struct {
+	DisplayName  string           `json:"display_name"`
+	Pronouns     string           `json:"pronouns"`
+	ShowPronouns bool             `json:"show_pronouns"`
+	Region       string           `json:"region"`
+	Games        []model.UserGame `json:"games"`
+}
 
 // GET /users/me
 func (h *Handler) UsersMeHandler(c *gin.Context) {
@@ -40,13 +51,7 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 		return
 	}
 
-	var body struct {
-		Pronouns     string           `json:"pronouns"`
-		ShowPronouns bool             `json:"show_pronouns"`
-		Region       string           `json:"region"`
-		Games        []model.UserGame `json:"games"`
-	}
-
+	var body updateUsersMeRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		slog.WarnContext(c.Request.Context(), "failed to bind request body", "user_id", userUUID, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
@@ -56,6 +61,36 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 		return
 	}
 
+	displayName, err := textinput.NormalizeOptional(body.DisplayName, userDisplayNameMaxRunes)
+	if err != nil {
+		if errors.Is(err, textinput.ErrTooLong) {
+			slog.WarnContext(c.Request.Context(), "display_name too long in UpdateUsersMeHandler", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "display_name must be at most 50 characters",
+			})
+			return
+		}
+		if errors.Is(err, textinput.ErrInvalidChars) {
+			slog.WarnContext(c.Request.Context(), "display_name has invalid characters in UpdateUsersMeHandler", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "display_name contains invalid characters",
+			})
+			return
+		}
+		slog.WarnContext(c.Request.Context(), "invalid display_name in UpdateUsersMeHandler", "user_id", userUUID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "display_name is invalid",
+		})
+		return
+	}
+	var displayNamePtr *string
+	if displayName != "" {
+		displayNamePtr = &displayName
+	}
+
 	type result struct {
 		model.User
 		Games []model.UserGame `json:"games"`
@@ -63,8 +98,8 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 
 	var res result
 
-	err := h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
-		user, err := tx.UpdateUser(c.Request.Context(), userUUID, &body.Pronouns, body.ShowPronouns, &body.Region)
+	err = h.store.WithTx(c.Request.Context(), func(tx store.Store) error {
+		user, err := tx.UpdateUser(c.Request.Context(), userUUID, displayNamePtr, &body.Pronouns, body.ShowPronouns, &body.Region)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "failed to update user", "user_id", userUUID, "error", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -77,11 +112,13 @@ func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 		res.CreatedAt = user.CreatedAt
 		res.DiscordID = user.DiscordID
 		res.DiscordName = user.DiscordName
+		res.DisplayName = user.DisplayName
 		res.ID = user.ID
 		res.ImageUrl = user.ImageUrl
 		res.NewUser = user.NewUser
 		res.Pronouns = user.Pronouns
 		res.ShowPronouns = user.ShowPronouns
+		res.Region = user.Region
 		res.UpdatedAt = user.UpdatedAt
 
 		var games []model.UserGame

@@ -16,14 +16,14 @@ Typical idle cost is roughly **$10–15/month**, dominated by Cloud SQL.
 
 ## Architecture
 
-| Piece | Choice |
-|-------|--------|
-| Compute | Cloud Run (API + frontend), scale-to-zero, max 2 instances |
-| Database | Cloud SQL Postgres (`db-f1-micro`), **private IP only** |
-| Edge | Cloudflare Worker: `/api/*` → API (strip prefix), `/*` → frontend |
-| Images | Artifact Registry; build/push **manually** |
-| Secrets | Secret Manager → Cloud Run |
-| Alerts | Billing budgets ($15 / $30 / $50 email) + uptime on `/api/health` |
+| Piece    | Choice                                                            |
+|----------|-------------------------------------------------------------------|
+| Compute  | Cloud Run (API + frontend), scale-to-zero, max 2 instances        |
+| Database | Cloud SQL Postgres (`db-f1-micro`), **private IP only**           |
+| Edge     | Cloudflare Worker: `/api/*` → API (strip prefix), `/*` → frontend |
+| Images   | Artifact Registry; build/push **manually**                        |
+| Secrets  | Secret Manager → Cloud Run                                        |
+| Alerts   | Billing budgets ($15 / $30 / $50 email) + uptime on `/api/health` |
 
 Origin protection: Worker injects `X-Origin-Verify`; API and frontend reject
 mismatches when `ORIGIN_VERIFY_SECRET` is set. Use `https://{domain}` as the public
@@ -324,31 +324,31 @@ curl -sS https://matchmaker.games/health
 
 ## Makefile targets
 
-| Target | Purpose |
-|--------|---------|
-| `make infra-init` | `terraform init` with `backend.hcl` |
-| `make infra-fmt` | `terraform fmt` |
-| `make infra-validate` | `terraform validate` |
-| `make infra-plan` | `terraform plan` |
-| `make infra-apply` | `terraform apply` |
-| `make infra-destroy` | `terraform destroy` (confirm) |
-| `make gcp-push` | Build/push amd64 images to Artifact Registry |
-| `make gcp-migrate` | Update migrate Job image + execute goose Up |
-| `make gcp-deploy` | Push → migrate → update Cloud Run API/frontend services |
+| Target                | Purpose                                                 |
+|-----------------------|---------------------------------------------------------|
+| `make infra-init`     | `terraform init` with `backend.hcl`                     |
+| `make infra-fmt`      | `terraform fmt`                                         |
+| `make infra-validate` | `terraform validate`                                    |
+| `make infra-plan`     | `terraform plan`                                        |
+| `make infra-apply`    | `terraform apply`                                       |
+| `make infra-destroy`  | `terraform destroy` (confirm)                           |
+| `make gcp-push`       | Build/push amd64 images to Artifact Registry            |
+| `make gcp-migrate`    | Update migrate Job image + execute goose Up             |
+| `make gcp-deploy`     | Push → migrate → update Cloud Run API/frontend services |
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-|---------|----------------|
-| Cloud Run unhealthy after first apply | Still on placeholder image — push real images |
+| Symptom                                          | Likely cause                                                                                                                    |
+|--------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| Cloud Run unhealthy after first apply            | Still on placeholder image — push real images                                                                                   |
 | Budget create 403 / quota project `764086051850` | Provider quota override missing or Billing Budgets API disabled; re-apply after `providers.tf` fix; confirm billing account IAM |
-| 403 on API/pages via `*.run.app` | Origin-verify working as intended; use the Cloudflare domain |
-| 403 through the domain | Worker secret out of sync with Secret Manager — re-apply Cloudflare/secret bindings |
-| API cannot reach DB | Direct VPC / private IP; confirm same region and PSA connection |
-| Discord login fails | Wrong `FRONTEND_URL` / redirect URI / cookie domain |
-| `invalid timezone` on `/users/me/events` | API image missing tzdata — fixed by embedding `time/tzdata`; redeploy API |
+| 403 on API/pages via `*.run.app`                 | Origin-verify working as intended; use the Cloudflare domain                                                                    |
+| 403 through the domain                           | Worker secret out of sync with Secret Manager — re-apply Cloudflare/secret bindings                                             |
+| API cannot reach DB                              | Direct VPC / private IP; confirm same region and PSA connection                                                                 |
+| Discord login fails                              | Wrong `FRONTEND_URL` / redirect URI / cookie domain                                                                             |
+| `invalid timezone` on `/users/me/events`         | API image missing tzdata — fixed by embedding `time/tzdata`; redeploy API                                                       |
 
 ---
 

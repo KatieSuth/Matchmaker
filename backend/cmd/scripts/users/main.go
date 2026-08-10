@@ -186,6 +186,7 @@ func main() {
 		user, err := seed.Queries.GetUserByDiscordID(seed.Ctx, &discordID)
 		if err == nil {
 			_, updateErr := seed.Queries.UpdateUser(seed.Ctx, db.UpdateUserParams{
+				DisplayName:  user.DisplayName,
 				Pronouns:     pronouns,
 				ShowPronouns: showPronouns,
 				Region:       &region,
@@ -211,6 +212,7 @@ func main() {
 			common.Fatal("failed creating user", "discord_id", discordID, "error", err)
 		}
 		_, err = seed.Queries.UpdateUser(seed.Ctx, db.UpdateUserParams{
+			DisplayName:  nil,
 			Pronouns:     pronouns,
 			ShowPronouns: showPronouns,
 			Region:       &region,

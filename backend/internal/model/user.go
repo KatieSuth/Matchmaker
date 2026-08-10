@@ -12,6 +12,7 @@ type User struct {
 	DiscordID    *string   `json:"discord_id"`
 	DiscordName  *string   `json:"discord_name"`
 	ImageUrl     *string   `json:"image_url"`
+	DisplayName  *string   `json:"display_name"`
 	Pronouns     *string   `json:"pronouns"`
 	ShowPronouns bool      `json:"show_pronouns"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -31,6 +32,7 @@ func MapDbUserToUser(dbUser db.User) User {
 		DiscordID:    dbUser.DiscordID,
 		DiscordName:  dbUser.DiscordName,
 		ImageUrl:     dbUser.ImageUrl,
+		DisplayName:  dbUser.DisplayName,
 		Pronouns:     dbUser.Pronouns,
 		ShowPronouns: dbUser.ShowPronouns,
 		CreatedAt:    dbUser.CreatedAt,

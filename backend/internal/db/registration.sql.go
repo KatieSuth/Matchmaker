@@ -156,7 +156,8 @@ func (q *Queries) GetRegistrationByEventAndUser(ctx context.Context, arg GetRegi
 
 const getRegistrationDataByEventId = `-- name: GetRegistrationDataByEventId :many
 SELECT r.event_id, r.user_id, r.can_substitute, r.can_lobby_host, r.duo_request, r.created_at, r.updated_at, 
-    U.discord_name, 
+    U.discord_name,
+    COALESCE(U.display_name, '') AS display_name,
     CASE 
 		WHEN $1::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
 		ELSE ''
@@ -201,6 +202,7 @@ type GetRegistrationDataByEventIdRow struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DiscordName     *string
+	DisplayName     string
 	Pronouns        string
 	CurrentRankName string
 	PeakRankName    string
@@ -226,6 +228,7 @@ func (q *Queries) GetRegistrationDataByEventId(ctx context.Context, arg GetRegis
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DiscordName,
+			&i.DisplayName,
 			&i.Pronouns,
 			&i.CurrentRankName,
 			&i.PeakRankName,

@@ -35,6 +35,7 @@ SELECT
     EG.id,
     EG.owner_id,
     COALESCE(U.discord_name, '') AS owner_name,
+    COALESCE(U.display_name, '') AS owner_display_name,
     CAST(
         CASE
             WHEN U.show_pronouns = TRUE THEN COALESCE(U.pronouns, '')
@@ -170,6 +171,7 @@ ORDER BY created_at ASC, id ASC;
 SELECT P.user_id,
        P.team_number,
        U.discord_name,
+       COALESCE(U.display_name, '') AS display_name,
        CASE
            WHEN sqlc.arg(viewer_is_host)::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
            ELSE ''
@@ -286,6 +288,7 @@ WITH grouped AS (
         MIN(E.start_time)::TIMESTAMPTZ AS event_date,
         H.id AS host_id,
         COALESCE(H.discord_name, '') AS host_name,
+        COALESCE(H.display_name, '') AS host_display_name,
         COUNT(DISTINCT RA.user_id)::INT AS registered_count,
         EG.registration_open,
         EG.name,
@@ -311,7 +314,7 @@ WITH grouped AS (
         AND (NOT sqlc.arg(has_from)::BOOL OR E.start_time >= sqlc.arg(from_time)::TIMESTAMPTZ)
         AND (NOT sqlc.arg(has_to)::BOOL OR E.start_time < sqlc.arg(to_time)::TIMESTAMPTZ)
         AND (NOT sqlc.arg(has_game_id)::BOOL OR G.id = sqlc.arg(game_id)::UUID)
-    GROUP BY EG.id, G.name, H.id, H.discord_name, EG.registration_open, EG.name, EG.region
+    GROUP BY EG.id, G.name, H.id, H.discord_name, H.display_name, EG.registration_open, EG.name, EG.region
 )
 SELECT *
 FROM grouped

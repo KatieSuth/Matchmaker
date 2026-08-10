@@ -245,6 +245,7 @@ SELECT
     EG.id,
     EG.owner_id,
     COALESCE(U.discord_name, '') AS owner_name,
+    COALESCE(U.display_name, '') AS owner_display_name,
     CAST(
         CASE
             WHEN U.show_pronouns = TRUE THEN COALESCE(U.pronouns, '')
@@ -317,6 +318,7 @@ type GetEventGroupDetailByIdRow struct {
 	ID               uuid.UUID
 	OwnerID          uuid.UUID
 	OwnerName        string
+	OwnerDisplayName string
 	OwnerPronouns    string
 	GameModeName     string
 	GameModeID       uuid.UUID
@@ -339,6 +341,7 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.ID,
 		&i.OwnerID,
 		&i.OwnerName,
+		&i.OwnerDisplayName,
 		&i.OwnerPronouns,
 		&i.GameModeName,
 		&i.GameModeID,
@@ -460,6 +463,7 @@ WITH grouped AS (
         MIN(E.start_time)::TIMESTAMPTZ AS event_date,
         H.id AS host_id,
         COALESCE(H.discord_name, '') AS host_name,
+        COALESCE(H.display_name, '') AS host_display_name,
         COUNT(DISTINCT RA.user_id)::INT AS registered_count,
         EG.registration_open,
         EG.name,
@@ -485,9 +489,9 @@ WITH grouped AS (
         AND (NOT $10::BOOL OR E.start_time >= $11::TIMESTAMPTZ)
         AND (NOT $12::BOOL OR E.start_time < $13::TIMESTAMPTZ)
         AND (NOT $14::BOOL OR G.id = $15::UUID)
-    GROUP BY EG.id, G.name, H.id, H.discord_name, EG.registration_open, EG.name, EG.region
+    GROUP BY EG.id, G.name, H.id, H.discord_name, H.display_name, EG.registration_open, EG.name, EG.region
 )
-SELECT id, game_name, game_mode, event_date, host_id, host_name, registered_count, registration_open, name, region
+SELECT id, game_name, game_mode, event_date, host_id, host_name, host_display_name, registered_count, registration_open, name, region
 FROM grouped
 WHERE (NOT $1::BOOL OR (event_date, id) > ($2::TIMESTAMPTZ, $3::UUID))
 ORDER BY event_date ASC, id ASC
@@ -519,6 +523,7 @@ type GetEventsForUserRow struct {
 	EventDate        time.Time
 	HostID           uuid.UUID
 	HostName         string
+	HostDisplayName  string
 	RegisteredCount  int32
 	RegistrationOpen bool
 	Name             *string
@@ -557,6 +562,7 @@ func (q *Queries) GetEventsForUser(ctx context.Context, arg GetEventsForUserPara
 			&i.EventDate,
 			&i.HostID,
 			&i.HostName,
+			&i.HostDisplayName,
 			&i.RegisteredCount,
 			&i.RegistrationOpen,
 			&i.Name,
@@ -714,6 +720,7 @@ const getPlayersForLobby = `-- name: GetPlayersForLobby :many
 SELECT P.user_id,
        P.team_number,
        U.discord_name,
+       COALESCE(U.display_name, '') AS display_name,
        CASE
            WHEN $1::BOOL = TRUE OR U.show_pronouns = true THEN COALESCE(U.pronouns, '')
            ELSE ''
@@ -771,6 +778,7 @@ type GetPlayersForLobbyRow struct {
 	UserID           uuid.UUID
 	TeamNumber       *int32
 	DiscordName      *string
+	DisplayName      string
 	Pronouns         string
 	CurrentRankName  string
 	CurrentRankOrder int32
@@ -799,6 +807,7 @@ func (q *Queries) GetPlayersForLobby(ctx context.Context, arg GetPlayersForLobby
 			&i.UserID,
 			&i.TeamNumber,
 			&i.DiscordName,
+			&i.DisplayName,
 			&i.Pronouns,
 			&i.CurrentRankName,
 			&i.CurrentRankOrder,

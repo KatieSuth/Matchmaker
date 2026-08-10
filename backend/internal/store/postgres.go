@@ -27,10 +27,10 @@ type Store interface {
 
 	//users
 	GetUserByDiscordID(ctx context.Context, discordId string, errorOnNoRows bool) (model.User, error)
-	CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
+	CreateNewUser(ctx context.Context, discordUser model.DiscordUser, displayName *string) (model.User, error)
 	UpdateUserFromLogin(ctx context.Context, userId uuid.UUID, discordUser model.DiscordUser) (model.User, error)
 	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
-	UpdateUser(ctx context.Context, userId uuid.UUID, pronouns *string, showPronous bool, region *string) (model.User, error)
+	UpdateUser(ctx context.Context, userId uuid.UUID, displayName *string, pronouns *string, showPronous bool, region *string) (model.User, error)
 
 	//refresh tokens
 	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)

@@ -17,9 +17,9 @@ import { useAuth } from "@/app/_context/AuthContext";
 import { EMPTY_VALUE, NO_SUBSTITUTES_MESSAGE } from "@/app/_lib/constants";
 import {
   buildDiscordPingMessage,
-  resolveLobbyHostDiscordName,
   sequentialTeamNumber,
 } from "@/app/_lib/discordPings";
+import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
 import { inputCls } from "@/app/_lib/styles";
 import { extractApiError, fetchGameRanks } from "@/app/_services/games";
 import {
@@ -153,11 +153,17 @@ function formatGroupTeamSizeLabel(events: EventGroupEvent[]) {
   return "Varies";
 }
 
-function formatHostDisplayLabel(isViewerHost: boolean, ownerName: string, ownerPronouns: string) {
+function formatHostDisplayLabel(
+  isViewerHost: boolean,
+  ownerDisplayName: string,
+  ownerName: string,
+  ownerPronouns: string,
+) {
   if (isViewerHost) return "You";
+  const label = formatUserDisplayLabel(ownerDisplayName, ownerName);
   const pronouns = ownerPronouns.trim();
-  if (pronouns) return `${ownerName} (${pronouns})`;
-  return ownerName;
+  if (pronouns) return `${label} (${pronouns})`;
+  return label;
 }
 
 /** Compact subtitle fragment for chips / roster rows (game mode · formatted time). */
@@ -187,11 +193,12 @@ function formatPlacementCategory(
 
 /** Formats a swap dropdown option as "Name (Category) · Rank". */
 function formatSwapCandidateLabel(
+  displayName: string,
   discordName: string,
   category: string,
   currentRankName?: string,
 ): string {
-  const name = discordName || "Unknown user";
+  const name = formatUserDisplayLabel(displayName, discordName);
   const rank = currentRankName?.trim() || EMPTY_VALUE;
   return `${name} (${category}) · ${rank}`;
 }
@@ -232,7 +239,7 @@ function buildLobbyHostVolunteers(
       }
       volunteers.push({
         userId: player.user_id,
-        discordName: player.discord_name || "Unknown user",
+        discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
         teamNumber: sequentialTeamNumber(lobbyIndex, team.team_number),
         isCurrentHost: !!lobbyHostId && player.user_id === lobbyHostId,
       });
@@ -266,7 +273,7 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
         const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, team.team_number);
         options.push({
           value: player.user_id,
-          label: formatSwapCandidateLabel(player.discord_name, category, player.avg_rank_name),
+          label: formatSwapCandidateLabel(player.display_name, player.discord_name, category, player.avg_rank_name),
         });
       }
     }
@@ -281,7 +288,7 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
       const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, null);
       options.push({
         value: player.user_id,
-        label: formatSwapCandidateLabel(player.discord_name, category, player.avg_rank_name),
+        label: formatSwapCandidateLabel(player.display_name, player.discord_name, category, player.avg_rank_name),
       });
     }
   }
@@ -296,7 +303,12 @@ function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): S
     }
     options.push({
       value: registration.user_id,
-      label: formatSwapCandidateLabel(registration.discord_name, "Unplaced", registration.avg_rank_name),
+      label: formatSwapCandidateLabel(
+        registration.display_name,
+        registration.discord_name,
+        "Unplaced",
+        registration.avg_rank_name,
+      ),
     });
   }
 
@@ -419,7 +431,7 @@ function PlayerCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-            {registration.discord_name || "Unknown user"}
+            {formatUserDisplayLabel(registration.display_name, registration.discord_name)}
           </p>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
             {registration.pronouns || EMPTY_VALUE}
@@ -503,6 +515,7 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
     event_id: eventId,
     user_id: player.user_id,
     discord_name: player.discord_name,
+    display_name: player.display_name,
     in_game_name: player.in_game_name,
     pronouns: player.pronouns,
     current_rank_name: player.current_rank_name,
@@ -516,9 +529,17 @@ function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventR
   };
 }
 
-/** Resolves the lobby host's display name from roster, subs, or unplaced players. */
+/** Resolves the lobby host's UI label from roster, subs, or unplaced players. */
 function lobbyHostName(lobby: EventLobby, event: EventGroupEvent): string | null {
-  return resolveLobbyHostDiscordName(lobby, event);
+  if (!lobby.host_id) return null;
+  const allPlayers = [
+    ...lobby.teams.flatMap((team) => team.players),
+    ...lobby.subs,
+    ...(event.unplaced ?? []),
+  ];
+  const host = allPlayers.find((p) => p.user_id === lobby.host_id);
+  if (!host) return null;
+  return formatUserDisplayLabel(host.display_name, host.discord_name);
 }
 
 function TeamsPanel({
@@ -605,7 +626,7 @@ function TeamsPanel({
                     placement={{
                       eventId: event.id,
                       userId: player.user_id,
-                      discordName: player.discord_name || "Unknown user",
+                      discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
                       lobbyId: lobby.id,
                       sourceLobbyIndex: lobbyIndex,
                       teamNumber: team.team_number,
@@ -653,7 +674,7 @@ function TeamsPanel({
               placement={{
                 eventId: event.id,
                 userId: player.user_id,
-                discordName: player.discord_name || "Unknown user",
+                discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
                 lobbyId: lobby.id,
                 sourceLobbyIndex: lobbyIndex,
                 teamNumber: null,
@@ -691,7 +712,7 @@ function TeamsPanel({
               placement={{
                 eventId: event.id,
                 userId: registration.user_id,
-                discordName: registration.discord_name || "Unknown user",
+                discordName: formatUserDisplayLabel(registration.display_name, registration.discord_name),
                 lobbyId: null,
                 sourceLobbyIndex: null,
                 teamNumber: undefined,
@@ -1328,7 +1349,7 @@ export default function EventGroupPage() {
     setPendingDeleteAction({
       mode,
       userId: registration.user_id,
-      userName: registration.discord_name || "User",
+      userName: formatUserDisplayLabel(registration.display_name, registration.discord_name),
       eventId: registration.event_id,
       gameNumber,
       registrationsInGroup,
@@ -1551,7 +1572,12 @@ export default function EventGroupPage() {
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Host</p>
               <p className="text-xs text-[var(--color-text-soft)]">
-                {formatHostDisplayLabel(isHost, group.owner_name, group.owner_pronouns ?? "")}
+                {formatHostDisplayLabel(
+                  isHost,
+                  group.owner_display_name,
+                  group.owner_name,
+                  group.owner_pronouns ?? "",
+                )}
               </p>
             </div>
           </div>
@@ -2000,6 +2026,12 @@ export default function EventGroupPage() {
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Discord</p>
               <p className="text-[var(--color-text-soft)]">{selectedRegistration.discord_name || EMPTY_VALUE}</p>
+            </div>
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Display Name</p>
+              <p className="text-[var(--color-text-soft)]">
+                {selectedRegistration.display_name?.trim() || EMPTY_VALUE}
+              </p>
             </div>
             <div>
               <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">In-game name</p>

@@ -2,6 +2,7 @@ import api from "@/app/_lib/axios";
 import { User, UserGame } from "@/app/_types/types";
 
 export interface UpdateUserPreferencesPayload {
+  display_name: string | null;
   pronouns: string | null;
   show_pronouns: boolean;
   region: string | null;

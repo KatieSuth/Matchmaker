@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { REGIONS, discordAvatarUrl, type Region } from "@/app/_lib/constants";
+import { REGIONS, DISPLAY_NAME_MAX_RUNES, discordAvatarUrl, type Region } from "@/app/_lib/constants";
 import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
@@ -17,6 +17,7 @@ import { UserGameEditor } from "@/app/_components/forms/UserGameEditor";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { inputCls } from "@/app/_lib/styles";
+import { optionalFreeTextSchema, codePointLength } from "@/app/_lib/textInput";
 import { consumePostLoginRedirect, peekPostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
 import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame } from "@/app/_services/users";
@@ -36,6 +37,7 @@ const userGameSchema = z.object({
 });
 
 const preferencesSchema = z.object({
+  display_name: optionalFreeTextSchema(DISPLAY_NAME_MAX_RUNES),
   pronouns: z.string().nullable().optional(),
   show_pronouns: z.boolean(),
   region: z.enum(REGIONS).nullable().optional(),
@@ -177,15 +179,18 @@ export default function UserPreferencesForm() {
     formState: { errors, isDirty, isSubmitting },
   } = useForm<PreferencesFormValues>({
     resolver: zodResolver(preferencesSchema),
-    defaultValues: { pronouns: "", show_pronouns: false, region: null, games: [] },
+    defaultValues: { display_name: "", pronouns: "", show_pronouns: false, region: null, games: [] },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "games" });
   const watchedGames = useWatch({
     control,
     name: "games",
-  })
-  
+  });
+  const watchedDisplayName = useWatch({ control, name: "display_name" }) ?? "";
+  const displayNameCodePoints = codePointLength(watchedDisplayName);
+  const displayNameOverLimit = displayNameCodePoints > DISPLAY_NAME_MAX_RUNES;
+
   const takenGameIds = useMemo(() => 
     watchedGames?.map((g: any) => g.game_id).filter(Boolean) ?? [], 
   [watchedGames]);
@@ -263,6 +268,7 @@ export default function UserPreferencesForm() {
   useEffect(() => {
     if (!user || userGames === null) return;
     reset({
+      display_name: user.display_name ?? "",
       pronouns: user.pronouns ?? "",
       show_pronouns: user.show_pronouns,
       region: (user.region as Region) ?? null,
@@ -283,6 +289,7 @@ export default function UserPreferencesForm() {
     const wasNewUser = user?.new_user ?? false;
     try {
       await updateCurrentUserPreferences({
+        display_name: data.display_name.trim() || null,
         pronouns: data.pronouns || null,
         show_pronouns: data.show_pronouns,
         region: data.region ?? null,
@@ -422,6 +429,34 @@ export default function UserPreferencesForm() {
           <div className="card rounded-xl p-5 flex flex-col gap-5 relative overflow-hidden">
             <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
             <SectionDivider title="Preferences" />
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="preferences-display-name"
+                className={`text-xs font-medium tracking-wide ${
+                  displayNameOverLimit ? "text-[var(--color-text-danger)]" : "text-[var(--color-text-soft)]"
+                }`}
+              >
+                Display Name ({displayNameCodePoints}/{DISPLAY_NAME_MAX_RUNES})
+              </label>
+              <Controller
+                name="display_name"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    {...field}
+                    id="preferences-display-name"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="Optional public name"
+                    className={inputCls}
+                  />
+                )}
+              />
+              {errors.display_name && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.display_name.message}</p>
+              )}
+            </div>
 
             <Field
               label="Pronouns"

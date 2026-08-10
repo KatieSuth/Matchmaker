@@ -11,6 +11,7 @@ import { useAuth } from "@/app/_context/AuthContext";
 import { SelectOption, selectStyles } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
+import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
 import { fetchGames } from "@/app/_services/games";
 import { fetchMyEvents } from "@/app/_services/events";
 import { inputCls, datepickerStyles, DATEPICKER_PORTAL_ID } from "@/app/_lib/styles";
@@ -237,7 +238,11 @@ function EventCard({ event, currentUserId, isHostingList, hostingIds }: EventCar
               </svg>
             }
             label="Host"
-            value={isCurrentUserHost ? "You" : event.host_name}
+            value={
+              isCurrentUserHost
+                ? "You"
+                : formatUserDisplayLabel(event.host_display_name, event.host_name)
+            }
           />
           <EventDetail
             icon={

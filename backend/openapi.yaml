@@ -1379,6 +1379,14 @@ components:
           type: ["string", "null"]
           description: Discord avatar hash
           examples: ["a_1234abcd5678ef90"]
+        display_name:
+          type: ["string", "null"]
+          maxLength: 50
+          description: >
+            Optional public display name. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Null/omitted means no display name; UI falls back to @discord_name.
+          examples: ["Ada"]
         pronouns:
           type: ["string", "null"]
           description: User-specified pronouns
@@ -1432,6 +1440,14 @@ components:
     UpdateUsersMeRequest:
       type: object
       properties:
+        display_name:
+          type: string
+          maxLength: 50
+          description: >
+            Optional public display name. Max 50 Unicode code points after trim.
+            Disallows control characters and paired ASCII < and > (either alone is allowed).
+            Empty string clears the display name.
+          examples: ["Ada"]
         pronouns:
           type: string
           description: User's pronouns
@@ -1546,7 +1562,7 @@ components:
     DashboardEvent:
       type: object
       description: Compact event-group card shown on user dashboards
-      required: [id, name, game_name, game_mode, region, event_date, host_id, host_name, registered_count, registration_open]
+      required: [id, name, game_name, game_mode, region, event_date, host_id, host_name, host_display_name, registered_count, registration_open]
       properties:
         id:
           type: string
@@ -1572,6 +1588,9 @@ components:
           format: uuid
         host_name:
           type: string
+        host_display_name:
+          type: string
+          description: Host display name when set; otherwise empty.
         registered_count:
           type: integer
           format: int32
@@ -1821,7 +1840,7 @@ components:
 
     EventRegistration:
       type: object
-      required: [event_id, user_id, discord_name, in_game_name, pronouns, current_rank_name, peak_rank_name, avg_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [event_id, user_id, discord_name, display_name, in_game_name, pronouns, current_rank_name, peak_rank_name, avg_rank_name, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         event_id:
           type: string
@@ -1831,6 +1850,9 @@ components:
           format: uuid
         discord_name:
           type: string
+        display_name:
+          type: string
+          description: User display name when set; otherwise empty.
         in_game_name:
           type: string
         pronouns:
@@ -1896,13 +1918,16 @@ components:
 
     LobbyPlayer:
       type: object
-      required: [user_id, discord_name, in_game_name, pronouns, current_rank_name, current_rank_order, peak_rank_name, peak_rank_order, avg_rank_name, avg_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
+      required: [user_id, discord_name, display_name, in_game_name, pronouns, current_rank_name, current_rank_order, peak_rank_name, peak_rank_order, avg_rank_name, avg_rank_order, can_substitute, can_lobby_host, created_at, updated_at]
       properties:
         user_id:
           type: string
           format: uuid
         discord_name:
           type: string
+        display_name:
+          type: string
+          description: User display name when set; otherwise empty.
         in_game_name:
           type: string
         pronouns:
@@ -1980,6 +2005,7 @@ components:
         - name
         - owner_id
         - owner_name
+        - owner_display_name
         - owner_pronouns
         - game_mode_id
         - game_mode_name
@@ -2009,6 +2035,9 @@ components:
           format: uuid
         owner_name:
           type: string
+        owner_display_name:
+          type: string
+          description: Host display name when set; otherwise empty.
         owner_pronouns:
           type: string
           description: Host pronouns when they opted into public display; otherwise empty.

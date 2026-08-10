@@ -43,7 +43,7 @@ func createTestUser(t *testing.T, ctx context.Context, s *store.PostgresStore) m
 		ID:       "discord-cev-" + suffix,
 		Username: "cevtest-" + suffix,
 		Avatar:   "avatar",
-	})
+	}, nil)
 	require.NoError(t, err, "failed to create test user")
 	return user
 }

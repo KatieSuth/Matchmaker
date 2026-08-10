@@ -32,11 +32,12 @@ func (s *PostgresStore) GetUserByUserID(ctx context.Context, userID uuid.UUID) (
 	return model.MapDbUserToUser(dbUser), nil
 }
 
-func (s *PostgresStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error) {
+func (s *PostgresStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser, displayName *string) (model.User, error) {
 	dbUser, err := s.q.CreateUser(ctx, db.CreateUserParams{
 		DiscordID:   &discordUser.ID,
 		DiscordName: &discordUser.Username,
 		ImageUrl:    &discordUser.Avatar,
+		DisplayName: displayName,
 	})
 	if err != nil {
 		return model.User{}, fmt.Errorf("creating user: %w", err)
@@ -56,8 +57,9 @@ func (s *PostgresStore) UpdateUserFromLogin(ctx context.Context, userId uuid.UUI
 	return model.MapDbUserToUser(dbUser), nil
 }
 
-func (s *PostgresStore) UpdateUser(ctx context.Context, userId uuid.UUID, pronouns *string, showPronous bool, region *string) (model.User, error) {
+func (s *PostgresStore) UpdateUser(ctx context.Context, userId uuid.UUID, displayName *string, pronouns *string, showPronous bool, region *string) (model.User, error) {
 	dbUser, err := s.q.UpdateUser(ctx, db.UpdateUserParams{
+		DisplayName:  displayName,
 		Pronouns:     pronouns,
 		ShowPronouns: showPronous,
 		Region:       region,

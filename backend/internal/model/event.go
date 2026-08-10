@@ -19,6 +19,7 @@ type DashboardEvent struct {
 	EventDate        time.Time `json:"event_date"`
 	HostID           uuid.UUID `json:"host_id"`
 	HostName         string    `json:"host_name"`
+	HostDisplayName  string    `json:"host_display_name"`
 	RegisteredCount  int       `json:"registered_count"`
 	RegistrationOpen bool      `json:"registration_open"`
 }
@@ -28,6 +29,7 @@ type EventRegistration struct {
 	EventID         uuid.UUID `json:"event_id"`
 	UserID          uuid.UUID `json:"user_id"`
 	DiscordName     string    `json:"discord_name"`
+	DisplayName     string    `json:"display_name"`
 	InGameName      string    `json:"in_game_name"`
 	Pronouns        string    `json:"pronouns"`
 	CurrentRankName string    `json:"current_rank_name"`
@@ -44,14 +46,15 @@ type EventRegistration struct {
 type LobbyPlayer struct {
 	UserID           uuid.UUID `json:"user_id"`
 	DiscordName      string    `json:"discord_name"`
+	DisplayName      string    `json:"display_name"`
 	InGameName       string    `json:"in_game_name"`
 	Pronouns         string    `json:"pronouns"`
-	CurrentRankName  string `json:"current_rank_name"`
-	CurrentRankOrder int    `json:"current_rank_order"`
-	PeakRankName     string `json:"peak_rank_name"`
-	PeakRankOrder    int    `json:"peak_rank_order"`
-	AvgRankName      string `json:"avg_rank_name"`
-	AvgRankOrder     int    `json:"avg_rank_order"`
+	CurrentRankName  string    `json:"current_rank_name"`
+	CurrentRankOrder int       `json:"current_rank_order"`
+	PeakRankName     string    `json:"peak_rank_name"`
+	PeakRankOrder    int       `json:"peak_rank_order"`
+	AvgRankName      string    `json:"avg_rank_name"`
+	AvgRankOrder     int       `json:"avg_rank_order"`
 	CanSubstitute    bool      `json:"can_substitute"`
 	CanLobbyHost     bool      `json:"can_lobby_host"`
 	DuoRequest       *string   `json:"duo_request"`
@@ -96,6 +99,7 @@ type EventGroupDetail struct {
 	Name             string            `json:"name"`
 	OwnerID          uuid.UUID         `json:"owner_id"`
 	OwnerName        string            `json:"owner_name"`
+	OwnerDisplayName string            `json:"owner_display_name"`
 	OwnerPronouns    string            `json:"owner_pronouns"`
 	GameModeID       uuid.UUID         `json:"game_mode_id"`
 	GameModeName     string            `json:"game_mode_name"`
@@ -129,6 +133,7 @@ func MapDbGetEventsForUserRowToDashboardEvent(row db.GetEventsForUserRow) Dashbo
 		EventDate:        row.EventDate,
 		HostID:           row.HostID,
 		HostName:         row.HostName,
+		HostDisplayName:  row.HostDisplayName,
 		RegisteredCount:  int(row.RegisteredCount),
 		RegistrationOpen: row.RegistrationOpen,
 	}
@@ -143,6 +148,7 @@ func MapDbGetRegistrationDataByEventIdRowToEventRegistration(row db.GetRegistrat
 		EventID:         row.EventID,
 		UserID:          row.UserID,
 		DiscordName:     discordName,
+		DisplayName:     row.DisplayName,
 		InGameName:      row.InGameName,
 		Pronouns:        row.Pronouns,
 		CurrentRankName: row.CurrentRankName,
@@ -199,6 +205,7 @@ func MapDbGetPlayersForLobbyRowToLobbyPlayer(row db.GetPlayersForLobbyRow) Lobby
 	return LobbyPlayer{
 		UserID:           row.UserID,
 		DiscordName:      discordName,
+		DisplayName:      row.DisplayName,
 		InGameName:       row.InGameName,
 		Pronouns:         row.Pronouns,
 		CurrentRankName:  row.CurrentRankName,
@@ -225,6 +232,7 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		Name:             name,
 		OwnerID:          row.OwnerID,
 		OwnerName:        row.OwnerName,
+		OwnerDisplayName: row.OwnerDisplayName,
 		OwnerPronouns:    row.OwnerPronouns,
 		GameModeID:       row.GameModeID,
 		GameModeName:     row.GameModeName,

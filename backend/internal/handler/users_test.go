@@ -373,7 +373,7 @@ func TestUpdateUsersMeHandler_UpdateUserFails(t *testing.T) {
 		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
 			return fn(ms) // execute fn with the mock itself as the tx store
 		},
-		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{}, errors.New("db error")
 		},
 	}
@@ -398,7 +398,7 @@ func TestUpdateUsersMeHandler_UpsertGameBadRequest(t *testing.T) {
 		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
 			return fn(ms)
 		},
-		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, UpdatedAt: time.Now()}, nil
 		},
 		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, error) {
@@ -426,7 +426,7 @@ func TestUpdateUsersMeHandler_UpsertGameServerError(t *testing.T) {
 		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
 			return fn(ms)
 		},
-		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, UpdatedAt: time.Now()}, nil
 		},
 		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, _ model.UserGame) (model.UserGame, error) {
@@ -453,7 +453,7 @@ func TestUpdateUsersMeHandler_Success_NoGames(t *testing.T) {
 		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
 			return fn(ms)
 		},
-		UpdateUserFn: func(_ context.Context, id uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, id uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			assert.Equal(t, userID, id)
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
@@ -469,6 +469,75 @@ func TestUpdateUsersMeHandler_Success_NoGames(t *testing.T) {
 	got := test_util.DecodeJSON[result](t, w)
 	assert.Equal(t, userID, got.ID)
 	assert.Empty(t, got.Games)
+}
+
+func TestUpdateUsersMeHandler_DisplayNameTooLong(t *testing.T) {
+	userID := uuid.New()
+	longName := strings.Repeat("a", 51)
+	body := `{"display_name":"` + longName + `","pronouns":"they/them","show_pronouns":true,"region":"EU","games":[]}`
+
+	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateUsersMeHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "display_name must be at most 50 characters")
+}
+
+func TestUpdateUsersMeHandler_DisplayNameInvalidChars(t *testing.T) {
+	userID := uuid.New()
+	body := `{"display_name":"<script>","pronouns":"they/them","show_pronouns":true,"region":"EU","games":[]}`
+
+	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.UpdateUsersMeHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "display_name contains invalid characters")
+}
+
+func TestUpdateUsersMeHandler_Success_WithDisplayName(t *testing.T) {
+	userID := uuid.New()
+	username := "testuser"
+	displayName := "Ada"
+	body := `{"display_name":"Ada","pronouns":"they/them","show_pronouns":true,"region":"EU","games":[]}`
+
+	c, w := test_util.NewGinContext(http.MethodPut, "/users/me")
+	test_util.WithUserIDString(c, userID)
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	var ms *store.MockStore
+	ms = &store.MockStore{
+		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
+			return fn(ms)
+		},
+		UpdateUserFn: func(_ context.Context, id uuid.UUID, dn *string, _ *string, _ bool, _ *string) (model.User, error) {
+			assert.Equal(t, userID, id)
+			require.NotNil(t, dn)
+			assert.Equal(t, "Ada", *dn)
+			return model.User{ID: userID, DiscordName: &username, DisplayName: &displayName}, nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	h.UpdateUsersMeHandler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	type result struct {
+		model.User
+		Games []model.UserGame `json:"games"`
+	}
+	got := test_util.DecodeJSON[result](t, w)
+	require.NotNil(t, got.DisplayName)
+	assert.Equal(t, "Ada", *got.DisplayName)
 }
 
 func TestUpdateUsersMeHandler_Success_WithGames(t *testing.T) {
@@ -487,7 +556,7 @@ func TestUpdateUsersMeHandler_Success_WithGames(t *testing.T) {
 		WithTxFn: func(ctx context.Context, fn func(store.Store) error) error {
 			return fn(ms)
 		},
-		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
 		UpsertGameForUserFn: func(_ context.Context, _ uuid.UUID, ug model.UserGame) (model.UserGame, error) {
@@ -520,7 +589,7 @@ func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	txStore := &store.MockStore{
-		UpdateUserFn: func(_ context.Context, id uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, id uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			assert.Equal(t, userID, id)
 			return model.User{ID: userID, DiscordName: &username}, nil
 		},
@@ -536,7 +605,7 @@ func TestUpdateUsersMeHandler_UsesTxStoreInsideWithTx(t *testing.T) {
 		WithTxFn: func(_ context.Context, fn func(store.Store) error) error {
 			return fn(txStore)
 		},
-		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ bool, _ *string) (model.User, error) {
+		UpdateUserFn: func(_ context.Context, _ uuid.UUID, _ *string, _ *string, _ bool, _ *string) (model.User, error) {
 			baseUpdateCalled = true
 			return model.User{}, errors.New("base store should not be used in tx callback")
 		},

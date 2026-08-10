@@ -97,7 +97,12 @@ export default function AppNav() {
               </div>
 
               <span className="text-sm font-semibold tracking-[0.04em] max-w-[120px] whitespace-nowrap overflow-hidden text-ellipsis max-sm:hidden">
-                {user?.discord_name ?? "Account"}
+                {user
+                  ? (user.display_name?.trim() ||
+                      (user.discord_name?.trim()
+                        ? `@${user.discord_name.trim()}`
+                        : "Account"))
+                  : "Account"}
               </span>
 
               <svg

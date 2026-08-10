@@ -350,11 +350,11 @@ Same path contract as local Caddy: do not double-prefix `/api` in server routes 
 
 ### Frontend (bake-time — rebuild image to change)
 
-| Name                                   | Typical prod value           |
-|----------------------------------------------|------------------------|
-| `NEXT_PUBLIC_API_URL`                  | `https://{domain}/api`       |
-| `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `{domain}`                   |
-| `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (match refresh TTL) |
+| Name                                   | Typical prod value                           |
+|----------------------------------------|----------------------------------------------|
+| `NEXT_PUBLIC_API_URL`                  | `https://{domain}/api`                       |
+| `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `{domain}`                                   |
+| `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (match refresh TTL)                 |
 | `NEXT_PUBLIC_FEEDBACK_URL`             | GitHub Issues URL (override for a form/etc.) |
 
 ---

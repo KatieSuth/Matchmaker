@@ -26,10 +26,10 @@ type MockStore struct {
 
 	// user
 	GetUserByDiscordIDFn  func(ctx context.Context, discordID string, errorOnNoRows bool) (model.User, error)
-	CreateNewUserFn       func(ctx context.Context, discordUser model.DiscordUser) (model.User, error)
+	CreateNewUserFn       func(ctx context.Context, discordUser model.DiscordUser, displayName *string) (model.User, error)
 	UpdateUserFromLoginFn func(ctx context.Context, userID uuid.UUID, discordUser model.DiscordUser) (model.User, error)
 	GetUserByUserIDFn     func(ctx context.Context, userID uuid.UUID) (model.User, error)
-	UpdateUserFn          func(ctx context.Context, userID uuid.UUID, pronouns *string, showPronouns bool, region *string) (model.User, error)
+	UpdateUserFn          func(ctx context.Context, userID uuid.UUID, displayName *string, pronouns *string, showPronouns bool, region *string) (model.User, error)
 
 	// user games
 	GetUserGamesForUserFn func(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
@@ -90,8 +90,8 @@ func (m *MockStore) GetUserByDiscordID(ctx context.Context, discordID string, er
 	return m.GetUserByDiscordIDFn(ctx, discordID, errorOnNoRows)
 }
 
-func (m *MockStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser) (model.User, error) {
-	return m.CreateNewUserFn(ctx, discordUser)
+func (m *MockStore) CreateNewUser(ctx context.Context, discordUser model.DiscordUser, displayName *string) (model.User, error) {
+	return m.CreateNewUserFn(ctx, discordUser, displayName)
 }
 
 func (m *MockStore) UpdateUserFromLogin(ctx context.Context, userID uuid.UUID, discordUser model.DiscordUser) (model.User, error) {
@@ -102,8 +102,8 @@ func (m *MockStore) GetUserByUserID(ctx context.Context, userID uuid.UUID) (mode
 	return m.GetUserByUserIDFn(ctx, userID)
 }
 
-func (m *MockStore) UpdateUser(ctx context.Context, userID uuid.UUID, pronouns *string, showPronouns bool, region *string) (model.User, error) {
-	return m.UpdateUserFn(ctx, userID, pronouns, showPronouns, region)
+func (m *MockStore) UpdateUser(ctx context.Context, userID uuid.UUID, displayName *string, pronouns *string, showPronouns bool, region *string) (model.User, error) {
+	return m.UpdateUserFn(ctx, userID, displayName, pronouns, showPronouns, region)
 }
 
 func (m *MockStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error) {

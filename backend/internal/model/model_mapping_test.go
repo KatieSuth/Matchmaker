@@ -298,6 +298,7 @@ func TestMapDbUserToUser_MapsAllFields(t *testing.T) {
 	imageURL := "https://cdn.discordapp.com/avatars/abc.png"
 	pronouns := "they/them"
 	region := "EU"
+	displayName := "Ada"
 	now := time.Now().Truncate(time.Millisecond)
 
 	input := db.User{
@@ -305,6 +306,7 @@ func TestMapDbUserToUser_MapsAllFields(t *testing.T) {
 		DiscordID:    &discordID,
 		DiscordName:  &discordName,
 		ImageUrl:     &imageURL,
+		DisplayName:  &displayName,
 		Pronouns:     &pronouns,
 		ShowPronouns: true,
 		Region:       &region,
@@ -319,6 +321,7 @@ func TestMapDbUserToUser_MapsAllFields(t *testing.T) {
 	assert.Equal(t, input.DiscordID, result.DiscordID)
 	assert.Equal(t, input.DiscordName, result.DiscordName)
 	assert.Equal(t, input.ImageUrl, result.ImageUrl)
+	assert.Equal(t, input.DisplayName, result.DisplayName)
 	assert.Equal(t, input.Pronouns, result.Pronouns)
 	assert.Equal(t, input.ShowPronouns, result.ShowPronouns)
 	assert.Equal(t, input.Region, result.Region)
@@ -333,6 +336,7 @@ func TestMapDbUserToUser_NilOptionalFields(t *testing.T) {
 		DiscordID:   nil,
 		DiscordName: nil,
 		ImageUrl:    nil,
+		DisplayName: nil,
 		Pronouns:    nil,
 		Region:      nil,
 	}
@@ -342,6 +346,7 @@ func TestMapDbUserToUser_NilOptionalFields(t *testing.T) {
 	assert.Nil(t, result.DiscordID)
 	assert.Nil(t, result.DiscordName)
 	assert.Nil(t, result.ImageUrl)
+	assert.Nil(t, result.DisplayName)
 	assert.Nil(t, result.Pronouns)
 	assert.Nil(t, result.Region)
 }
@@ -495,6 +500,7 @@ func TestMapDbGetEventsForUserRowToDashboardEvent_MapsAllFields(t *testing.T) {
 		EventDate:        now,
 		HostID:           hid,
 		HostName:         "host",
+		HostDisplayName:  "Host Display",
 		RegisteredCount:  3,
 		RegistrationOpen: true,
 	}
@@ -508,6 +514,7 @@ func TestMapDbGetEventsForUserRowToDashboardEvent_MapsAllFields(t *testing.T) {
 	assert.Equal(t, now, result.EventDate)
 	assert.Equal(t, hid, result.HostID)
 	assert.Equal(t, "host", result.HostName)
+	assert.Equal(t, "Host Display", result.HostDisplayName)
 	assert.Equal(t, 3, result.RegisteredCount)
 	custom := "Custom Night"
 	inputNamed := input
@@ -530,12 +537,14 @@ func TestMapDbGetRegistrationDataByEventIdRowToEventRegistration_DiscordNamePoin
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		DiscordName:     &dn,
+		DisplayName:     "Ada",
 		Pronouns:        "they/them",
 		CurrentRankName: "Gold",
 		InGameName:      "PlayerOne",
 	}
 	result := model.MapDbGetRegistrationDataByEventIdRowToEventRegistration(input)
 	assert.Equal(t, dn, result.DiscordName)
+	assert.Equal(t, "Ada", result.DisplayName)
 	assert.Equal(t, "PlayerOne", result.InGameName)
 	assert.Equal(t, "they/them", result.Pronouns)
 	assert.Equal(t, "Gold", result.CurrentRankName)
@@ -619,6 +628,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 		ID:               uuid.New(),
 		OwnerID:          oid,
 		OwnerName:        "owner",
+		OwnerDisplayName: "Owner Display",
 		OwnerPronouns:    "they/them",
 		GameModeID:       gmid,
 		GameModeName:     "Mode",
@@ -639,6 +649,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, "", result.Name)
 	assert.Equal(t, oid, result.OwnerID)
 	assert.Equal(t, "owner", result.OwnerName)
+	assert.Equal(t, "Owner Display", result.OwnerDisplayName)
 	assert.Equal(t, "they/them", result.OwnerPronouns)
 	assert.Equal(t, gmid, result.GameModeID)
 	assert.Equal(t, "Mode", result.GameModeName)
@@ -687,6 +698,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 		UserID:          uuid.New(),
 		TeamNumber:      ptrInt32(1),
 		DiscordName:     &name,
+		DisplayName:     "Player Display",
 		InGameName:      "IG_PlayerOne",
 		Pronouns:        "they/them",
 		CurrentRankName:  "Gold 1",
@@ -702,6 +714,7 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	result := model.MapDbGetPlayersForLobbyRowToLobbyPlayer(row)
 	assert.Equal(t, row.UserID, result.UserID)
 	assert.Equal(t, "player-one", result.DiscordName)
+	assert.Equal(t, "Player Display", result.DisplayName)
 	assert.Equal(t, "IG_PlayerOne", result.InGameName)
 	assert.Equal(t, "they/them", result.Pronouns)
 	assert.Equal(t, "Gold 1", result.CurrentRankName)

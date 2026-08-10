@@ -11,6 +11,7 @@ export const NAV_LINKS = [
 ] as const;
 
 export const EVENT_NAME_MAX_RUNES = 50;
+export const DISPLAY_NAME_MAX_RUNES = 50;
 
 /** Backend always forms two teams per lobby; display numbers continue across lobbies within a game. */
 export const TEAMS_PER_LOBBY = 2;
