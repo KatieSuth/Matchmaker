@@ -1,12 +1,9 @@
-import { NO_SUBSTITUTES_MESSAGE } from "@/app/_lib/constants";
+import { NO_SUBSTITUTES_MESSAGE, TEAMS_PER_LOBBY } from "@/app/_lib/constants";
 import {
   EventGroupDetail,
   EventGroupEvent,
   EventLobby,
 } from "@/app/_types/types";
-
-/** Backend always forms two teams per lobby; display numbers continue across lobbies within a game. */
-export const TEAMS_PER_LOBBY = 2;
 
 /**
  * Converts a per-lobby backend team_number (1|2) into a game-scoped display number.

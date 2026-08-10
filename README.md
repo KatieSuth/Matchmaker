@@ -159,6 +159,7 @@ Frontend and API settings live in the **root** [`.env.example`](.env.example) (C
 | `NEXT_PUBLIC_API_URL`                  | `https://${DOMAIN}/api`             | Gin API base URL                                                                  |
 | `NEXT_PUBLIC_FRONTEND_DOMAIN`          | `${DOMAIN}`                         | Frontend host or origin (`allowedDevOrigins`, `auth_session` cookie `Domain`)     |
 | `NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT` | `604800` (7 days)                   | Length of time for auth expiration (should match REFRESH_EXPIRE_LIMIT in backend) |
+| `NEXT_PUBLIC_FEEDBACK_URL`             | GitHub Issues URL                   | Footer feedback link; override to a form or other channel                         |
 | `NODE_ENV`                             | `development`                       | Node environment flag                                                             |
 | `ORIGIN_VERIFY_SECRET`                 | unset (gate off)                    | When set (Cloud Run), requires `X-Origin-Verify`; `/health` exempt                |
 | `SENTRY_DSN`                           | unset                               | When set, enables Sentry in the Next.js server runtime                            |

@@ -6,16 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/_context/AuthContext";
-
-function avatarUrl(discordId: string | null, avatarHash: string | null): string {
-  if (!avatarHash || !discordId) return `https://cdn.discordapp.com/embed/avatars/0.png`;
-  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.webp?size=64`;
-}
-
-const NAV_LINKS = [
-  { label: "Events", href: "/my_events" },
-  //{ label: "Games",  href: "/games"  },
-];
+import { NAV_LINKS, discordAvatarUrl } from "@/app/_lib/constants";
 
 export default function AppNav() {
   const pathname = usePathname();
@@ -94,7 +85,7 @@ export default function AppNav() {
               <div className="bg-brand-gradient w-9 h-9 rounded-full flex-shrink-0 p-[1.5px]">
                 {user?.image_url ? (
                   <Image
-                    src={avatarUrl(user.discord_id, user.image_url)}
+                    src={discordAvatarUrl(user.discord_id, user.image_url, 64)}
                     alt={user.discord_name ?? "discord image"}
                     width={36}
                     height={36}

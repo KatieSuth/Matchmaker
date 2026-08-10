@@ -87,6 +87,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN:-matchmaker.localhost}/api}
         NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
         NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: ${REFRESH_EXPIRE_LIMIT:-604800}
+        NEXT_PUBLIC_FEEDBACK_URL: ${NEXT_PUBLIC_FEEDBACK_URL:-https://github.com/KatieSuth/Matchmaker/issues}
     container_name: frontend
     restart: unless-stopped
     env_file:
@@ -96,6 +97,7 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN:-matchmaker.localhost}/api}
       NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
       NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: ${REFRESH_EXPIRE_LIMIT:-604800}
+      NEXT_PUBLIC_FEEDBACK_URL: ${NEXT_PUBLIC_FEEDBACK_URL:-https://github.com/KatieSuth/Matchmaker/issues}
     depends_on:
       api:
         condition: service_healthy

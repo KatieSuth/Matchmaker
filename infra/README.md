@@ -272,7 +272,8 @@ docker build -t "${AR}/frontend:$(git rev-parse --short HEAD)" \
   -f frontend/Dockerfile frontend \
   --build-arg NEXT_PUBLIC_API_URL=https://matchmaker.games/api \
   --build-arg NEXT_PUBLIC_FRONTEND_DOMAIN=matchmaker.games \
-  --build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800
+  --build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800 \
+  --build-arg NEXT_PUBLIC_FEEDBACK_URL=https://github.com/KatieSuth/Matchmaker/issues
 docker push "${AR}/frontend:$(git rev-parse --short HEAD)"
 
 gcloud run jobs update matchmaker-migrate \

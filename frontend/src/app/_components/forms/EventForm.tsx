@@ -11,14 +11,12 @@ import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
-import { REGIONS } from "@/app/_lib/constants";
+import { EVENT_NAME_MAX_RUNES, REGIONS } from "@/app/_lib/constants";
 import { DATEPICKER_PORTAL_ID, datepickerStyles, inputCls } from "@/app/_lib/styles";
 import { codePointLength, optionalFreeTextSchema } from "@/app/_lib/textInput";
 import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { Game, GameMode } from "@/app/_types/types";
-
-const EVENT_NAME_MAX_RUNES = 50;
 
 export type EventFormEditScheduleRow = {
   id: string;

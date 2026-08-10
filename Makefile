@@ -15,6 +15,7 @@ IMAGE   ?= matchmaker
 VERSION ?= latest
 PROJECT ?= matchmaker
 DOMAIN  ?= matchmaker.localhost
+FEEDBACK_URL ?= https://github.com/KatieSuth/Matchmaker/issues
 
 # GCP (manual image deploy — see infra/README.md)
 GCP_PROJECT ?=
@@ -234,7 +235,8 @@ gcp-push:
 	docker build --platform linux/amd64 -t $(AR)/frontend:$(GCP_TAG) -f frontend/Dockerfile frontend \
 		--build-arg NEXT_PUBLIC_API_URL=https://$(DOMAIN)/api \
 		--build-arg NEXT_PUBLIC_FRONTEND_DOMAIN=$(DOMAIN) \
-		--build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800
+		--build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800 \
+		--build-arg NEXT_PUBLIC_FEEDBACK_URL=$(FEEDBACK_URL)
 	docker push $(AR)/frontend:$(GCP_TAG)
 	@echo "Pushed $(AR)/api:$(GCP_TAG) and $(AR)/frontend:$(GCP_TAG)"
 

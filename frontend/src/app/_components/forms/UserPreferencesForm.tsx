@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { REGIONS, type Region } from "@/app/_lib/constants";
+import { REGIONS, discordAvatarUrl, type Region } from "@/app/_lib/constants";
 import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
@@ -43,15 +43,6 @@ const preferencesSchema = z.object({
 });
 
 type PreferencesFormValues = z.infer<typeof preferencesSchema>;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function discordAvatarUrl(discordId: string, hash: string | null): string {
-  if (!hash) return "https://cdn.discordapp.com/embed/avatars/0.png";
-  return `https://cdn.discordapp.com/avatars/${discordId}/${hash}.webp?size=80`;
-}
 
 // ---------------------------------------------------------------------------
 // GameCard — fetches its own ranks when a game is selected
@@ -375,7 +366,7 @@ export default function UserPreferencesForm() {
     );
   }
 
-  const avatarUrl = discordAvatarUrl(user.discord_id, user.image_url);
+  const avatarUrl = discordAvatarUrl(user.discord_id, user.image_url, 80);
 
   return (
     <div className="flex-1 flex flex-col items-center py-10 px-4">
