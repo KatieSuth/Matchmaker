@@ -14,7 +14,7 @@ jobs:
       COVERAGE_PCT: 0
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -58,7 +58,7 @@ jobs:
           go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Coverage Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: backend/internal/coverage.out
