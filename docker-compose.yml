@@ -82,7 +82,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NODE_VERSION: ${NODE_VERSION:-20}
+        NODE_VERSION: ${NODE_VERSION:-24}
         APP_PORT: ${FRONTEND_PORT:-3000}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN:-matchmaker.localhost}/api}
         NEXT_PUBLIC_FRONTEND_DOMAIN: ${NEXT_PUBLIC_FRONTEND_DOMAIN:-${DOMAIN:-matchmaker.localhost}}
