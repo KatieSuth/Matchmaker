@@ -33,7 +33,7 @@ export default function AppNav() {
   }, [logout, router]);
 
   return (
-    <header className="nav-header sticky top-0 z-[100] w-full backdrop-blur-[18px]">
+    <header className="nav-header sticky top-0 z-[100] w-full md:backdrop-blur-[18px]">
 
       {/* Top-edge gradient accent */}
       <div className="bg-top-edge h-0.5" aria-hidden />
