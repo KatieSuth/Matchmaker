@@ -813,7 +813,7 @@ export default function EventGroupPage() {
 
   const [group, setGroup] = useState<EventGroupDetail | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(true);
@@ -1495,7 +1495,8 @@ export default function EventGroupPage() {
   };
   const deletingSelf = !!(pendingDeleteAction && user?.id && pendingDeleteAction.userId === user.id);
 
-  if (authLoading || (isAuthenticated && loading)) {
+  const waitingForFirstLoad = isAuthenticated && !group && !pageError;
+  if (authLoading || (isAuthenticated && loading) || waitingForFirstLoad) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-sm text-[var(--color-text-muted)]">Loading event group...</p>
