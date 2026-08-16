@@ -49,3 +49,7 @@ SET updated_at = NOW(),
     avg_rank = $1
 WHERE user_id = $2
 AND game_id = $3;
+
+-- name: DeleteGameForUser :exec
+DELETE FROM user_games
+WHERE user_id = $1 AND game_id = $2;

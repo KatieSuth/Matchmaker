@@ -34,6 +34,7 @@ type MockStore struct {
 	// user games
 	GetUserGamesForUserFn func(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
 	UpsertGameForUserFn   func(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, error)
+	DeleteGameForUserFn   func(ctx context.Context, userID, gameID uuid.UUID) error
 
 	// refresh tokens
 	CreateNewRefreshTokenFn func(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
@@ -113,6 +114,10 @@ func (m *MockStore) GetUserGamesForUser(ctx context.Context, userID uuid.UUID) (
 
 func (m *MockStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, error) {
 	return m.UpsertGameForUserFn(ctx, userID, ug)
+}
+
+func (m *MockStore) DeleteGameForUser(ctx context.Context, userID, gameID uuid.UUID) error {
+	return m.DeleteGameForUserFn(ctx, userID, gameID)
 }
 
 func (m *MockStore) CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error) {

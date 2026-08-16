@@ -1,7 +1,7 @@
 "use client";
 
 // Editable profile: region, pronouns, and per-game accounts (user games). Used as /my_account.
-import { useState, useEffect, useMemo, useSyncExternalStore, useCallback } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
@@ -20,8 +20,7 @@ import { inputCls } from "@/app/_lib/styles";
 import { optionalFreeTextSchema, codePointLength } from "@/app/_lib/textInput";
 import { consumePostLoginRedirect, peekPostLoginRedirect } from "@/app/_lib/postLoginRedirect";
 import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
-import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame } from "@/app/_services/users";
-
+import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame, deleteCurrentUserGame } from "@/app/_services/users";
 
 // ---------------------------------------------------------------------------
 // Zod schema
@@ -175,7 +174,6 @@ export default function UserPreferencesForm() {
     handleSubmit,
     reset,
     setValue,
-    getValues,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<PreferencesFormValues>({
     resolver: zodResolver(preferencesSchema),
@@ -190,6 +188,8 @@ export default function UserPreferencesForm() {
   const watchedDisplayName = useWatch({ control, name: "display_name" }) ?? "";
   const displayNameCodePoints = codePointLength(watchedDisplayName);
   const displayNameOverLimit = displayNameCodePoints > DISPLAY_NAME_MAX_RUNES;
+  /** Only hydrate from the server once per user; setUser after save must not reset the field array. */
+  const hydratedUserIdRef = useRef<string | null>(null);
 
   const takenGameIds = useMemo(() => 
     watchedGames?.map((g: any) => g.game_id).filter(Boolean) ?? [], 
@@ -241,7 +241,7 @@ export default function UserPreferencesForm() {
 
   // Fetch game list and user's games in parallel once user is ready
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !user) return;
+    if (authLoading || !isAuthenticated || !user?.id) return;
     const ac = new AbortController();
     const { signal } = ac;
     Promise.all([fetchGames(signal), fetchCurrentUserGames(signal)])
@@ -262,11 +262,13 @@ export default function UserPreferencesForm() {
     return () => {
       ac.abort();
     };
-  }, [authLoading, isAuthenticated, user]);
+  }, [authLoading, isAuthenticated, user?.id]);
 
   // Populate form once both datasets are ready
   useEffect(() => {
     if (!user || userGames === null) return;
+    if (hydratedUserIdRef.current === user.id) return;
+    hydratedUserIdRef.current = user.id;
     reset({
       display_name: user.display_name ?? "",
       pronouns: user.pronouns ?? "",
@@ -303,7 +305,13 @@ export default function UserPreferencesForm() {
           show_rank: game.show_rank,
         });
       }
-      reset(data);
+      const remainingIds = new Set(data.games.map((g) => g.game_id).filter(Boolean));
+      const removedIds = [...persistedGameIds].filter((id) => !remainingIds.has(id));
+      for (const gameId of removedIds) {
+        await deleteCurrentUserGame(gameId);
+      }
+      // keepValues: reset() otherwise regenerates useFieldArray ids and remounts GameCards.
+      reset(data, { keepValues: true });
       setPersistedGameIds(new Set(data.games.map((g) => g.game_id).filter(Boolean)));
       const resolvedUser = await fetchCurrentUser();
       if (resolvedUser) {
@@ -515,7 +523,7 @@ export default function UserPreferencesForm() {
 
             {fields.map((field, index) => (
               <GameCard
-                key={field.id}
+                key={field.game_id || field.id}
                 index={index}
                 allGames={allGames}
                 control={control}
@@ -524,15 +532,7 @@ export default function UserPreferencesForm() {
                 takenGameIds={takenGameIds}
                 persistedGameIds={persistedGameIds}
                 onRemove={() => {
-                  const gid = getValues(`games.${index}.game_id`);
                   remove(index);
-                  if (gid) {
-                    setPersistedGameIds((prev) => {
-                      const next = new Set(prev);
-                      next.delete(gid);
-                      return next;
-                    });
-                  }
                 }}
               />
             ))}

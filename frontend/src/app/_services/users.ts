@@ -39,3 +39,7 @@ export async function updateCurrentUserPreferences(payload: UpdateUserPreference
 export async function upsertCurrentUserGame(gameId: string, payload: UpsertUserGamePayload): Promise<void> {
   await api.put(`/users/me/games/${gameId}`, payload);
 }
+
+export async function deleteCurrentUserGame(gameId: string): Promise<void> {
+  await api.delete(`/users/me/games/${gameId}`);
+}

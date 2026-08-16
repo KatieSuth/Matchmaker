@@ -44,6 +44,7 @@ type Store interface {
 	//user's games
 	GetUserGamesForUser(ctx context.Context, userID uuid.UUID) ([]model.UserGame, error)
 	UpsertGameForUser(ctx context.Context, userID uuid.UUID, ug model.UserGame) (model.UserGame, error)
+	DeleteGameForUser(ctx context.Context, userID, gameID uuid.UUID) error
 
 	//games
 	GetSystemGames(ctx context.Context) ([]model.Game, error)

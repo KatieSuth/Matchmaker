@@ -767,3 +767,64 @@ func TestUpsertUsersMeGameHandler_Success(t *testing.T) {
 	h.UpsertUsersMeGameHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
+
+// ============================================================
+// DeleteUsersMeGameHandler — DELETE /users/me/games/:gameId
+// ============================================================
+
+func TestDeleteUsersMeGameHandler_Unauthorized(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodDelete, "/users/me/games/x")
+	c.Params = gin.Params{{Key: "gameId", Value: uuid.NewString()}}
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.DeleteUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDeleteUsersMeGameHandler_InvalidGameID(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodDelete, "/users/me/games/bad")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "gameId", Value: "bad"}}
+
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.DeleteUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestDeleteUsersMeGameHandler_StoreError(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.New()
+
+	c, w := test_util.NewGinContext(http.MethodDelete, "/users/me/games/x")
+	test_util.WithUserIDString(c, userID)
+	c.Params = gin.Params{{Key: "gameId", Value: gameID.String()}}
+
+	h := newTestHandler(t, &store.MockStore{
+		DeleteGameForUserFn: func(_ context.Context, inUser, inGame uuid.UUID) error {
+			assert.Equal(t, userID, inUser)
+			assert.Equal(t, gameID, inGame)
+			return errors.New("db exploded")
+		},
+	}, nil, "")
+	h.DeleteUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestDeleteUsersMeGameHandler_Success(t *testing.T) {
+	userID := uuid.New()
+	gameID := uuid.New()
+
+	c, _ := test_util.NewGinContext(http.MethodDelete, "/users/me/games/x")
+	test_util.WithUserIDString(c, userID)
+	c.Params = gin.Params{{Key: "gameId", Value: gameID.String()}}
+
+	h := newTestHandler(t, &store.MockStore{
+		DeleteGameForUserFn: func(_ context.Context, inUser, inGame uuid.UUID) error {
+			assert.Equal(t, userID, inUser)
+			assert.Equal(t, gameID, inGame)
+			return nil
+		},
+	}, nil, "")
+	h.DeleteUsersMeGameHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}

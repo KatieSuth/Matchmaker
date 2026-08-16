@@ -65,6 +65,21 @@ func (q *Queries) CreateGameForUser(ctx context.Context, arg CreateGameForUserPa
 	return i, err
 }
 
+const deleteGameForUser = `-- name: DeleteGameForUser :exec
+DELETE FROM user_games
+WHERE user_id = $1 AND game_id = $2
+`
+
+type DeleteGameForUserParams struct {
+	UserID uuid.UUID
+	GameID uuid.UUID
+}
+
+func (q *Queries) DeleteGameForUser(ctx context.Context, arg DeleteGameForUserParams) error {
+	_, err := q.db.Exec(ctx, deleteGameForUser, arg.UserID, arg.GameID)
+	return err
+}
+
 const getGameForUserByIds = `-- name: GetGameForUserByIds :one
 SELECT user_id, game_id, in_game_name, current_rank, peak_rank, show_rank, api_permission, api_links_id, created_at, updated_at, avg_rank
 FROM user_games AS UG

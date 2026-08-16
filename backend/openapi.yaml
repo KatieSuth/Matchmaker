@@ -333,6 +333,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [users]
+      summary: Remove current user's game entry
+      operationId: deleteUsersMeGame
+      description: Deletes the authenticated user's game profile for the specified game. Idempotent if the entry does not exist.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: UUID of the game
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User game deleted successfully
+        "400":
+          description: Invalid `gameId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "500":
+          description: Failed to delete user game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /users/me/events:
     get:

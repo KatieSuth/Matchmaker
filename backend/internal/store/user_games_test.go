@@ -315,6 +315,49 @@ func TestGetUserGamesForUser_ReturnsAddedGames(t *testing.T) {
 	})
 }
 
+func TestDeleteGameForUser_RemovesEntry(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug-del", "uguser-del")
+		game := seedGame(t, q)
+		rank := seedGameRank(t, q, game.ID)
+		inGameName := "player-del"
+
+		_, err := s.UpsertGameForUser(context.Background(), seeded.ID, model.UserGame{
+			GameID:      game.ID,
+			CurrentRank: &rank.ID,
+			PeakRank:    &rank.ID,
+			InGameName:  &inGameName,
+			ShowRank:    true,
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, s.DeleteGameForUser(context.Background(), seeded.ID, game.ID))
+
+		games, err := s.GetUserGamesForUser(context.Background(), seeded.ID)
+		require.NoError(t, err)
+		assert.Empty(t, games)
+	})
+}
+
+func TestDeleteGameForUser_IdempotentWhenMissing(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug-del-miss", "uguser-del-miss")
+		err := s.DeleteGameForUser(context.Background(), seeded.ID, uuid.New())
+		require.NoError(t, err)
+	})
+}
+
+func TestDeleteGameForUser_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-ug-del-err", "uguser-del-err")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := s.DeleteGameForUser(ctx, seeded.ID, uuid.New())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "deleting game for user")
+	})
+}
+
 
 func TestGetUserGamesForUser_QueryError(t *testing.T) {
 	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {

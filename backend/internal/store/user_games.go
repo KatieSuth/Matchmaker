@@ -121,3 +121,13 @@ func (s *PostgresStore) UpsertGameForUser(ctx context.Context, userID uuid.UUID,
 
 	return model.MapDbUserGameToUserGame(dbUserGame), nil
 }
+
+func (s *PostgresStore) DeleteGameForUser(ctx context.Context, userID, gameID uuid.UUID) error {
+	if err := s.q.DeleteGameForUser(ctx, db.DeleteGameForUserParams{
+		UserID: userID,
+		GameID: gameID,
+	}); err != nil {
+		return fmt.Errorf("deleting game for user: %w", err)
+	}
+	return nil
+}

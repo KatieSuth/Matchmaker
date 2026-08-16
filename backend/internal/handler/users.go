@@ -272,6 +272,36 @@ func (h *Handler) UpsertUsersMeGameHandler(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// DELETE /users/me/games/:gameId
+func (h *Handler) DeleteUsersMeGameHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	gameID, err := uuid.Parse(c.Param("gameId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid gameId in DeleteUsersMeGameHandler", "user_id", userUUID, "game_id", c.Param("gameId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "gameId must be a valid UUID",
+		})
+		return
+	}
+
+	if err := h.store.DeleteGameForUser(c.Request.Context(), userUUID, gameID); err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to delete game for user", "user_id", userUUID, "game_id", gameID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Something went wrong",
+		})
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "deleted user game", "user_id", userUUID, "game_id", gameID)
+	c.Status(http.StatusNoContent)
+}
+
 // GET /users/me/events
 func (h *Handler) UsersMeEventsHandler(c *gin.Context) {
 	type QueryParams struct {

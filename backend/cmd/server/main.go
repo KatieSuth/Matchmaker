@@ -391,6 +391,7 @@ func main() {
 			users.PUT("/me", h.UpdateUsersMeHandler)
 			users.GET("/me/games", h.UsersMeGamesHandler)
 			users.PUT("/me/games/:gameId", h.UpsertUsersMeGameHandler)
+			users.DELETE("/me/games/:gameId", h.DeleteUsersMeGameHandler)
 			users.GET("/me/events", h.UsersMeEventsHandler)
 		}
 
