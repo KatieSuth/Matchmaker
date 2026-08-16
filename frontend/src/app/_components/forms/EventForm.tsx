@@ -940,7 +940,7 @@ export function EventForm({
               <button
                 type="submit"
                 disabled={isSubmitting || isDeleting}
-                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting
                   ? mode === "create"

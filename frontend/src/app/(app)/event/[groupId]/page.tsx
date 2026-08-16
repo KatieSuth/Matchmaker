@@ -2297,7 +2297,7 @@ export default function EventGroupPage() {
                   void submitLobbyHostChange(pendingLobbyHostChange.placement);
                 }}
                 disabled={working}
-                className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+                className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
               >
                 {working ? "Updating..." : "Yes, make lobby host"}
               </button>
@@ -2347,7 +2347,7 @@ export default function EventGroupPage() {
                 void handleSwapSubmit();
               }}
               disabled={working || !pendingSwap || !swapTargetUserId}
-              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
             >
               {working ? "Swapping..." : "Submit"}
             </button>
@@ -2393,7 +2393,7 @@ export default function EventGroupPage() {
                 void handleMoveToSubsSubmit();
               }}
               disabled={working || !pendingMoveToSubs || !moveToSubsLobbyId}
-              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
             >
               {working ? "Moving..." : "Submit"}
             </button>
@@ -2491,7 +2491,7 @@ export default function EventGroupPage() {
                     void handleSaveJoinLobby();
                   }}
                   disabled={working || !!validateLobbyJoinInput(joinLobbyDraft, group?.join_link_base ?? null)}
-                  className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+                  className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
                 >
                   {working ? "Saving..." : "Save"}
                 </button>
