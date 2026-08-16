@@ -4,8 +4,9 @@
 //
 // Subcommands:
 //
-//	health  — local HTTP probe for container HEALTHCHECK
-//	migrate — run goose migrations and exit (used in production via Cloud Run Job)
+//	health       — local HTTP probe for container HEALTHCHECK
+//	migrate      — run goose migrations and exit (used in production via Cloud Run Job)
+//	db-bootstrap — create least-privilege DB roles (postgres admin; production cutover)
 package main
 
 import (
@@ -140,6 +141,11 @@ func main() {
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		runMigrateOnly()
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "db-bootstrap" {
+		runDBBootstrap()
 		return
 	}
 

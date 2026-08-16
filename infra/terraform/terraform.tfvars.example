@@ -4,7 +4,7 @@
 # Secrets belong HERE (not in the repo). Generate hex app keys with:
 #   make gen-keys
 #   # or: openssl rand -hex 32
-# DB password / origin-verify can be any strong secret (openssl rand -hex 32 is fine).
+# DB passwords / origin-verify can be any strong secret (openssl rand -hex 32 is fine).
 # Values still end up in Terraform state (GCS); keep the state bucket private.
 
 project_id         = "your-gcp-project-id"
@@ -20,8 +20,15 @@ cloudflare_api_token  = "your-cloudflare-api-token"
 discord_client_id     = "your-discord-client-id"
 discord_client_secret = "your-discord-client-secret"
 
-# App / DB secrets (required)
-db_password          = "replace-with-strong-password"          # openssl rand -hex 32
+# DB passwords (required). Three separate secrets — do not reuse across roles.
+# Cutover: leave db_roles_bootstrapped=false → apply → make gcp-db-bootstrap →
+# set db_roles_bootstrapped=true → apply again. See infra/README.md.
+db_admin_password     = "replace-with-strong-password" # postgres admin (Studio / bootstrap)
+db_migrator_password  = "replace-with-strong-password" # matchmaker_migrator (goose Job)
+db_app_password       = "replace-with-strong-password" # matchmaker_app (API); also legacy matchmaker until bootstrapped
+db_roles_bootstrapped = false
+
+# App secrets (required)
 jwt_secret           = "replace-with-64-hex-chars"             # openssl rand -hex 32
 cookie_hash_key      = "replace-with-64-hex-chars"             # openssl rand -hex 32
 cookie_encrypt_key   = "replace-with-64-hex-chars"             # openssl rand -hex 32

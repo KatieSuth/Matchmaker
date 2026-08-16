@@ -118,7 +118,7 @@ Reconsider those when you need multi-env CI deploy, stronger edge WAF, or SQL HA
 | `TRUSTED_PROXIES` | default `172.20.0.0/16`                 | `0.0.0.0/0` on Cloud Run (platform + CF `X-Forwarded-For`)                  |
 | Sentry            | DSN unset → no init                     | Optional DSNs from Secret Manager                                           |
 | Images            | Compose build                           | Artifact Registry digests updated outside Terraform                         |
-| Migrations        | goose on API start (AUTO_MIGRATE unset) | `AUTO_MIGRATE=false`; Cloud Run Job `matchmaker-migrate` (`server migrate`) |
+| Migrations        | goose on API start (AUTO_MIGRATE unset) | `AUTO_MIGRATE=false`; Job as `matchmaker_migrator`; API as `matchmaker_app` |
 
 Prod-only env vars must not be required for `make dev`.
 
@@ -130,22 +130,23 @@ Prod-only env vars must not be required for `make dev`.
 
 Names use prefix `matchmaker` (`local.name_prefix`). Region defaults to `us-central1`.
 
-| Resource            | Name / ID pattern                                                           |
+| Resource             | Name / ID pattern                                                           |
 |---------------------|-----------------------------------------------------------------------------|
-| VPC                 | `matchmaker-vpc`                                                            |
-| Subnet              | `matchmaker-subnet` (`10.10.0.0/24`)                                        |
-| PSA reserved range  | `matchmaker-psa` (/16)                                                      |
-| Artifact Registry   | `matchmaker-docker` → `{region}-docker.pkg.dev/{project}/matchmaker-docker` |
-| Cloud SQL instance  | `matchmaker-pg`                                                             |
-| SQL database / user | `matchmaker` / `matchmaker`                                                 |
-| Cloud Run API       | `matchmaker-api`                                                            |
-| Cloud Run migrate   | `matchmaker-migrate` (Job; `server migrate`)                                |
-| Cloud Run frontend  | `matchmaker-frontend`                                                       |
-| Runtime SA API      | `matchmaker-api@{project}.iam.gserviceaccount.com`                          |
-| Runtime SA frontend | `matchmaker-frontend@{project}.iam.gserviceaccount.com`                     |
-| Worker              | `matchmaker-edge`                                                           |
-| Worker route        | `{domain}/*`                                                                |
-| Secrets             | `matchmaker-db-password`, `matchmaker-jwt-secret`, `matchmaker-cookie-hash`, `matchmaker-cookie-encrypt`, `matchmaker-origin-verify`, `matchmaker-discord-client-secret`, `matchmaker-database-url`, optional `matchmaker-sentry-dsn-*`                                                                  |
+| VPC                  | `matchmaker-vpc`                                                            |
+| Subnet               | `matchmaker-subnet` (`10.10.0.0/24`)                                        |
+| PSA reserved range   | `matchmaker-psa` (/16)                                                      |
+| Artifact Registry    | `matchmaker-docker` → `{region}-docker.pkg.dev/{project}/matchmaker-docker` |
+| Cloud SQL instance   | `matchmaker-pg`                                                             |
+| SQL database / roles | DB `matchmaker`; roles `postgres`, `matchmaker_app`, `matchmaker_migrator` (legacy `matchmaker` until bootstrapped) |
+| Cloud Run API        | `matchmaker-api`                                                            |
+| Cloud Run migrate    | `matchmaker-migrate` (Job; `server migrate` as `matchmaker_migrator`)       |
+| Cloud Run bootstrap  | `matchmaker-db-bootstrap` (Job; `server db-bootstrap` as `postgres`)        |
+| Cloud Run frontend   | `matchmaker-frontend`                                                       |
+| Runtime SA API       | `matchmaker-api@{project}.iam.gserviceaccount.com`                          |
+| Runtime SA frontend  | `matchmaker-frontend@{project}.iam.gserviceaccount.com`                     |
+| Worker               | `matchmaker-edge`                                                           |
+| Worker route         | `{domain}/*`                                                                |
+| Secrets              | `matchmaker-db-admin-password`, `matchmaker-db-app-password`, `matchmaker-db-migrator-password`, `matchmaker-database-url`, `matchmaker-database-url-migrate`, `matchmaker-database-url-admin`, jwt/cookie/origin/discord, optional Sentry |
 
 **Terraform outputs** (contract after apply): `artifact_registry_url`, `cloud_run_api_uri`, `cloud_run_frontend_uri`, `cloud_run_api_name`, `cloud_run_frontend_name`, `cloud_sql_connection_name`, `cloud_sql_private_ip` (sensitive), `vpc_network`.
 
@@ -227,8 +228,8 @@ security. Still prefer `{domain}` everywhere user-facing so traffic stays on the
 - **API Cloud Run** Direct VPC egress `PRIVATE_RANGES_ONLY`: traffic to private RFC1918 (including SQL) goes via the VPC. Public internet calls from the API (Discord OAuth, Sentry) still use Cloud Run’s normal egress path for non-private destinations — not forced through a NAT on this connectorless setup.
 - Frontend has **no** VPC attachment.
 - `DATABASE_URL`: `postgres://matchmaker:…@PRIVATE_IP:5432/matchmaker?sslmode=disable` (private path).
-- **Migrations:** local/dev runs goose on API start (`AUTO_MIGRATE` unset). Production sets `AUTO_MIGRATE=false` and applies schema via Cloud Run Job `matchmaker-migrate` (`/server migrate`) before rolling the API service (`make gcp-deploy` / `make gcp-migrate`).
-- **Admin access to SQL:** no public IP — use Cloud SQL Auth Proxy / Bastion / temporary IAP jump host if you need `psql`. Prefer export/backup APIs for dumps.
+- **Migrations:** local/dev runs goose on API start (`AUTO_MIGRATE` unset). Production sets `AUTO_MIGRATE=false` and applies schema via Cloud Run Job `matchmaker-migrate` as role **`matchmaker_migrator`** (DDL+DML). API connects as **`matchmaker_app`** (DML only). Bootstrap once with `make gcp-db-bootstrap` (`server db-bootstrap` as `postgres`).
+- **Admin access to SQL:** use Cloud SQL Studio / Auth Proxy as **`postgres`** (`db_admin_password`). Prefer export/backup APIs for dumps.
 - **Connection budget:** `DB_MAX_CONNS=5` × `max_instances=2` ⇒ ≤ ~10 app pool connections vs `db-f1-micro` limits — do not raise both casually.
 
 ---
@@ -253,14 +254,17 @@ Both services:
 
 Operator-supplied in `terraform.tfvars` (not `random_*`):
 
-| Variable                                 | Used for                               |
-|------------------------------------------|----------------------------------------|
-| `db_password`                            | Cloud SQL user + `DATABASE_URL` secret |
-| `jwt_secret`                             | API JWT (64 hex)                       |
-| `cookie_hash_key` / `cookie_encrypt_key` | Securecookie (64 hex each)             |
-| `origin_verify_secret`                   | Worker + API + frontend                |
-| `discord_client_secret`                  | OAuth                                  |
-| `sentry_dsn_api` / `sentry_dsn_frontend` | Optional                               |
+| Variable                                 | Used for                                                                                         |
+|------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `db_admin_password`                      | Cloud SQL `postgres` user; Studio / `db-bootstrap` only                                          |
+| `db_migrator_password`                   | SQL role `matchmaker_migrator` (migrate Job; DDL+DML)                                            |
+| `db_app_password`                        | SQL role `matchmaker_app` (API DML-only); also legacy `matchmaker` until `db_roles_bootstrapped` |
+| `db_roles_bootstrapped`                  | `false` until after `make gcp-db-bootstrap`; then `true`                                         |
+| `jwt_secret`                             | API JWT (64 hex)                                                                                 |
+| `cookie_hash_key` / `cookie_encrypt_key` | Securecookie (64 hex each)                                                                       |
+| `origin_verify_secret`                   | Worker + API + frontend                                                                          |
+| `discord_client_secret`                  | OAuth                                                                                            |
+| `sentry_dsn_api` / `sentry_dsn_frontend` | Optional                                                                                         |
 
 Also non-secret but sensitive-ish: `cloudflare_api_token`, Discord client ID, billing IDs.
 
@@ -268,14 +272,23 @@ Generate hex keys with `make gen-keys` or `openssl rand -hex 32`.
 
 Values go to Secret Manager and into **Terraform state**. Keep the state bucket private.
 
+### DB roles (production)
+
+| Role                  | Consumer                 | Rights                                      |
+|-----------------------|--------------------------|---------------------------------------------|
+| `postgres`            | Operator / bootstrap Job | Cloud SQL admin (`cloudsqlsuperuser`)       |
+| `matchmaker_migrator` | `matchmaker-migrate` Job | DDL + DML; owns migrated objects            |
+| `matchmaker_app`      | `matchmaker-api`         | DML + sequence usage; no DDL / `CREATEROLE` |
+
+Local Compose is unchanged (single `POSTGRES_USER`).
+
 ### Secret rotation (high level)
 
 1. Update value in `terraform.tfvars`.
-2. `make infra-plan` / `apply` — creates new Secret Manager versions; SQL user password resource updates when `db_password` changes; Worker secret binding updates for origin-verify.
-3. Cloud Run picks up `latest` on new revisions/restarts — force a new revision if needed (`gcloud run services update …` or apply that touches the service).
+2. `make infra-plan` / `apply` — new Secret Manager versions; `postgres` password updates via `google_sql_user.postgres`; app/migrator passwords require re-running **`make gcp-db-bootstrap`** (SQL `ALTER ROLE`) after the secret versions exist, then recycle migrate Job / API.
+3. Cloud Run picks up `latest` on new revisions — force a new revision if needed.
 4. **JWT / cookie key rotation** invalidates existing sessions — users re-login.
-5. **DB password** must stay in sync between `google_sql_user` and `database_url` secret (both driven from the same variable in this module).
-
+5. Keep app vs migrator vs admin passwords distinct.
 ---
 
 ## Cloudflare Worker
@@ -481,7 +494,8 @@ curl -sS https://matchmaker.games/health
 | Discord login fails after redirect     | Redirect URI / cookie domain / `FRONTEND_URL`; or `oauth_state` expired (cold start) |
 | `invalid timezone` on events           | Scratch API image had no zoneinfo — embed `time/tzdata` (redeploy API)               |
 | API crash loops                        | bad `DATABASE_URL`; secret access; missing schema (forgot `make gcp-migrate`)        |
-| Migrate job fails                      | Job image still placeholder; Direct VPC / SQL; bad `DATABASE_URL`                    |
+| `permission denied` on SQL             | Wrong DSN role; forgot `gcp-db-bootstrap` or `db_roles_bootstrapped` flip            |
+| Migrate job fails                      | Job image still placeholder; Direct VPC / SQL; bad migrator `DATABASE_URL`          |
 | “Still on hello” / probe fail          | Placeholder image — push real images                                                 |
 
 ---

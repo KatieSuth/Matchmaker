@@ -1,5 +1,5 @@
-resource "google_secret_manager_secret" "db_password" {
-  secret_id = "${local.name_prefix}-db-password"
+resource "google_secret_manager_secret" "db_admin_password" {
+  secret_id = "${local.name_prefix}-db-admin-password"
   labels    = local.labels
   replication {
     auto {}
@@ -7,9 +7,37 @@ resource "google_secret_manager_secret" "db_password" {
   depends_on = [google_project_service.services]
 }
 
-resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = var.db_password
+resource "google_secret_manager_secret_version" "db_admin_password" {
+  secret      = google_secret_manager_secret.db_admin_password.id
+  secret_data = var.db_admin_password
+}
+
+resource "google_secret_manager_secret" "db_app_password" {
+  secret_id = "${local.name_prefix}-db-app-password"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "db_app_password" {
+  secret      = google_secret_manager_secret.db_app_password.id
+  secret_data = var.db_app_password
+}
+
+resource "google_secret_manager_secret" "db_migrator_password" {
+  secret_id = "${local.name_prefix}-db-migrator-password"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "db_migrator_password" {
+  secret      = google_secret_manager_secret.db_migrator_password.id
+  secret_data = var.db_migrator_password
 }
 
 resource "google_secret_manager_secret" "jwt" {
@@ -114,6 +142,7 @@ resource "google_secret_manager_secret_version" "sentry_dsn_frontend" {
   secret_data = var.sentry_dsn_frontend
 }
 
+# API Cloud Run DATABASE_URL (matchmaker_app after bootstrap; legacy matchmaker before).
 resource "google_secret_manager_secret" "database_url" {
   secret_id = "${local.name_prefix}-database-url"
   labels    = local.labels
@@ -124,18 +153,54 @@ resource "google_secret_manager_secret" "database_url" {
 }
 
 resource "google_secret_manager_secret_version" "database_url" {
-  secret = google_secret_manager_secret.database_url.id
-  secret_data = format(
-    "postgres://%s:%s@%s:5432/%s?sslmode=disable",
-    google_sql_user.app.name,
-    var.db_password,
-    google_sql_database_instance.main.private_ip_address,
-    google_sql_database.app.name,
-  )
+  secret      = google_secret_manager_secret.database_url.id
+  secret_data = local.database_url_app
 
   depends_on = [
     google_sql_database_instance.main,
-    google_sql_user.app,
     google_sql_database.app,
+    google_sql_user.postgres,
+  ]
+}
+
+# Migrate Job DATABASE_URL (matchmaker_migrator after bootstrap).
+resource "google_secret_manager_secret" "database_url_migrate" {
+  secret_id = "${local.name_prefix}-database-url-migrate"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "database_url_migrate" {
+  secret      = google_secret_manager_secret.database_url_migrate.id
+  secret_data = local.database_url_migrate
+
+  depends_on = [
+    google_sql_database_instance.main,
+    google_sql_database.app,
+    google_sql_user.postgres,
+  ]
+}
+
+# Bootstrap Job only — postgres admin DSN (not bound to API).
+resource "google_secret_manager_secret" "database_url_admin" {
+  secret_id = "${local.name_prefix}-database-url-admin"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "database_url_admin" {
+  secret      = google_secret_manager_secret.database_url_admin.id
+  secret_data = local.database_url_admin
+
+  depends_on = [
+    google_sql_database_instance.main,
+    google_sql_database.app,
+    google_sql_user.postgres,
   ]
 }

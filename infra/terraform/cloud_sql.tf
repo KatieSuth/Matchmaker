@@ -43,8 +43,19 @@ resource "google_sql_database" "app" {
   instance = google_sql_database_instance.main.name
 }
 
-resource "google_sql_user" "app" {
+# Operator / bootstrap admin (cloudsqlsuperuser). Not mounted on the API service.
+resource "google_sql_user" "postgres" {
+  name     = "postgres"
+  instance = google_sql_database_instance.main.name
+  password = var.db_admin_password
+}
+
+# Transitional cloudsqlsuperuser login used until db_roles_bootstrapped=true.
+# Destroyed after make gcp-db-bootstrap + Apply B.
+resource "google_sql_user" "legacy" {
+  count = var.db_roles_bootstrapped ? 0 : 1
+
   name     = "matchmaker"
   instance = google_sql_database_instance.main.name
-  password = var.db_password
+  password = var.db_app_password
 }

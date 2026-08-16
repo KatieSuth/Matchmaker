@@ -5,7 +5,7 @@
         seed-users seed-events seed-registrations seed-all \
         seed-matchmaking-all seed-matchmaking-cleanup gen-keys \
         infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy \
-        gcp-push gcp-migrate gcp-deploy
+        gcp-push gcp-migrate gcp-db-bootstrap gcp-deploy
 
 ## ── Configuration ─────────────────────────────────────────────
 # IMAGE is the base repository (registry/namespace/name); each service appends
@@ -239,6 +239,17 @@ gcp-push:
 		--build-arg NEXT_PUBLIC_FEEDBACK_URL=$(FEEDBACK_URL)
 	docker push $(AR)/frontend:$(GCP_TAG)
 	@echo "Pushed $(AR)/api:$(GCP_TAG) and $(AR)/frontend:$(GCP_TAG)"
+
+# One-shot least-privilege role bootstrap (postgres admin). Run after Apply A,
+# before setting db_roles_bootstrapped=true. Not part of every gcp-deploy.
+gcp-db-bootstrap:
+	@test -n "$(GCP_PROJECT)" || (echo "Set GCP_PROJECT=..." && exit 1)
+	$(eval AR := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/$(AR_REPO))
+	gcloud run jobs update matchmaker-db-bootstrap \
+		--project=$(GCP_PROJECT) --region=$(GCP_REGION) \
+		--image=$(AR)/api:$(GCP_TAG)
+	gcloud run jobs execute matchmaker-db-bootstrap \
+		--project=$(GCP_PROJECT) --region=$(GCP_REGION) --wait
 
 # Run goose via the matchmaker-migrate Cloud Run Job (private VPC → Cloud SQL).
 # Point the job at the same API image tag you are about to roll out (or already pushed).

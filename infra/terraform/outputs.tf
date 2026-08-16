@@ -31,6 +31,11 @@ output "cloud_run_migrate_job_name" {
   value       = google_cloud_run_v2_job.migrate.name
 }
 
+output "cloud_run_db_bootstrap_job_name" {
+  description = "Cloud Run Job that runs `server db-bootstrap` (least-privilege roles)"
+  value       = google_cloud_run_v2_job.db_bootstrap.name
+}
+
 output "cloud_sql_connection_name" {
   value = google_sql_database_instance.main.connection_name
 }

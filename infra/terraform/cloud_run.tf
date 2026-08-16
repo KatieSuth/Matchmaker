@@ -225,7 +225,7 @@ resource "google_cloud_run_v2_job" "migrate" {
           name = "DATABASE_URL"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.database_url.secret_id
+              secret  = google_secret_manager_secret.database_url_migrate.secret_id
               version = "latest"
             }
           }
@@ -236,7 +236,96 @@ resource "google_cloud_run_v2_job" "migrate" {
 
   depends_on = [
     google_project_service.services,
-    google_secret_manager_secret_version.database_url,
+    google_secret_manager_secret_version.database_url_migrate,
+    google_sql_database_instance.main,
+  ]
+
+  lifecycle {
+    ignore_changes = [
+      client,
+      client_version,
+      template[0].template[0].containers[0].image,
+    ]
+  }
+}
+
+# One-shot least-privilege role bootstrap (CREATE ROLE matchmaker_app / matchmaker_migrator).
+# Run once via `make gcp-db-bootstrap` before setting db_roles_bootstrapped=true.
+resource "google_cloud_run_v2_job" "db_bootstrap" {
+  name     = "${local.name_prefix}-db-bootstrap"
+  location = var.region
+
+  labels = local.labels
+
+  template {
+    template {
+      service_account = google_service_account.api.email
+      timeout         = "300s"
+      max_retries     = 1
+
+      vpc_access {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+      }
+
+      containers {
+        name  = "db-bootstrap"
+        image = local.placeholder_image
+        args  = ["db-bootstrap"]
+
+        resources {
+          limits = {
+            cpu    = var.cloud_run_cpu
+            memory = var.cloud_run_memory
+          }
+        }
+
+        env {
+          name  = "GIN_MODE"
+          value = "release"
+        }
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.database_url_admin.secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        env {
+          name = "DB_APP_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.db_app_password.secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        env {
+          name = "DB_MIGRATOR_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.db_migrator_password.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.services,
+    google_secret_manager_secret_version.database_url_admin,
+    google_secret_manager_secret_version.db_app_password,
+    google_secret_manager_secret_version.db_migrator_password,
     google_sql_database_instance.main,
   ]
 

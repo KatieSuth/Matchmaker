@@ -51,15 +51,43 @@ variable "discord_client_secret" {
   sensitive   = true
 }
 
-variable "db_password" {
-  description = "Cloud SQL app user password (set in terraform.tfvars)"
+variable "db_admin_password" {
+  description = "Cloud SQL postgres (admin) password — Studio / Auth Proxy / db-bootstrap only"
   type        = string
   sensitive   = true
 
   validation {
-    condition     = length(var.db_password) >= 16
-    error_message = "db_password must be at least 16 characters."
+    condition     = length(var.db_admin_password) >= 16
+    error_message = "db_admin_password must be at least 16 characters."
   }
+}
+
+variable "db_migrator_password" {
+  description = "Password for SQL role matchmaker_migrator (goose Job; DDL+DML)"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.db_migrator_password) >= 16
+    error_message = "db_migrator_password must be at least 16 characters."
+  }
+}
+
+variable "db_app_password" {
+  description = "Password for SQL role matchmaker_app (API DML-only). Also used for legacy matchmaker user until db_roles_bootstrapped."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.db_app_password) >= 16
+    error_message = "db_app_password must be at least 16 characters."
+  }
+}
+
+variable "db_roles_bootstrapped" {
+  description = "Set true after make gcp-db-bootstrap so API/migrate use least-privilege roles and legacy matchmaker user is removed"
+  type        = bool
+  default     = false
 }
 
 variable "jwt_secret" {

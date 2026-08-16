@@ -42,8 +42,8 @@ resource "google_monitoring_alert_policy" "uptime" {
       comparison      = "COMPARISON_GT"
       threshold_value = 1
       aggregations {
-        alignment_period   = "1200s"
-        per_series_aligner = "ALIGN_NEXT_OLDER"
+        alignment_period     = "1200s"
+        per_series_aligner   = "ALIGN_NEXT_OLDER"
         cross_series_reducer = "REDUCE_COUNT_FALSE"
         group_by_fields = [
           "resource.label.project_id",

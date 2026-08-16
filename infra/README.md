@@ -228,9 +228,10 @@ gitignored; do not commit it.
 **`terraform.tfvars`** — put secrets and project settings here (also gitignored):
 
 ```bash
-# db_password, jwt_secret, cookie_hash_key, cookie_encrypt_key, origin_verify_secret,
-# discord_client_secret, cloudflare_*, etc.
+# db_admin_password, db_migrator_password, db_app_password, db_roles_bootstrapped,
+# jwt_secret, cookie_*, origin_verify_secret, discord_client_secret, cloudflare_*, etc.
 # Hex keys: make gen-keys  (or openssl rand -hex 32 each)
+# Start with db_roles_bootstrapped = false (see DB least-privilege cutover below).
 ```
 
 Then init (reads `backend.hcl`), plan, and apply:
@@ -239,6 +240,13 @@ Then init (reads `backend.hcl`), plan, and apply:
 make infra-init      # from repo root → terraform init -backend-config=backend.hcl
 make infra-plan
 make infra-apply     # starts Cloud SQL billing immediately
+```
+
+If you previously had `google_sql_user.app` (`matchmaker`) in state, before Apply A run:
+
+```bash
+cd infra/terraform
+terraform state mv 'google_sql_user.app' 'google_sql_user.legacy[0]'
 ```
 
 First apply may create Cloud Run services on a **placeholder** image. Probes can
@@ -250,6 +258,20 @@ cd infra/terraform && terraform output
 ```
 
 Save Artifact Registry URL, Cloud Run service names, and SQL connection name.
+
+### DB least-privilege cutover (required once)
+
+Cloud SQL starts with a transitional `matchmaker` login (`cloudsqlsuperuser`). After images exist:
+
+1. **Apply A** — `db_roles_bootstrapped = false` in tfvars → `make infra-apply`  
+   (postgres admin password, bootstrap Job, migrate/app URL secrets still on legacy user).
+2. Push an API image that includes `server db-bootstrap` (`make gcp-push`).
+3. **`make gcp-db-bootstrap`** — creates `matchmaker_app` / `matchmaker_migrator`, grants, reassigns ownership from legacy `matchmaker`.
+4. Set **`db_roles_bootstrapped = true`** in tfvars → **Apply B** (`make infra-apply`)  
+   (API DSN → `matchmaker_app`, migrate Job → `matchmaker_migrator`, destroy legacy Cloud SQL user).
+5. **`make gcp-deploy`** as usual.
+
+Re-run bootstrap only when changing role grants or rotating migrator/app passwords via SQL `ALTER ROLE` (bootstrap updates passwords from Secret Manager env).
 
 ---
 
@@ -324,17 +346,18 @@ curl -sS https://matchmaker.games/health
 
 ## Makefile targets
 
-| Target                | Purpose                                                 |
-|-----------------------|---------------------------------------------------------|
-| `make infra-init`     | `terraform init` with `backend.hcl`                     |
-| `make infra-fmt`      | `terraform fmt`                                         |
-| `make infra-validate` | `terraform validate`                                    |
-| `make infra-plan`     | `terraform plan`                                        |
-| `make infra-apply`    | `terraform apply`                                       |
-| `make infra-destroy`  | `terraform destroy` (confirm)                           |
-| `make gcp-push`       | Build/push amd64 images to Artifact Registry            |
-| `make gcp-migrate`    | Update migrate Job image + execute goose Up             |
-| `make gcp-deploy`     | Push → migrate → update Cloud Run API/frontend services |
+| Target                  | Purpose                                                 |
+|-------------------------|---------------------------------------------------------|
+| `make infra-init`       | `terraform init` with `backend.hcl`                     |
+| `make infra-fmt`        | `terraform fmt`                                         |
+| `make infra-validate`   | `terraform validate`                                    |
+| `make infra-plan`       | `terraform plan`                                        |
+| `make infra-apply`      | `terraform apply`                                       |
+| `make infra-destroy`    | `terraform destroy` (confirm)                           |
+| `make gcp-push`         | Build/push amd64 images to Artifact Registry            |
+| `make gcp-migrate`      | Update migrate Job image + execute goose Up             |
+| `make gcp-db-bootstrap` | Update bootstrap Job + create least-privilege DB roles |
+| `make gcp-deploy`       | Push → migrate → update Cloud Run API/frontend services |
 
 ---
 
@@ -348,6 +371,7 @@ curl -sS https://matchmaker.games/health
 | 403 through the domain                           | Worker secret out of sync with Secret Manager — re-apply Cloudflare/secret bindings                                             |
 | API cannot reach DB                              | Direct VPC / private IP; confirm same region and PSA connection                                                                 |
 | Discord login fails                              | Wrong `FRONTEND_URL` / redirect URI / cookie domain                                                                             |
+| `permission denied` for relation / schema        | Forgot `gcp-db-bootstrap` or `db_roles_bootstrapped=true` apply; wrong DATABASE_URL role                                        |
 | `invalid timezone` on `/users/me/events`         | API image missing tzdata — fixed by embedding `time/tzdata`; redeploy API                                                       |
 
 ---
