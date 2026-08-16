@@ -89,6 +89,11 @@ export async function moveUnplacedToSubs(eventId: string, userId: string, lobbyI
   await api.post(`/registrations/${eventId}/unplaced-to-subs`, { user_id: userId, lobby_id: lobbyId });
 }
 
+/** Event host or lobby host. Sets or clears the lobby join code / invite path. */
+export async function updateLobbyJoinCode(lobbyId: string, joinCode: string | null): Promise<void> {
+  await api.patch(`/lobbies/${lobbyId}/join-code`, { join_code: joinCode });
+}
+
 export async function deleteEventGroup(groupId: string): Promise<void> {
   await api.delete(`/events/${groupId}`);
 }

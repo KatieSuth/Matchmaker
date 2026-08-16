@@ -70,11 +70,12 @@ type EventTeam struct {
 
 // EventLobby is one match lobby for a game after lock-in.
 type EventLobby struct {
-	ID                    uuid.UUID   `json:"id"`
-	HostID                *uuid.UUID  `json:"host_id"`
-	FairnessWarning       bool        `json:"fairness_warning"`
-	FairnessWarningAtLock bool        `json:"fairness_warning_at_lock"`
-	Teams                 []EventTeam `json:"teams"`
+	ID                    uuid.UUID     `json:"id"`
+	HostID                *uuid.UUID    `json:"host_id"`
+	JoinCode              *string       `json:"join_code"`
+	FairnessWarning       bool          `json:"fairness_warning"`
+	FairnessWarningAtLock bool          `json:"fairness_warning_at_lock"`
+	Teams                 []EventTeam   `json:"teams"`
 	Subs                  []LobbyPlayer `json:"subs"`
 }
 
@@ -105,6 +106,7 @@ type EventGroupDetail struct {
 	GameModeName     string            `json:"game_mode_name"`
 	GameID           uuid.UUID         `json:"game_id"`
 	GameName         string            `json:"game_name"`
+	JoinLinkBase     *string           `json:"join_link_base"`
 	TeamSize         int               `json:"team_size"`
 	SubMin           int               `json:"sub_min"`
 	RegistrationOpen bool              `json:"registration_open"`
@@ -190,6 +192,7 @@ func MapDbGetLobbiesForEventRowToEventLobby(row db.GetLobbiesForEventRow) EventL
 	return EventLobby{
 		ID:                    row.ID,
 		HostID:                row.Host,
+		JoinCode:              row.JoinCode,
 		FairnessWarning:       row.FairnessWarning,
 		FairnessWarningAtLock: row.FairnessWarningAtLock,
 		Teams:                 []EventTeam{},
@@ -238,6 +241,7 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		GameModeName:     row.GameModeName,
 		GameID:           row.GameID,
 		GameName:         row.GameName,
+		JoinLinkBase:     row.JoinLinkBase,
 		TeamSize:         int(row.TeamSize),
 		SubMin:           int(row.SubMin),
 		RegistrationOpen: row.RegistrationOpen,

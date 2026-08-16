@@ -19,6 +19,10 @@ import {
   buildDiscordPingMessage,
   sequentialTeamNumber,
 } from "@/app/_lib/discordPings";
+import {
+  buildLobbyJoinDisplayValue,
+  validateLobbyJoinInput,
+} from "@/app/_lib/lobbyJoin";
 import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
 import { inputCls } from "@/app/_lib/styles";
 import { extractApiError, fetchGameRanks } from "@/app/_services/games";
@@ -31,6 +35,7 @@ import {
   moveUnplacedToSubs,
   setLobbyHost,
   swapPlayers,
+  updateLobbyJoinCode,
   upsertMyGroupRegistrations,
 } from "@/app/_services/events";
 import { fetchCurrentUserGames, upsertCurrentUserGame } from "@/app/_services/users";
@@ -75,6 +80,13 @@ interface PlayerPlacement {
   lobbyId: string | null;
   sourceLobbyIndex: number | null;
   teamNumber: number | null | undefined;
+}
+
+interface PendingJoinLobby {
+  lobby: EventLobby;
+  lobbyIndex: number;
+  gameNumber: number;
+  startTime: string;
 }
 
 interface LobbyHostVolunteer {
@@ -557,6 +569,8 @@ function TeamsPanel({
   onMoveToUnplaced,
   onMoveToSubs,
   onMakeLobbyHost,
+  onJoinLobby,
+  showJoinLobby,
 }: {
   event: EventGroupEvent;
   gameNumber: number;
@@ -572,6 +586,8 @@ function TeamsPanel({
   onMoveToUnplaced?: (placement: PlayerPlacement) => void;
   onMoveToSubs?: (placement: PlayerPlacement) => void;
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
+  onJoinLobby: (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => void;
+  showJoinLobby: boolean;
 }) {
   const lobbies = event.lobbies ?? [];
   if (lobbies.length === 0) {
@@ -595,6 +611,18 @@ function TeamsPanel({
             <span className="min-w-0 break-words">
               Lobby {lobbyIndex + 1}
               {lobbyHostName(lobby, event) ? ` · Host: ${lobbyHostName(lobby, event)}` : ""}
+              {showJoinLobby && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => onJoinLobby(lobby, lobbyIndex, gameNumber, event.start_time)}
+                    className="font-medium text-[var(--color-accent-blue)] hover:underline"
+                  >
+                    Join Lobby
+                  </button>
+                </>
+              )}
             </span>
             {lobby.fairness_warning && <span className="text-amber-400" aria-label="Unfair lobby">⚠</span>}
           </div>
@@ -806,6 +834,11 @@ export default function EventGroupPage() {
   const [pendingMoveToSubs, setPendingMoveToSubs] = useState<PlayerPlacement | null>(null);
   const [moveToSubsLobbyId, setMoveToSubsLobbyId] = useState("");
   const [moveToSubsError, setMoveToSubsError] = useState<string | null>(null);
+  const [joinLobbySheetOpen, setJoinLobbySheetOpen] = useState(false);
+  const [pendingJoinLobby, setPendingJoinLobby] = useState<PendingJoinLobby | null>(null);
+  const [joinLobbyDraft, setJoinLobbyDraft] = useState("");
+  const [joinLobbyError, setJoinLobbyError] = useState<string | null>(null);
+  const [joinLobbyCopyStatus, setJoinLobbyCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
   const [pingStatus, setPingStatus] = useState<"idle" | "success" | "error">("idle");
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
@@ -897,6 +930,12 @@ export default function EventGroupPage() {
     const timer = window.setTimeout(() => setShareStatus("idle"), 1600);
     return () => window.clearTimeout(timer);
   }, [shareStatus]);
+
+  useEffect(() => {
+    if (joinLobbyCopyStatus === "idle") return;
+    const timer = window.setTimeout(() => setJoinLobbyCopyStatus("idle"), 1600);
+    return () => window.clearTimeout(timer);
+  }, [joinLobbyCopyStatus]);
 
   useEffect(() => {
     if (pingStatus === "idle") return;
@@ -1009,6 +1048,71 @@ export default function EventGroupPage() {
     setSwapTargetUserId("");
     setSwapError(null);
   }, []);
+
+  const openJoinLobbySheet = useCallback(
+    (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => {
+      const display = buildLobbyJoinDisplayValue(lobby.join_code, group?.join_link_base);
+      setPendingJoinLobby({ lobby, lobbyIndex, gameNumber, startTime });
+      setJoinLobbyDraft(display?.value ?? lobby.join_code ?? "");
+      setJoinLobbyError(null);
+      setJoinLobbyCopyStatus("idle");
+      setJoinLobbySheetOpen(true);
+    },
+    [group?.join_link_base],
+  );
+
+  const closeJoinLobbySheet = useCallback(() => {
+    setJoinLobbySheetOpen(false);
+    setPendingJoinLobby(null);
+    setJoinLobbyDraft("");
+    setJoinLobbyError(null);
+    setJoinLobbyCopyStatus("idle");
+  }, []);
+
+  const canEditPendingJoinLobby = !!(
+    pendingJoinLobby &&
+    user?.id &&
+    (isHost || pendingJoinLobby.lobby.host_id === user.id)
+  );
+
+  const pendingJoinDisplay = pendingJoinLobby
+    ? buildLobbyJoinDisplayValue(pendingJoinLobby.lobby.join_code, group?.join_link_base)
+    : null;
+
+  const handleCopyJoinLobby = async () => {
+    const value = canEditPendingJoinLobby
+      ? joinLobbyDraft.trim()
+      : pendingJoinDisplay?.value;
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setJoinLobbyCopyStatus("success");
+    } catch {
+      setJoinLobbyCopyStatus("error");
+    }
+  };
+
+  const handleSaveJoinLobby = async () => {
+    if (!pendingJoinLobby || !canEditPendingJoinLobby) return;
+    const validationError = validateLobbyJoinInput(joinLobbyDraft, group?.join_link_base ?? null);
+    if (validationError) {
+      setJoinLobbyError(validationError);
+      return;
+    }
+    try {
+      setWorking(true);
+      setJoinLobbyError(null);
+      const trimmed = joinLobbyDraft.trim();
+      await updateLobbyJoinCode(pendingJoinLobby.lobby.id, trimmed === "" ? null : trimmed);
+      await loadGroup();
+      closeJoinLobbySheet();
+      setToast("Lobby join info saved.");
+    } catch (err) {
+      setJoinLobbyError(extractApiError(err, "Could not save lobby join info."));
+    } finally {
+      setWorking(false);
+    }
+  };
 
   const closeLobbyHostConfirm = useCallback(() => {
     setLobbyHostConfirmOpen(false);
@@ -1858,6 +1962,8 @@ export default function EventGroupPage() {
                     onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
                     onMoveToSubs={isHost ? handleMoveToSubs : undefined}
                     onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
+                    onJoinLobby={openJoinLobbySheet}
+                    showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
                   />
                 ) : (
                   <EventPanel
@@ -1929,6 +2035,8 @@ export default function EventGroupPage() {
                 onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
                 onMoveToSubs={isHost ? handleMoveToSubs : undefined}
                 onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
+                onJoinLobby={openJoinLobbySheet}
+                showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
               />
             ) : (
               <EventPanel
@@ -2290,6 +2398,189 @@ export default function EventGroupPage() {
               {working ? "Moving..." : "Submit"}
             </button>
           </div>
+        </div>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        isOpen={joinLobbySheetOpen}
+        onClose={closeJoinLobbySheet}
+        title={
+          pendingJoinLobby
+            ? `Join Lobby ${pendingJoinLobby.lobbyIndex + 1} (Game ${pendingJoinLobby.gameNumber} · ${formatDateTime(pendingJoinLobby.startTime)})`
+            : "Join Lobby"
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {canEditPendingJoinLobby ? (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">
+                  Lobby
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={joinLobbyDraft}
+                    onChange={(e) => {
+                      setJoinLobbyDraft(e.target.value);
+                      setJoinLobbyError(null);
+                    }}
+                    className={inputCls}
+                    placeholder="Code or https://gg.riotgames.com/…"
+                    disabled={working}
+                  />
+                  {(joinLobbyDraft.trim() || pendingJoinDisplay) && (
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleCopyJoinLobby();
+                        }}
+                        className={[
+                          "inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.08]",
+                          joinLobbyCopyStatus === "success"
+                            ? "border-emerald-500/35 text-emerald-400"
+                            : joinLobbyCopyStatus === "error"
+                              ? "border-[var(--color-text-danger)]/35 text-[var(--color-text-danger)]"
+                              : "border-white/10 text-[var(--color-text-soft)]",
+                        ].join(" ")}
+                        aria-label="Copy lobby join info"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          <rect x="5.5" y="5.5" width="7" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.4" />
+                          <path
+                            d="M3.5 10.5V3.8A1.3 1.3 0 0 1 4.8 2.5h5.7"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+                      {joinLobbyCopyStatus !== "idle" && (
+                        <div
+                          className={[
+                            "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px]",
+                            joinLobbyCopyStatus === "success"
+                              ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
+                              : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
+                          ].join(" ")}
+                        >
+                          {joinLobbyCopyStatus === "success" ? "Copied" : "Copy failed"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
+              {joinLobbyError && (
+                <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
+                  {joinLobbyError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeJoinLobbySheet}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveJoinLobby();
+                  }}
+                  disabled={working || !!validateLobbyJoinInput(joinLobbyDraft, group?.join_link_base ?? null)}
+                  className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] disabled:opacity-40"
+                >
+                  {working ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </>
+          ) : pendingJoinDisplay ? (
+            <>
+              <div className="flex items-start gap-2">
+                {pendingJoinDisplay.kind === "link" ? (
+                  <a
+                    href={pendingJoinDisplay.value}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 break-all text-sm text-[var(--color-accent-blue)] hover:underline"
+                  >
+                    {pendingJoinDisplay.value}
+                  </a>
+                ) : (
+                  <p className="min-w-0 flex-1 break-all font-mono text-sm text-[var(--color-text-soft)]">
+                    {pendingJoinDisplay.value}
+                  </p>
+                )}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleCopyJoinLobby();
+                    }}
+                    className={[
+                      "inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.08]",
+                      joinLobbyCopyStatus === "success"
+                        ? "border-emerald-500/35 text-emerald-400"
+                        : joinLobbyCopyStatus === "error"
+                          ? "border-[var(--color-text-danger)]/35 text-[var(--color-text-danger)]"
+                          : "border-white/10 text-[var(--color-text-soft)]",
+                    ].join(" ")}
+                    aria-label="Copy lobby join info"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="5.5" y="5.5" width="7" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.4" />
+                      <path
+                        d="M3.5 10.5V3.8A1.3 1.3 0 0 1 4.8 2.5h5.7"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                  {joinLobbyCopyStatus !== "idle" && (
+                    <div
+                      className={[
+                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px]",
+                        joinLobbyCopyStatus === "success"
+                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
+                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
+                      ].join(" ")}
+                    >
+                      {joinLobbyCopyStatus === "success" ? "Copied" : "Copy failed"}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeJoinLobbySheet}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--color-text-soft)]">
+                The lobby join info has not been added yet. If it&apos;s less than 10 minutes before the match is due to start, reach out to the
+                lobby host or the event host and ask them to add it.
+              </p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeJoinLobbySheet}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </ResponsiveSheet>
 

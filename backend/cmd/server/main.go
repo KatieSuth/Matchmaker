@@ -418,6 +418,11 @@ func main() {
 			registrations.DELETE("/:eventId/:userId", h.DeleteRegistrationHandler)
 			registrations.DELETE("/:eventId/me", h.DeleteRegistrationHandler)
 		}
+
+		lobbies := protected.Group("/lobbies")
+		{
+			lobbies.PATCH("/:lobbyId/join-code", h.UpdateLobbyJoinCodeHandler)
+		}
 	}
 
 	slog.Info("API listening", "port", port)

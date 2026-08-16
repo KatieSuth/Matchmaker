@@ -84,6 +84,15 @@ SELECT
         )
         AS TEXT
     ) AS game_name,
+    (
+        SELECT G_first.join_link_base
+         FROM events E_first
+         JOIN game_modes GM_first ON GM_first.id = E_first.game_mode_id
+         JOIN games G_first ON G_first.id = GM_first.game_id
+         WHERE E_first.group_id = EG.id
+         ORDER BY E_first.start_time ASC NULLS LAST
+         LIMIT 1
+    ) AS join_link_base,
     CAST(
         CASE
             WHEN (SELECT COUNT(DISTINCT GM_sz.team_size) FROM events E_sz JOIN game_modes GM_sz ON GM_sz.id = E_sz.game_mode_id WHERE E_sz.group_id = EG.id) = 1
@@ -162,10 +171,29 @@ DELETE FROM event_groups
 WHERE id = $1;
 
 -- name: GetLobbiesForEvent :many
-SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock
+SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock, join_code
 FROM lobbies
 WHERE event_id = $1
 ORDER BY created_at ASC, id ASC;
+
+-- name: GetLobbyAuthContext :one
+SELECT
+    L.id AS lobby_id,
+    L.host,
+    L.event_id,
+    EG.owner_id,
+    G.join_link_base
+FROM lobbies AS L
+JOIN events AS E ON E.id = L.event_id
+JOIN event_groups AS EG ON EG.id = E.group_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
+WHERE L.id = $1;
+
+-- name: UpdateLobbyJoinCode :exec
+UPDATE lobbies
+SET join_code = $2, updated_at = NOW()
+WHERE id = $1;
 
 -- name: GetPlayersForLobby :many
 SELECT P.user_id,

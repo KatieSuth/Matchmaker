@@ -16,6 +16,7 @@ export interface Game {
   id: string;
   name: string;
   owner_id: string | null;
+  join_link_base: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +101,7 @@ export interface EventTeam {
 export interface EventLobby {
   id: string;
   host_id: string | null;
+  join_code: string | null;
   fairness_warning: boolean;
   fairness_warning_at_lock: boolean;
   teams: EventTeam[];
@@ -134,6 +136,7 @@ export interface EventGroupDetail {
   game_mode_name: string;
   game_id: string;
   game_name: string;
+  join_link_base: string | null;
   team_size: number;
   sub_min: number;
   registration_open: boolean;

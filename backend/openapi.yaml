@@ -1081,6 +1081,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /lobbies/{lobbyId}/join-code:
+    patch:
+      tags: [lobbies]
+      summary: Set or clear a lobby join code / invite path
+      operationId: updateLobbyJoinCode
+      description: >
+        Event-group owner or this lobby's host. Accepts a plain lobby code, a full https
+        invite URL for the game's join_link_base host, a schemeless host/path form of that
+        URL, or an already-stripped path (leading slash). Full URLs are validated with
+        hostname equality (not string prefix) and stored as path+query only (e.g.
+        `/LOL?joinCode=…` or `/VAL?joinCode=…`). Nested paths with extra `/` after the
+        leading slash are not accepted yet (future consideration). Clients rebuild
+        display URLs as join_link_base + join_code.
+        Empty string or null clears the join code. The API never returns a prebuilt full URL.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: lobbyId
+          in: path
+          required: true
+          description: UUID of the lobby
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                join_code:
+                  type: string
+                  nullable: true
+                  description: Plain code, full/schemeless invite URL, path suffix, or empty/null to clear
+      responses:
+        "204":
+          description: Join code updated successfully
+        "400":
+          description: Invalid join code or link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host or lobby host can update the join code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lobby not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update join code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /registrations/{eventId}/player-swap:
     post:
       tags: [registrations]
@@ -1626,6 +1691,13 @@ components:
           type: string
           description: Display name of the game
           examples: ["Valorant"]
+        join_link_base:
+          type: string
+          nullable: true
+          description: >
+            HTTPS origin used to validate and rebuild lobby invite links (no trailing slash),
+            e.g. https://gg.riotgames.com for League of Legends and Valorant.
+          examples: ["https://gg.riotgames.com"]
         created_at:
           type: string
           format: date-time
@@ -1984,6 +2056,14 @@ components:
           type: string
           format: uuid
           nullable: true
+        join_code:
+          type: string
+          nullable: true
+          description: >
+            Plain lobby code, or invite path+query including leading slash
+            (e.g. `/LOL?joinCode=…` or `/VAL?joinCode=…`). Game-agnostic single-segment
+            paths are allowed; additional `/` in the path is not accepted yet (future
+            consideration). Clients rebuild full URLs with join_link_base + join_code.
         fairness_warning:
           type: boolean
         fairness_warning_at_lock:
@@ -2051,6 +2131,12 @@ components:
           format: uuid
         game_name:
           type: string
+        join_link_base:
+          type: string
+          nullable: true
+          description: >
+            HTTPS origin for this group's game (no trailing slash). Clients rebuild
+            display URLs as join_link_base + lobby.join_code when join_code starts with /.
         team_size:
           type: integer
           format: int32

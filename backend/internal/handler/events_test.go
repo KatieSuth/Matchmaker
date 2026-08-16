@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/lobbyjoin"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
@@ -1720,5 +1721,80 @@ func TestDeleteRegistrationHandler_SelfWithNoUserIDParam(t *testing.T) {
 		},
 	}, nil, "")
 	h.DeleteRegistrationHandler(c)
+	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+func TestUpdateLobbyJoinCodeHandler_StoreErrors(t *testing.T) {
+	lobbyID := uuid.New()
+	uid := uuid.New()
+	body := `{"join_code":"JHL829"}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden},
+		{"invalid", &lobbyjoin.ValidationError{Message: "bad"}, http.StatusBadRequest},
+		{"not found", store.ErrLobbyNotFound, http.StatusNotFound},
+		{"other", errors.New("fail"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := test_util.NewGinContext(http.MethodPatch, "/lobbies/x/join-code")
+			test_util.WithUserIDString(c, uid)
+			c.Params = gin.Params{{Key: "lobbyId", Value: lobbyID.String()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			h := newTestHandler(t, &store.MockStore{
+				UpdateLobbyJoinCodeFn: func(_ context.Context, _, _ uuid.UUID, _ *string) error { return tc.err },
+			}, nil, "")
+			h.UpdateLobbyJoinCodeHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+}
+
+func TestUpdateLobbyJoinCodeHandler_Validation(t *testing.T) {
+	t.Run("invalid lobby id", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPatch, "/lobbies/bad/join-code")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "lobbyId", Value: "nope"}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`{"join_code":"ABC"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpdateLobbyJoinCodeHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("bad json", func(t *testing.T) {
+		c, w := test_util.NewGinContext(http.MethodPatch, "/lobbies/x/join-code")
+		test_util.WithUserIDString(c, uuid.New())
+		c.Params = gin.Params{{Key: "lobbyId", Value: uuid.NewString()}}
+		c.Request.Body = io.NopCloser(strings.NewReader(`not-json`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		h := newTestHandler(t, &store.MockStore{}, nil, "")
+		h.UpdateLobbyJoinCodeHandler(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestUpdateLobbyJoinCodeHandler_Success(t *testing.T) {
+	lobbyID := uuid.New()
+	uid := uuid.New()
+	c, _ := test_util.NewGinContext(http.MethodPatch, "/lobbies/x/join-code")
+	test_util.WithUserIDString(c, uid)
+	c.Params = gin.Params{{Key: "lobbyId", Value: lobbyID.String()}}
+	c.Request.Body = io.NopCloser(strings.NewReader(`{"join_code":"JHL829"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	h := newTestHandler(t, &store.MockStore{
+		UpdateLobbyJoinCodeFn: func(_ context.Context, inLobby, inActor uuid.UUID, code *string) error {
+			assert.Equal(t, lobbyID, inLobby)
+			assert.Equal(t, uid, inActor)
+			require.NotNil(t, code)
+			assert.Equal(t, "JHL829", *code)
+			return nil
+		},
+	}, nil, "")
+	h.UpdateLobbyJoinCodeHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }

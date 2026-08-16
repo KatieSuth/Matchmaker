@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/lobbyjoin"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,10 @@ type swapPlayersRequest struct {
 
 type setLobbyHostRequest struct {
 	UserID string `json:"user_id"`
+}
+
+type updateLobbyJoinCodeRequest struct {
+	JoinCode *string `json:"join_code"`
 }
 
 type movePlacementRequest struct {
@@ -797,6 +802,56 @@ func (h *Handler) SetLobbyHostHandler(c *gin.Context) {
 		return
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+// PATCH /lobbies/:lobbyId/join-code
+// Event-group owner or this lobby's host. Sets or clears the lobby join code / invite path.
+func (h *Handler) UpdateLobbyJoinCodeHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	lobbyID, err := uuid.Parse(c.Param("lobbyId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid lobbyId in UpdateLobbyJoinCodeHandler", "user_id", userUUID, "lobby_id", c.Param("lobbyId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "lobbyId must be a valid UUID"})
+		return
+	}
+
+	var body updateLobbyJoinCodeRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in UpdateLobbyJoinCodeHandler", "user_id", userUUID, "lobby_id", lobbyID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+
+	err = h.store.UpdateLobbyJoinCode(c.Request.Context(), lobbyID, userUUID, body.JoinCode)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrForbidden):
+			slog.WarnContext(c.Request.Context(), "forbidden update lobby join code attempt", "user_id", userUUID, "lobby_id", lobbyID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the event host or lobby host can update the join code"})
+		case errors.Is(err, lobbyjoin.ErrInvalidJoinCode):
+			msg := err.Error()
+			var valErr *lobbyjoin.ValidationError
+			if errors.As(err, &valErr) {
+				msg = valErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "lobby join code validation failed", "user_id", userUUID, "lobby_id", lobbyID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+		case errors.Is(err, store.ErrLobbyNotFound), errors.Is(err, pgx.ErrNoRows):
+			slog.WarnContext(c.Request.Context(), "lobby not found for join code update", "user_id", userUUID, "lobby_id", lobbyID)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Lobby not found"})
+		default:
+			slog.ErrorContext(c.Request.Context(), "failed to update lobby join code", "lobby_id", lobbyID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to update lobby join code"})
+		}
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "lobby join code updated", "user_id", userUUID, "lobby_id", lobbyID)
 	c.Status(http.StatusNoContent)
 }
 

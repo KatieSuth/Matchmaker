@@ -57,6 +57,7 @@ type MockStore struct {
 	MoveSubToUnplacedForEventFn      func(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
 	MoveUnplacedToSubsForEventFn     func(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
 	SetLobbyHostForEventFn           func(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
+	UpdateLobbyJoinCodeFn            func(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error
 	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
 	DeleteRegistrationForEventFn     func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
@@ -180,6 +181,10 @@ func (m *MockStore) MoveUnplacedToSubsForEvent(ctx context.Context, eventID, own
 
 func (m *MockStore) SetLobbyHostForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID) error {
 	return m.SetLobbyHostForEventFn(ctx, eventID, ownerID, userID)
+}
+
+func (m *MockStore) UpdateLobbyJoinCode(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error {
+	return m.UpdateLobbyJoinCodeFn(ctx, lobbyID, actorID, rawJoinCode)
 }
 
 func (m *MockStore) UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error {

@@ -12,7 +12,7 @@ import (
 )
 
 const getGameById = `-- name: GetGameById :one
-SELECT id, name, owner_id, created_at, updated_at FROM games WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, join_link_base FROM games WHERE id = $1
 `
 
 func (q *Queries) GetGameById(ctx context.Context, id uuid.UUID) (Game, error) {
@@ -24,6 +24,7 @@ func (q *Queries) GetGameById(ctx context.Context, id uuid.UUID) (Game, error) {
 		&i.OwnerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.JoinLinkBase,
 	)
 	return i, err
 }
@@ -95,7 +96,7 @@ func (q *Queries) GetMaxRankOrderForGame(ctx context.Context, gameID *uuid.UUID)
 }
 
 const getSystemGames = `-- name: GetSystemGames :many
-SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL
+SELECT id, name, owner_id, created_at, updated_at, join_link_base FROM games WHERE owner_id IS NULL
 `
 
 func (q *Queries) GetSystemGames(ctx context.Context) ([]Game, error) {
@@ -113,6 +114,7 @@ func (q *Queries) GetSystemGames(ctx context.Context) ([]Game, error) {
 			&i.OwnerID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.JoinLinkBase,
 		); err != nil {
 			return nil, err
 		}
@@ -125,7 +127,7 @@ func (q *Queries) GetSystemGames(ctx context.Context) ([]Game, error) {
 }
 
 const getUserGames = `-- name: GetUserGames :many
-SELECT id, name, owner_id, created_at, updated_at FROM games WHERE owner_id IS NULL OR owner_id = $1
+SELECT id, name, owner_id, created_at, updated_at, join_link_base FROM games WHERE owner_id IS NULL OR owner_id = $1
 `
 
 func (q *Queries) GetUserGames(ctx context.Context, ownerID *uuid.UUID) ([]Game, error) {
@@ -143,6 +145,7 @@ func (q *Queries) GetUserGames(ctx context.Context, ownerID *uuid.UUID) ([]Game,
 			&i.OwnerID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.JoinLinkBase,
 		); err != nil {
 			return nil, err
 		}

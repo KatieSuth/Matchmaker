@@ -118,7 +118,7 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 const createLobby = `-- name: CreateLobby :one
 INSERT INTO lobbies (id, event_id, host, fairness_warning, fairness_warning_at_lock, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, $3, NOW(), NOW())
-RETURNING id, event_id, host, created_at, updated_at, fairness_warning, fairness_warning_at_lock
+RETURNING id, event_id, host, created_at, updated_at, fairness_warning, fairness_warning_at_lock, join_code
 `
 
 type CreateLobbyParams struct {
@@ -138,6 +138,7 @@ func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby
 		&i.UpdatedAt,
 		&i.FairnessWarning,
 		&i.FairnessWarningAtLock,
+		&i.JoinCode,
 	)
 	return i, err
 }
@@ -294,6 +295,15 @@ SELECT
         )
         AS TEXT
     ) AS game_name,
+    (
+        SELECT G_first.join_link_base
+         FROM events E_first
+         JOIN game_modes GM_first ON GM_first.id = E_first.game_mode_id
+         JOIN games G_first ON G_first.id = GM_first.game_id
+         WHERE E_first.group_id = EG.id
+         ORDER BY E_first.start_time ASC NULLS LAST
+         LIMIT 1
+    ) AS join_link_base,
     CAST(
         CASE
             WHEN (SELECT COUNT(DISTINCT GM_sz.team_size) FROM events E_sz JOIN game_modes GM_sz ON GM_sz.id = E_sz.game_mode_id WHERE E_sz.group_id = EG.id) = 1
@@ -324,6 +334,7 @@ type GetEventGroupDetailByIdRow struct {
 	GameModeID       uuid.UUID
 	GameID           uuid.UUID
 	GameName         string
+	JoinLinkBase     *string
 	TeamSize         int32
 	SubMin           int32
 	RegistrationOpen bool
@@ -347,6 +358,7 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.GameModeID,
 		&i.GameID,
 		&i.GameName,
+		&i.JoinLinkBase,
 		&i.TeamSize,
 		&i.SubMin,
 		&i.RegistrationOpen,
@@ -643,7 +655,7 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 }
 
 const getLobbiesForEvent = `-- name: GetLobbiesForEvent :many
-SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock
+SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock, join_code
 FROM lobbies
 WHERE event_id = $1
 ORDER BY created_at ASC, id ASC
@@ -655,6 +667,7 @@ type GetLobbiesForEventRow struct {
 	Host                  *uuid.UUID
 	FairnessWarning       bool
 	FairnessWarningAtLock bool
+	JoinCode              *string
 }
 
 func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([]GetLobbiesForEventRow, error) {
@@ -672,6 +685,7 @@ func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([
 			&i.Host,
 			&i.FairnessWarning,
 			&i.FairnessWarningAtLock,
+			&i.JoinCode,
 		); err != nil {
 			return nil, err
 		}
@@ -681,6 +695,42 @@ func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const getLobbyAuthContext = `-- name: GetLobbyAuthContext :one
+SELECT
+    L.id AS lobby_id,
+    L.host,
+    L.event_id,
+    EG.owner_id,
+    G.join_link_base
+FROM lobbies AS L
+JOIN events AS E ON E.id = L.event_id
+JOIN event_groups AS EG ON EG.id = E.group_id
+JOIN game_modes AS GM ON GM.id = E.game_mode_id
+JOIN games AS G ON G.id = GM.game_id
+WHERE L.id = $1
+`
+
+type GetLobbyAuthContextRow struct {
+	LobbyID      uuid.UUID
+	Host         *uuid.UUID
+	EventID      *uuid.UUID
+	OwnerID      uuid.UUID
+	JoinLinkBase *string
+}
+
+func (q *Queries) GetLobbyAuthContext(ctx context.Context, id uuid.UUID) (GetLobbyAuthContextRow, error) {
+	row := q.db.QueryRow(ctx, getLobbyAuthContext, id)
+	var i GetLobbyAuthContextRow
+	err := row.Scan(
+		&i.LobbyID,
+		&i.Host,
+		&i.EventID,
+		&i.OwnerID,
+		&i.JoinLinkBase,
+	)
+	return i, err
 }
 
 const getPlayerPlacementsForEvent = `-- name: GetPlayerPlacementsForEvent :many
@@ -964,5 +1014,21 @@ type UpdateLobbyHostParams struct {
 
 func (q *Queries) UpdateLobbyHost(ctx context.Context, arg UpdateLobbyHostParams) error {
 	_, err := q.db.Exec(ctx, updateLobbyHost, arg.ID, arg.Host)
+	return err
+}
+
+const updateLobbyJoinCode = `-- name: UpdateLobbyJoinCode :exec
+UPDATE lobbies
+SET join_code = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateLobbyJoinCodeParams struct {
+	ID       uuid.UUID
+	JoinCode *string
+}
+
+func (q *Queries) UpdateLobbyJoinCode(ctx context.Context, arg UpdateLobbyJoinCodeParams) error {
+	_, err := q.db.Exec(ctx, updateLobbyJoinCode, arg.ID, arg.JoinCode)
 	return err
 }

@@ -46,11 +46,12 @@ type EventGroup struct {
 }
 
 type Game struct {
-	ID        uuid.UUID
-	Name      string
-	OwnerID   *uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           uuid.UUID
+	Name         string
+	OwnerID      *uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	JoinLinkBase *string
 }
 
 type GameMode struct {
@@ -81,6 +82,7 @@ type Lobby struct {
 	UpdatedAt             time.Time
 	FairnessWarning       bool
 	FairnessWarningAtLock bool
+	JoinCode              *string
 }
 
 type OneTimeCode struct {

@@ -8,11 +8,12 @@ import (
 )
 
 type Game struct {
-	ID        uuid.UUID  `json:"id"`
-	Name      string     `json:"name"`
-	OwnerID   *uuid.UUID `json:"owner_id"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID           uuid.UUID  `json:"id"`
+	Name         string     `json:"name"`
+	OwnerID      *uuid.UUID `json:"owner_id"`
+	JoinLinkBase *string    `json:"join_link_base"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 /*
@@ -21,11 +22,12 @@ type Game struct {
  */
 func MapDbGameToGame(dbGame db.Game) Game {
 	return Game{
-		ID:        dbGame.ID,
-		Name:      dbGame.Name,
-		OwnerID:   dbGame.OwnerID,
-		CreatedAt: dbGame.CreatedAt,
-		UpdatedAt: dbGame.UpdatedAt,
+		ID:           dbGame.ID,
+		Name:         dbGame.Name,
+		OwnerID:      dbGame.OwnerID,
+		JoinLinkBase: dbGame.JoinLinkBase,
+		CreatedAt:    dbGame.CreatedAt,
+		UpdatedAt:    dbGame.UpdatedAt,
 	}
 }
 

@@ -655,6 +655,7 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.Equal(t, "Mode", result.GameModeName)
 	assert.Equal(t, gid, result.GameID)
 	assert.Equal(t, "Valorant", result.GameName)
+	assert.Nil(t, result.JoinLinkBase)
 	assert.Equal(t, 5, result.TeamSize)
 	assert.Equal(t, 1, result.SubMin)
 	assert.False(t, result.RegistrationOpen)
@@ -673,16 +674,19 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 func TestMapDbGetLobbiesForEventRowToEventLobby(t *testing.T) {
 	hostID := uuid.New()
 	eventID := uuid.New()
+	joinCode := "/LOL?joinCode=abc"
 	row := db.GetLobbiesForEventRow{
 		ID:                    uuid.New(),
 		EventID:               &eventID,
 		Host:                  &hostID,
+		JoinCode:              &joinCode,
 		FairnessWarning:       true,
 		FairnessWarningAtLock: true,
 	}
 	result := model.MapDbGetLobbiesForEventRowToEventLobby(row)
 	assert.Equal(t, row.ID, result.ID)
 	assert.Equal(t, &hostID, result.HostID)
+	assert.Equal(t, &joinCode, result.JoinCode)
 	assert.True(t, result.FairnessWarning)
 	assert.True(t, result.FairnessWarningAtLock)
 	assert.Empty(t, result.Teams)

@@ -67,6 +67,7 @@ type Store interface {
 	MoveSubToUnplacedForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
 	MoveUnplacedToSubsForEvent(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
 	SetLobbyHostForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
+	UpdateLobbyJoinCode(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error
 	UpsertRegistrationForEvent(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroup(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
 	DeleteRegistrationForEvent(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
