@@ -190,6 +190,17 @@
   }
 }
 
+/* In-copy link. Same color and weight as event "Join Lobby". */
+@utility body-link {
+  color: var(--color-accent-blue);
+  font-weight: 500;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 /* Nav header */
 @utility nav-header {
   background: linear-gradient(180deg, rgba(10, 14, 28, 0.97) 0%, rgba(6, 8, 15, 0.95) 100%);

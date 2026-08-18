@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DEFAULT_FEEDBACK_URL, GITHUB_REPO_URL } from "@/app/_lib/constants";
 
 export default function SiteFooterLinks() {
@@ -5,7 +6,14 @@ export default function SiteFooterLinks() {
     process.env.NEXT_PUBLIC_FEEDBACK_URL || DEFAULT_FEEDBACK_URL;
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex flex-wrap items-center justify-center gap-2">
+      <Link
+        href="/about"
+        className="footer-link transition-[color,border-color] duration-200"
+      >
+        About &amp; Privacy
+      </Link>
+      <span className="text-[var(--color-text-faint)]" aria-hidden>·</span>
       <a
         href={GITHUB_REPO_URL}
         target="_blank"

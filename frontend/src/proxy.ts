@@ -15,6 +15,7 @@ export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const isHealthPath = pathname === "/health";
     const isAuthCallbackPath = pathname === "/auth/callback";
+    const isAboutPath = pathname === "/about";
 
     // Cloud Run / Docker probes hit /health without the Worker header.
     if (secret && !isHealthPath) {
@@ -32,8 +33,9 @@ export function proxy(request: NextRequest) {
     const isAuthenticated = request.cookies.has("auth_session");
 
     // Discord OAuth lands on /auth/callback before auth_session exists — do not bounce to /.
-    // Logged-out users only see the landing page; preserve deep links (?next=/event/...)
-    if (!isAuthenticated && pathname !== "/" && !isHealthPath && !isAuthCallbackPath) {
+    // /about is a public marketing page for both auth states.
+    // Logged-out users otherwise only see the landing page; preserve deep links (?next=/event/...)
+    if (!isAuthenticated && pathname !== "/" && !isHealthPath && !isAuthCallbackPath && !isAboutPath) {
         const loginUrl = new URL("/", request.url);
         loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
         return NextResponse.redirect(loginUrl);
@@ -54,8 +56,8 @@ export function proxy(request: NextRequest) {
 export const config = {
     // Run on all routes except Next.js internals and static assets.
      // Negative lookahead = paths this proxy does NOT run on.
-    // /auth/callback is intentionally NOT listed here so origin-verify still runs;
-    // the unauthenticated redirect above skips /auth/callback so OAuth can finish.
+    // /auth/callback and /about are intentionally NOT listed here so origin-verify still runs;
+    // the unauthenticated redirect above skips those paths so OAuth can finish and /about stays public.
     // /health is listed here so probes hit public/health without this proxy.
     matcher: [
         "/((?!_next/static|_next/image|favicon.ico|health|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp|.*\\.gif).*)",

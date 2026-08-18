@@ -315,14 +315,15 @@ Before apply: check existing apex A/AAAA/CNAME and Worker routes. Conflicts need
 
 ## URL and path contract
 
-| URL                                          | Purpose                                     |
-|----------------------------------------------|---------------------------------------------|
-| `https://{domain}/`                          | Frontend (Next.js)                          |
-| `https://{domain}/api/...`                   | API (Worker strips `/api` before Cloud Run) |
-| `https://{domain}/api/health`                | Public API health (uptime check)            |
-| `https://{domain}/health`                    | Frontend static health                      |
-| `https://{domain}/api/auth/discord_redirect` | Discord OAuth redirect                      |
-| `https://{domain}/auth/callback`             | Frontend OTC exchange page                  |
+| URL                                          | Purpose                                                |
+|----------------------------------------------|--------------------------------------------------------|
+| `https://{domain}/`                          | Frontend (Next.js)                                     |
+| `https://{domain}/about`                     | Public About & Privacy page (logged-in and logged-out) |
+| `https://{domain}/api/...`                   | API (Worker strips `/api` before Cloud Run)            |
+| `https://{domain}/api/health`                | Public API health (uptime check)                       |
+| `https://{domain}/health`                    | Frontend static health                                 |
+| `https://{domain}/api/auth/discord_redirect` | Discord OAuth redirect                                 |
+| `https://{domain}/auth/callback`             | Frontend OTC exchange page                             |
 
 Clients must use **`NEXT_PUBLIC_API_URL=https://{domain}/api`** (bake-time). Do not point
 browsers at `*.run.app` (bypasses the Worker; requests fail origin-verify unless the secret
@@ -377,7 +378,7 @@ Same path contract as local Caddy: do not double-prefix `/api` in server routes 
 When `ORIGIN_VERIFY_SECRET` is set:
 
 - **API** — Gin middleware after RequestLogger; `GET /health` exempt; wrong/missing → 403.
-- **Frontend** — [`frontend/src/proxy.ts`](../frontend/src/proxy.ts); `/health` exempt; `/auth/callback` is **not** excluded from the matcher (verify runs) but **skips** the logged-out redirect so Discord OAuth can finish.
+- **Frontend** — [`frontend/src/proxy.ts`](../frontend/src/proxy.ts); `/health` exempt; `/auth/callback` and `/about` are **not** excluded from the matcher (verify runs) but **skip** the logged-out redirect (`/auth/callback` so Discord OAuth can finish; `/about` is a public marketing page for both auth states).
 - When unset (local) — no-op.
 
 Chain: `RequestID → Recovery → RequestLogger → OriginVerify → CORS` (+ Auth on protected routes).
