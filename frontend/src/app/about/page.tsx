@@ -357,7 +357,7 @@ export default function AboutPage() {
                   Who can see you inside the app
                 </h3>
                 <p className={bodyText}>
-                  People in an event you've registered to join can see your Discord username and your
+                  People in an event you&apos;ve registered to join can see your Discord username and your
                   Matchmaker display name (if provided). Hosts always see ranks and pronouns for players
                   in their events. Other players do not see ranks or pronouns unless you turn that on in{" "}
                   <Link href="/my_account" className="body-link">
