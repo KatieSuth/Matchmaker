@@ -10,7 +10,10 @@ resource "google_monitoring_notification_channel" "email" {
 resource "google_monitoring_uptime_check_config" "api_health" {
   display_name = "matchmaker-api-health"
   timeout      = "10s"
-  period       = "60s"
+  # 5m is enough for email alerts; 60s from all regions kept the API from
+  # scaling idle CPU down. USA is three locations (the API minimum).
+  period           = "300s"
+  selected_regions = ["USA"]
 
   http_check {
     path         = "/api/health"

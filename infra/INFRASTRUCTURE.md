@@ -239,7 +239,7 @@ security. Still prefer `{domain}` everywhere user-facing so traffic stays on the
 Both services:
 
 - `min_instance_count = 0`, `max_instance_count = 2` (variable).
-- HTTP probes on `/health` (Cloud Run ignores Docker `HEALTHCHECK`).
+- HTTP startup probes on `/health` (no liveness probes — keeps request-based billing). Cloud Run ignores Docker `HEALTHCHECK`.
 - First apply may use placeholder image `us-docker.pkg.dev/cloudrun/container/hello`.
 - `lifecycle.ignore_changes` on container **image** (and client metadata) so manual digests survive re-apply.
 - Ports: API `8080`, frontend `3000`.
@@ -401,13 +401,13 @@ Changing domain ⇒ update Discord console, tfvars `domain`, rebuild frontend `N
 
 ## Observability and cost controls
 
-| Control          | Notes                                                                |
-|------------------|----------------------------------------------------------------------|
-| Application logs | Cloud Logging (stdout/stderr) — see below                            |
-| Sentry           | Errors only (`TracesSampleRate: 0`); two projects (Go/Gin + Next.js) |
-| Uptime           | `https://{domain}/api/health` → email                                |
-| Budgets          | $15 / $30 / $50 email only — no kill switch                          |
-| Caps             | `max_instances=2`, fixed SQL disk, no HA                             |
+| Control          | Notes                                                                 |
+|------------------|-----------------------------------------------------------------------|
+| Application logs | Cloud Logging (stdout/stderr) — see below                             |
+| Sentry           | Errors only (`TracesSampleRate: 0`); two projects (Go/Gin + Next.js)  |
+| Uptime           | `https://{domain}/api/health` every 5m from USA (3 locations) → email |
+| Budgets          | $15 / $30 / $50 email only — no kill switch                           |
+| Caps             | `max_instances=2`, fixed SQL disk, no HA                              |
 
 Typical idle **~$10–15/month** (mostly Cloud SQL).
 

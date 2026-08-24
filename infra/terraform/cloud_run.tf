@@ -30,6 +30,9 @@ resource "google_cloud_run_v2_service" "api" {
           cpu    = var.cloud_run_cpu
           memory = var.cloud_run_memory
         }
+        # Request-based billing. Liveness probes require instance-based billing
+        # and kept a 1-CPU instance charged 24/7 next to the uptime check.
+        cpu_idle = true
       }
 
       ports {
@@ -43,13 +46,6 @@ resource "google_cloud_run_v2_service" "api" {
         initial_delay_seconds = 5
         period_seconds        = 5
         failure_threshold     = 12
-      }
-
-      liveness_probe {
-        http_get {
-          path = "/health"
-        }
-        period_seconds = 30
       }
 
       env {
@@ -362,6 +358,7 @@ resource "google_cloud_run_v2_service" "frontend" {
           cpu    = var.cloud_run_cpu
           memory = var.cloud_run_memory
         }
+        cpu_idle = true
       }
 
       ports {
@@ -375,13 +372,6 @@ resource "google_cloud_run_v2_service" "frontend" {
         initial_delay_seconds = 5
         period_seconds        = 5
         failure_threshold     = 12
-      }
-
-      liveness_probe {
-        http_get {
-          path = "/health"
-        }
-        period_seconds = 30
       }
 
       env {
