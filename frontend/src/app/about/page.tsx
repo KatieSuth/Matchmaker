@@ -85,10 +85,10 @@ export default function AboutPage() {
               Hosts set up an event, players sign up with their in-game ranks, and the app builds
               fair two-team lobbies, so organizing a custom with a large pool of players takes seconds
               instead of hours. Valorant and League of Legends are supported today, and user-defined
-              games are coming soon. Matchmaker isn't endorsed by Riot Games and doesn't reflect the
+              games are coming soon. Matchmaker isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the
               views or opinions of Riot Games or anyone officially involved in producing or managing
               Riot Games properties. Riot Games, and all associated properties are trademarks or
-              registered trademarks of Riot Games, Inc. Matchmaker isn't endorsed by or affiliated with 
+              registered trademarks of Riot Games, Inc. Matchmaker isn&apos;t endorsed by or affiliated with 
               any other game developer or publisher, for that matter.
             </p>
 
