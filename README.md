@@ -20,16 +20,16 @@ It's now available live at https://matchmaker.games and currently supports Valor
 - [x] One-off event admin team creation
 - [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [x] 1.0 web hosting with public availability
-- [ ] Riot API Linking for automatic competitive rank detection
 - [ ] Discord server membership requirement as host option
 - [ ] Attendance tracking and host alerts for repetitive no-show players
-- [ ] Opt-in notifications for updates regarding events
 - [ ] Allow hosts to ban users from their events
 - [ ] Host option to auto create teams X time before match
 - [ ] "Available Games" dashboard tab populated based on server membership/upcoming games
+- [ ] Riot API Linking for automatic competitive rank detection
+- [ ] Tournament bracket event support
+- [ ] Opt-in notifications for updates regarding events
 - [ ] Non-Riot game support (Overwatch 2, Marvel Rivals, user-defined, etc.)
 - [ ] Non-Discord login support
-- [ ] Tournament bracket event support
 
 # Quick Start
 
