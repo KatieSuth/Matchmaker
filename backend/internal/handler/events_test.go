@@ -991,7 +991,7 @@ func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 			test_util.WithUserIDString(c, uid)
 			c.Params = gin.Params{{Key: "groupId", Value: gid.String()}}
 			h := newTestHandler(t, &store.MockStore{
-				CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) error { return tc.err },
+				CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) (bool, error) { return false, tc.err },
 			}, nil, "")
 			h.CreateTeamsHandler(c)
 			assert.Equal(t, tc.status, w.Code)
@@ -1000,14 +1000,27 @@ func TestCreateTeamsHandler_StoreErrors(t *testing.T) {
 }
 
 func TestCreateTeamsHandler_Success(t *testing.T) {
-	c, _ := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+	c, w := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
 	test_util.WithUserIDString(c, uuid.New())
 	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
 	h := newTestHandler(t, &store.MockStore{
-		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) error { return nil },
+		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) (bool, error) { return false, nil },
 	}, nil, "")
 	h.CreateTeamsHandler(c)
-	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"sub_capacity_adjusted":false`)
+}
+
+func TestCreateTeamsHandler_SuccessSubCapacityAdjusted(t *testing.T) {
+	c, w := test_util.NewGinContext(http.MethodPost, "/events/x/teams")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+	h := newTestHandler(t, &store.MockStore{
+		CreateTeamsForGroupFn: func(_ context.Context, _, _ uuid.UUID, _ matchmaking.Settings) (bool, error) { return true, nil },
+	}, nil, "")
+	h.CreateTeamsHandler(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"sub_capacity_adjusted":true`)
 }
 
 func TestDeleteTeamsHandler_Unauthorized(t *testing.T) {

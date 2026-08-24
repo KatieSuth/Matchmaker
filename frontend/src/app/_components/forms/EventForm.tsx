@@ -240,7 +240,7 @@ const MATCHMAKING_MODE_OPTIONS: readonly MatchmakingModeOption[] = [
     value: "balanced",
     title: "Balanced",
     description:
-      "Mixes skill levels across lobbies while ensuring teams remain even. Best for casual games.",
+      "Puts similar ranks on opposite teams (one rank band per player slot) so each side gets a matching mix. Best for casual games.",
   },
   {
     value: "ranked",

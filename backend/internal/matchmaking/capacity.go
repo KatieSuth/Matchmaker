@@ -13,7 +13,9 @@ func RequiredPlayers(n, slots, subMin int) int {
 	return n*slots + n*subMin
 }
 
-// MaxLobbies finds the largest lobby count this registrant pool can support.
+// MaxLobbies finds the largest lobby count this registrant pool can support
+// while still meeting n × sub_min. Whether that n benches every can-sub is left
+// to PlanEvent: keep it when the non-sub rosters are even, otherwise drop to n−1.
 func MaxLobbies(registeredCount, substituteCount, slots, subMin int) int {
 	max := 0
 	for n := 1; ; n++ {

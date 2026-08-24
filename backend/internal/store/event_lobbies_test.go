@@ -85,7 +85,7 @@ func TestGetEventGroupDetail_TeamPlayersSortedByRankDesc(t *testing.T) {
 	}
 	registerPlayerForEventWithRank(t, ctx, tx, s, eventID, host.ID, games[0].ID, ranks[1], false, false)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)

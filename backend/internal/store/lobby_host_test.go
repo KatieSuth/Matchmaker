@@ -32,7 +32,8 @@ func TestSetLobbyHostForEvent_Success(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -63,7 +64,8 @@ func TestSetLobbyHostForEvent_Forbidden(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -89,7 +91,8 @@ func TestSetLobbyHostForEvent_AlreadyHost(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, i == 0)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -127,7 +130,8 @@ func TestSetLobbyHostForEvent_SubPlayerRejected(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	subUser := createTestUser(t, ctx, s)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subUser.ID, games[0].ID, true, true)
@@ -157,7 +161,8 @@ func TestSetLobbyHostForEvent_UnplacedPlayerRejected(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	unplaced := createTestUser(t, ctx, s)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, unplaced.ID, games[0].ID, false, true)
@@ -217,7 +222,8 @@ func TestSetLobbyHostForEvent_NotRegistered(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	err = s.SetLobbyHostForEvent(ctx, eventID, host.ID, uuid.New())
 	require.Error(t, err)
@@ -241,7 +247,8 @@ func TestSetLobbyHostForEvent_LobbyHostUnset(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -273,7 +280,8 @@ func TestSetLobbyHostForEvent_MultiLobbySuccess(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)

@@ -37,7 +37,8 @@ func setupSwapFixture(t *testing.T) swapFixtureData {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)

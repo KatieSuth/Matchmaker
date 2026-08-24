@@ -19,25 +19,25 @@ import (
 const dashboardEventsPageSize = 20
 
 var (
-	ErrInvalidGameID             = errors.New("invalid game_id")
-	ErrInvalidCursor             = errors.New("invalid cursor")
-	ErrInvalidTimezone           = errors.New("invalid timezone")
-	ErrForbidden                 = errors.New("forbidden")
-	ErrRegistrationClosed        = errors.New("registration is closed")
-	ErrTeamsAlreadyCreated       = errors.New("teams already created")
-	ErrTeamsNotCreated           = errors.New("teams not created")
-	ErrRegistrationNotFound      = errors.New("registration not found")
-	ErrInvalidSubMin             = errors.New("invalid sub_min")
-	ErrInvalidSortLogic          = errors.New("invalid sort_logic")
-	ErrOpenRegistrationTeams     = errors.New("cannot open registration while teams exist")
-	ErrEventGroupNotFound        = errors.New("event group not found")
-	ErrEventNotFound             = errors.New("event not found")
-	ErrInvalidRegistration       = errors.New("invalid registration payload")
-	ErrGameModeNotFound          = errors.New("game mode not found")
-	ErrGameModeWrongGame         = errors.New("game mode does not belong to this event game")
-	ErrUserGameProfileIncomplete = errors.New("user game profile is incomplete")
-	ErrInvalidGroupEvents        = errors.New("events payload does not match this group's schedule")
-	ErrEventStartInPast          = errors.New("event start time cannot be in the past")
+	ErrInvalidGameID               = errors.New("invalid game_id")
+	ErrInvalidCursor               = errors.New("invalid cursor")
+	ErrInvalidTimezone             = errors.New("invalid timezone")
+	ErrForbidden                   = errors.New("forbidden")
+	ErrRegistrationClosed          = errors.New("registration is closed")
+	ErrTeamsAlreadyCreated         = errors.New("teams already created")
+	ErrTeamsNotCreated             = errors.New("teams not created")
+	ErrRegistrationNotFound        = errors.New("registration not found")
+	ErrInvalidSubMin               = errors.New("invalid sub_min")
+	ErrInvalidSortLogic            = errors.New("invalid sort_logic")
+	ErrOpenRegistrationTeams       = errors.New("cannot open registration while teams exist")
+	ErrEventGroupNotFound          = errors.New("event group not found")
+	ErrEventNotFound               = errors.New("event not found")
+	ErrInvalidRegistration         = errors.New("invalid registration payload")
+	ErrGameModeNotFound            = errors.New("game mode not found")
+	ErrGameModeWrongGame           = errors.New("game mode does not belong to this event game")
+	ErrUserGameProfileIncomplete   = errors.New("user game profile is incomplete")
+	ErrInvalidGroupEvents          = errors.New("events payload does not match this group's schedule")
+	ErrEventStartInPast            = errors.New("event start time cannot be in the past")
 	ErrRegistrationDeleteWithTeams = errors.New("registration delete blocked by teams")
 )
 
@@ -470,32 +470,46 @@ func (s *PostgresStore) SetEventGroupRegistrationOpen(ctx context.Context, group
 }
 
 // CreateTeamsForGroup validates matchmaking per game, then atomically closes registration and persists teams.
-func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error {
+// The bool is true when any game had to swap rostered can-subs off teams so the substitute minimum could be met.
+func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) (bool, error) {
 	group, err := s.q.GetEventGroupById(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrEventGroupNotFound
+			return false, ErrEventGroupNotFound
 		}
-		return fmt.Errorf("get event group: %w", err)
+		return false, fmt.Errorf("get event group: %w", err)
 	}
 	if group.OwnerID != ownerID {
-		return ErrForbidden
+		return false, ErrForbidden
 	}
 
 	existingLobbies, err := s.q.CountLobbiesByGroupId(ctx, &groupID)
 	if err != nil {
-		return fmt.Errorf("count lobbies by group: %w", err)
+		return false, fmt.Errorf("count lobbies by group: %w", err)
 	}
 	if existingLobbies > 0 {
-		return ErrTeamsAlreadyCreated
+		return false, ErrTeamsAlreadyCreated
 	}
 
+	// Plan first with no writes so a validation failure cannot close registration.
 	plans, err := s.planTeamsForGroup(ctx, group, settings)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return s.WithTx(ctx, func(tx Store) error {
+	// Host modal is group-level: any game that still needed a sub-min swap
+	// (and stayed unfair) is enough to warn, even if other games are even.
+	adjusted := false
+	for _, plan := range plans {
+		if plan.SubCapacityAdjusted {
+			adjusted = true
+			break
+		}
+	}
+
+	// Close registration and persist lobbies together so a crash cannot leave
+	// teams written with signups still open, or the reverse.
+	err = s.WithTx(ctx, func(tx Store) error {
 		txStore, ok := tx.(*PostgresStore)
 		if !ok {
 			return fmt.Errorf("unexpected tx store type %T", tx)
@@ -511,6 +525,10 @@ func (s *PostgresStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerI
 
 		return txStore.persistTeamPlans(ctx, plans)
 	})
+	if err != nil {
+		return false, err
+	}
+	return adjusted, nil
 }
 
 // DeleteTeamsForGroup removes all lobbies and assigned players for the group.

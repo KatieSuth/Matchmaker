@@ -301,11 +301,20 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 		registerPlayerForEventWithProfile(t, fixture.ctx, fixture.tx, fixture.s, fixture.eventID, u.ID, fixture.gameID, false, false)
 	}
 
+	t.Run("get event group fails", func(t *testing.T) {
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
+
+		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "get event group")
+	})
+
 	t.Run("count lobbies fails", func(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
+		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "count lobbies by group")
 	})
@@ -314,9 +323,18 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 5, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
+		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "close registration for group")
+	})
+
+	t.Run("persist lobby fails", func(t *testing.T) {
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 6, injectedErr: injectedErr}
+		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
+
+		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "create lobby")
 	})
 }
 

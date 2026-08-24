@@ -196,6 +196,20 @@ func findLobbySub(detail model.EventGroupDetail, eventID uuid.UUID) (model.Lobby
 	return model.LobbyPlayer{}, false
 }
 
+func findLobbySubAtCount(detail model.EventGroupDetail, eventID uuid.UUID, n int) (model.LobbyPlayer, bool) {
+	for _, event := range detail.Events {
+		if event.ID != eventID {
+			continue
+		}
+		for _, lobby := range event.Lobbies {
+			if len(lobby.Subs) == n {
+				return lobby.Subs[0], true
+			}
+		}
+	}
+	return model.LobbyPlayer{}, false
+}
+
 func TestSwapPlayersForEvent_SameLobbyTeamSwap(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -210,7 +224,8 @@ func TestSwapPlayersForEvent_SameLobbyTeamSwap(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -261,7 +276,8 @@ func TestSwapPlayersForEvent_RosterNonSubWithSubBecomesUnplaced(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	subUser := createTestUser(t, ctx, s)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subUser.ID, games[0].ID, true, false)
@@ -324,17 +340,18 @@ func TestSwapPlayersForEvent_MultiLobbySubMinViolation(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, true, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
 
-	subPlayer, ok := findLobbySub(detail, eventID)
+	subPlayer, ok := findLobbySubAtCount(detail, eventID, 1)
 	require.True(t, ok)
 	rosterPlayer, _, ok := findLobbyTeamPlayer(detail, eventID, 1)
 	require.True(t, ok)
@@ -359,7 +376,8 @@ func TestSwapPlayersForEvent_SingleLobbySkipsSubMinViolation(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	subUser := createTestUser(t, ctx, s)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subUser.ID, games[0].ID, true, false)
@@ -388,7 +406,8 @@ func TestSwapPlayersForEvent_Forbidden(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -440,7 +459,8 @@ func TestSwapPlayersForEvent_SameUser(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -468,7 +488,8 @@ func TestSwapPlayersForEvent_BothUnplaced(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -498,7 +519,8 @@ func TestSwapPlayersForEvent_SameSubPool(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	lobbyID := firstLobbyID(t, ctx, tx, eventID)
 	subA := createTestUser(t, ctx, s)
@@ -529,7 +551,8 @@ func TestSwapPlayersForEvent_CrossLobbySameSubPool(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -564,7 +587,8 @@ func TestSwapPlayersForEvent_SameTeam(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -588,7 +612,8 @@ func TestSwapPlayersForEvent_NotRegistered(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -613,7 +638,8 @@ func TestSwapPlayersForEvent_RosterWithUnplaced(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -665,7 +691,8 @@ func TestSwapPlayersForEvent_RosterCanSubWithUnplacedBecomesSub(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -727,7 +754,8 @@ func TestSwapPlayersForEvent_CrossLobby(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -777,7 +805,8 @@ func TestSwapPlayersForEvent_SwapRosterWhileSubRemains(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	subVolunteer := createTestUser(t, ctx, s)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subVolunteer.ID, games[0].ID, true, true)

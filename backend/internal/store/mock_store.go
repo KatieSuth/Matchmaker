@@ -46,22 +46,22 @@ type MockStore struct {
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
 
 	// events
-	GetEventsForUserFn               func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
-	CreateEventGroupWithEventsFn     func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
-	GetEventGroupDetailFn            func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
-	UpdateEventGroupSettingsFn       func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error
-	DeleteEventGroupFn               func(ctx context.Context, groupID, ownerID uuid.UUID) error
-	SetEventGroupRegistrationOpenFn  func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
-	CreateTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
-	DeleteTeamsForGroupFn            func(ctx context.Context, groupID, ownerID uuid.UUID) error
-	SwapPlayersForEventFn            func(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error
-	MoveSubToUnplacedForEventFn      func(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
-	MoveUnplacedToSubsForEventFn     func(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
-	SetLobbyHostForEventFn           func(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
-	UpdateLobbyJoinCodeFn            func(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error
-	UpsertRegistrationForEventFn     func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
-	UpsertRegistrationsForGroupFn    func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
-	DeleteRegistrationForEventFn     func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
+	GetEventsForUserFn              func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
+	CreateEventGroupWithEventsFn    func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
+	GetEventGroupDetailFn           func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
+	UpdateEventGroupSettingsFn      func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error
+	DeleteEventGroupFn              func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	SetEventGroupRegistrationOpenFn func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
+	CreateTeamsForGroupFn           func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) (bool, error)
+	DeleteTeamsForGroupFn           func(ctx context.Context, groupID, ownerID uuid.UUID) error
+	SwapPlayersForEventFn           func(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error
+	MoveSubToUnplacedForEventFn     func(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
+	MoveUnplacedToSubsForEventFn    func(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
+	SetLobbyHostForEventFn          func(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
+	UpdateLobbyJoinCodeFn           func(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error
+	UpsertRegistrationForEventFn    func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
+	UpsertRegistrationsForGroupFn   func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
+	DeleteRegistrationForEventFn    func(ctx context.Context, eventID, targetUserID, actorUserID uuid.UUID) error
 }
 
 func (m *MockStore) WithTx(ctx context.Context, fn func(Store) error) error {
@@ -164,7 +164,7 @@ func (m *MockStore) SetEventGroupRegistrationOpen(ctx context.Context, groupID, 
 	return m.SetEventGroupRegistrationOpenFn(ctx, groupID, ownerID, open)
 }
 
-func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error {
+func (m *MockStore) CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) (bool, error) {
 	return m.CreateTeamsForGroupFn(ctx, groupID, ownerID, settings)
 }
 

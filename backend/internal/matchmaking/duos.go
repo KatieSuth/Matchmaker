@@ -29,15 +29,19 @@ func ApplyDuoLobbyGrouping(lobbies []LobbyPlan) []LobbyPlan {
 	for _, pair := range pairs {
 		lobbyA, idxA := findPlayerLobby(out, pair.a.UserID)
 		lobbyB, idxB := findPlayerLobby(out, pair.b.UserID)
+		// Subs and already-united pairs cannot be moved at this stage.
 		if lobbyA < 0 || lobbyB < 0 || lobbyA == lobbyB {
 			continue
 		}
 
+		// Try moving either partner into the other's lobby by swapping with
+		// someone already there. Balance still wins: never raise spread.
 		bestSpread := baselineSpread
 		bestSwap := lobbySwap{}
 		found := false
 
 		for _, targetLobby := range []int{lobbyA, lobbyB} {
+			// Bring the partner onto this lobby; the inner loop is who they replace.
 			partnerLobby := lobbyB
 			partnerIdx := idxB
 			if targetLobby == lobbyB {
@@ -75,6 +79,7 @@ func ApplyDuoLobbyGrouping(lobbies []LobbyPlan) []LobbyPlan {
 			continue
 		}
 
+		// Keep the tightest spread that still unites this pair.
 		out[bestSwap.lobbyA].Roster[bestSwap.idxA], out[bestSwap.lobbyB].Roster[bestSwap.idxB] =
 			out[bestSwap.lobbyB].Roster[bestSwap.idxB], out[bestSwap.lobbyA].Roster[bestSwap.idxA]
 	}
@@ -82,12 +87,13 @@ func ApplyDuoLobbyGrouping(lobbies []LobbyPlan) []LobbyPlan {
 	return out
 }
 
+// lobbySwap is one cross-lobby roster exchange that would unite a duo.
 type lobbySwap struct {
 	lobbyA, idxA, lobbyB, idxB int
 }
 
 // applyDuoTeamGrouping attempts to place mutual duo partners on the same team without
-// worsening team-average separation compared to the snake-draft baseline.
+// worsening team-average separation compared to the preceding team-split baseline.
 func applyDuoTeamGrouping(team1, team2 []Player, baselineSep float64) ([]Player, []Player) {
 	if len(team1) == 0 && len(team2) == 0 {
 		return team1, team2
@@ -97,6 +103,7 @@ func applyDuoTeamGrouping(team1, team2 []Player, baselineSep float64) ([]Player,
 	pairs := findMutualDuoPairs(roster)
 	sortDuoPairs(pairs)
 
+	// At most one honored duo per team so two pairs cannot pile onto the same side.
 	teamHasDuo := map[int]bool{
 		1: pairAlreadyTogether(team1, pairs),
 		2: pairAlreadyTogether(team2, pairs),
@@ -112,6 +119,8 @@ func applyDuoTeamGrouping(team1, team2 []Player, baselineSep float64) ([]Player,
 			continue
 		}
 
+		// Same search as lobby grouping: each legal seat swap is scored against
+		// the pre-split team-average baseline, not against other duos.
 		bestSep := baselineSep
 		bestSwap := teamSwap{}
 		found := false
@@ -121,6 +130,7 @@ func applyDuoTeamGrouping(team1, team2 []Player, baselineSep float64) ([]Player,
 				continue
 			}
 
+			// Bring the partner onto this team by swapping with one of its seats.
 			target := team1
 			partnerIdx := idxB
 			if targetTeam == 2 {
@@ -170,10 +180,12 @@ func applyDuoTeamGrouping(team1, team2 []Player, baselineSep float64) ([]Player,
 		teamHasDuo[bestSwap.targetTeam] = true
 	}
 
+	// Slice index is the source of truth after swaps; rewrite team_number to match.
 	refreshTeamNumbers(team1, team2)
 	return team1, team2
 }
 
+// teamSwap is one cross-team exchange that would unite a duo on targetTeam.
 type teamSwap struct {
 	targetTeam, targetIdx, partnerIdx int
 }

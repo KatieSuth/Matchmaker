@@ -833,7 +833,7 @@ paths:
       tags: [events]
       summary: Create teams for event group
       operationId: createTeamsForEventGroup
-      description: Creates teams for the event group and closes registration. Best-effort honors mutual duo requests (same Discord name on both registrations) by grouping partners into the same lobby and team when doing so would not worsen skill balance.
+      description: Creates teams for the event group and closes registration. Best-effort honors mutual duo requests (same Discord name on both registrations) by grouping partners into the same lobby and team when doing so would not worsen skill balance. Returns whether the substitute minimum forced a less even roster.
       security:
         - bearerAuth: []
       parameters:
@@ -845,8 +845,12 @@ paths:
             type: string
             format: uuid
       responses:
-        "204":
+        "200":
           description: Teams created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTeamsResponse"
         "400":
           description: Invalid `groupId`, teams already exist, or insufficient players/subs for matchmaking
           content:
@@ -2191,6 +2195,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EventGroupEvent"
+
+    CreateTeamsResponse:
+      type: object
+      required: [sub_capacity_adjusted]
+      properties:
+        sub_capacity_adjusted:
+          type: boolean
+          description: >
+            True when matchmaking had to move substitute-eligible players off teams so each
+            lobby could still meet the host's substitute minimum, and at least one lobby is
+            still unfair afterward. False when those swaps did not run, or when every lobby
+            ended fair (including after leftover rank-window repair).
 
     HealthResponse:
       type: object

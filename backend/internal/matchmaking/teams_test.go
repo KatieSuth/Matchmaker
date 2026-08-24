@@ -16,6 +16,12 @@ func TestSplitIntoTeams_EmptyRoster(t *testing.T) {
 	assert.Nil(t, team2)
 }
 
+func TestSplitIntoTeamsWindowed_EmptyRoster(t *testing.T) {
+	team1, team2 := matchmaking.SplitIntoTeamsWindowedForTest(nil, 5, 25)
+	assert.Nil(t, team1)
+	assert.Nil(t, team2)
+}
+
 func TestSplitIntoTeams_SnakeDraftAssignsTeamNumbers(t *testing.T) {
 	now := time.Now()
 	roster := []matchmaking.Player{

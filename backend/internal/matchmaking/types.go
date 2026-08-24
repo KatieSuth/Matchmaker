@@ -48,8 +48,9 @@ type LobbyPlan struct {
 
 // GamePlan is the full plan for one event (game) row.
 type GamePlan struct {
-	EventID uuid.UUID
-	Lobbies []LobbyPlan
+	EventID             uuid.UUID
+	Lobbies             []LobbyPlan
+	SubCapacityAdjusted bool
 }
 
 // StrategyFunc assigns roster players to lobbies before shared post-processing.

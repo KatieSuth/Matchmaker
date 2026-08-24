@@ -224,10 +224,10 @@ func scenarioTemplates(g *systemGames) []Scenario {
 				return RegSpec{}
 			}))),
 		build("two_lobbies_mandatory_subs", gameKeyValorant, "AMER",
-			"26 players with 6 subs, sub_min=3 — expect 2 lobbies with mandatory subs",
+			"26 players with 7 subs, sub_min=3 — expect 2 lobbies with mandatory subs (spare can-sub so rostering is not forced onto non-subs only)",
 			3, valEvent(withSubSlots(spreadRankRegs(26, 5, func(slot int) RegSpec {
 				return RegSpec{}
-			}), subSlotSet(26, 20, 21, 22, 23, 24, 25)))),
+			}), subSlotSet(26, 19, 20, 21, 22, 23, 24, 25)))),
 		build("insufficient_substitutes", gameKeyValorant, "EMEA",
 			"26 players but only 5 subs with sub_min=3 — capped at 1 lobby",
 			3, valEvent(withSubSlots(spreadRankRegs(26, 5, func(slot int) RegSpec {
@@ -258,7 +258,7 @@ func scenarioTemplates(g *systemGames) []Scenario {
 				return regs
 			}())),
 		build("team_sep_fairness", gameKeyValorant, "AMER",
-			"5 high + 5 low ranks — expect fairness warning (team separation)",
+			"5 high + 5 low ranks — expect fairness warning (team separation); distant windows still cannot pair evenly",
 			0, valEvent(spreadRankRegs(10, 0, func(slot int) RegSpec {
 				if slot < 5 {
 					return RegSpec{RankOrder: 22}

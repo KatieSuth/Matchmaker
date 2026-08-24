@@ -34,19 +34,23 @@ func IsLobbyUnfair(lobby LobbyPlan, settings Settings, tierCount int) bool {
 	return teamSeparationExceeds(lobby, thresholds.TeamSeparation)
 }
 
-// outlierExceeds is true when the top player is much higher ranked than the rest of the lobby.
-func outlierExceeds(roster []Player, gap float64) bool {
+// outlierGap is highest roster rank minus the next highest. Empty or single-player
+// rosters have no gap.
+func outlierGap(roster []Player) float64 {
 	if len(roster) < 2 {
-		return false
+		return 0
 	}
 	ranks := make([]float64, len(roster))
 	for i, p := range roster {
 		ranks[i] = p.AvgRank
 	}
 	sort.Float64s(ranks)
-	highest := ranks[len(ranks)-1]
-	second := ranks[len(ranks)-2]
-	return highest-second > gap
+	return ranks[len(ranks)-1] - ranks[len(ranks)-2]
+}
+
+// outlierExceeds is true when the top player is much higher ranked than the rest of the lobby.
+func outlierExceeds(roster []Player, gap float64) bool {
+	return outlierGap(roster) > gap
 }
 
 // teamSeparationExceeds is true when the two teams' average skill differs beyond the threshold.

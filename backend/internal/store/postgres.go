@@ -62,7 +62,7 @@ type Store interface {
 	UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error
 	DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SetEventGroupRegistrationOpen(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
-	CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) error
+	CreateTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) (bool, error)
 	DeleteTeamsForGroup(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SwapPlayersForEvent(ctx context.Context, eventID, ownerID, userA, userB uuid.UUID, settings matchmaking.Settings) error
 	MoveSubToUnplacedForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error

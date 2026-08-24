@@ -178,6 +178,10 @@ export interface EventsPage {
   has_more: boolean;
 }
 
+export interface CreateTeamsResponse {
+  sub_capacity_adjusted: boolean;
+}
+
 export interface CompleteAuthResponse {
   access_token: string;
 }

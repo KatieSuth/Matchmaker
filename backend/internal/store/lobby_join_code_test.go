@@ -31,7 +31,8 @@ func setupLobbyJoinFixture(t *testing.T) (*store.PostgresStore, uuid.UUID, uuid.
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, i == 0)
 	}
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)

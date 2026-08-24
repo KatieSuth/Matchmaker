@@ -85,8 +85,11 @@ export default function AboutPage() {
               Hosts set up an event, players sign up with their in-game ranks, and the app builds
               fair two-team lobbies, so organizing a custom with a large pool of players takes seconds
               instead of hours. Valorant and League of Legends are supported today, and user-defined
-              games are coming soon. Matchmaker is not affiliated with or sponsored by Riot Games or
-              any other game developer or publisher.
+              games are coming soon. Matchmaker isn't endorsed by Riot Games and doesn't reflect the
+              views or opinions of Riot Games or anyone officially involved in producing or managing
+              Riot Games properties. Riot Games, and all associated properties are trademarks or
+              registered trademarks of Riot Games, Inc. Matchmaker isn't endorsed by or affiliated with 
+              any other game developer or publisher, for that matter.
             </p>
 
             <section className="flex flex-col gap-3 mb-8">
@@ -100,16 +103,17 @@ export default function AboutPage() {
                 substitute minimum, and whether registration is open. The first lobby can be created
                 as soon as there are enough players to fill its teams. Before Matchmaker creates a
                 second lobby, there must also be enough players who volunteered to substitute to
-                meet the host&apos;s minimum. Volunteering to sub is optional and does not affect a
-                player&apos;s chance of being placed on a team. The host also chooses how Matchmaker
-                should build lobbies:
+                meet the host&apos;s minimum, with at least one volunteer still able to play so
+                extra lobbies do not lock every sub on the bench. Volunteering to sub is optional and does
+                not affect a player&apos;s chance of being placed on a team. The host also chooses
+                how Matchmaker should build lobbies:
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 flex flex-col gap-1">
                   <h3 className="text-sm font-medium text-[var(--color-text-soft)]">Balanced</h3>
                   <p className="text-xs leading-relaxed text-[var(--color-text-muted)]">
-                    The default. Mixes skill levels across lobbies and keeps the two teams even.
-                    Best for casual games.
+                    The default. Puts similar ranks on opposite teams using one rank band per
+                    player slot, so each team gets a matching mix. Best for casual games.
                   </p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 flex flex-col gap-1">

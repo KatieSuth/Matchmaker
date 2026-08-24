@@ -859,7 +859,7 @@ func TestCreateTeamsForGroup_Success(t *testing.T) {
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, p3.ID, games[0].ID, false, false)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, host.ID, games[0].ID, false, false)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 	var n int
 	err = tx.QueryRow(ctx, `
@@ -895,7 +895,7 @@ func TestCreateTeamsForGroup_NoLobbyHostFallsBackToFirstPlayer(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, p, games[0].ID, false, false)
 	}
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	var lobbyHost uuid.UUID
@@ -946,7 +946,7 @@ func TestCreateTeamsForGroup_TeamsAlreadyCreated(t *testing.T) {
 	registerUserForEvent(t, ctx, tx, eventID, p1.ID)
 	insertLobbyForEvent(t, ctx, tx, eventID, nil)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrTeamsAlreadyCreated)
 }
@@ -963,7 +963,7 @@ func TestCreateTeamsForGroup_Forbidden(t *testing.T) {
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, mode.ID, time.Now().UTC().Add(24*time.Hour))
 	registerUserForEvent(t, ctx, tx, eventID, p1.ID)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, other.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, other.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrForbidden)
 }
@@ -973,7 +973,7 @@ func TestCreateTeamsForGroup_NotFound(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 
-	err := s.CreateTeamsForGroup(ctx, uuid.New(), host.ID, defaultMatchmakingSettings())
+	_, err := s.CreateTeamsForGroup(ctx, uuid.New(), host.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrEventGroupNotFound)
 }
@@ -989,7 +989,7 @@ func TestCreateTeamsForGroup_InsufficientPlayers(t *testing.T) {
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, p1.ID, games[0].ID, false, false)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInsufficientPlayers)
 	var teamErr *store.TeamCreationError
@@ -1021,7 +1021,7 @@ func TestGetEventGroupDetail_IncludesLobbiesAfterLockIn(t *testing.T) {
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, host.ID, games[0].ID, false, false)
 	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, unplaced.ID, games[0].ID, false, false)
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
@@ -1076,13 +1076,13 @@ func TestCreateTeamsForGroup_MultiLobbyWithSubs(t *testing.T) {
 		players = append(players, u.ID)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		u := createTestUser(t, ctx, s)
 		players = append(players, u.ID)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, true, false)
 	}
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	var lobbyCount int
@@ -1104,6 +1104,64 @@ func TestCreateTeamsForGroup_MultiLobbyWithSubs(t *testing.T) {
 	_ = players
 }
 
+func rankIDAtOrder(t *testing.T, ctx context.Context, s *store.PostgresStore, gameID uuid.UUID, order int32) uuid.UUID {
+	t.Helper()
+	ranks, err := s.GetGameRanks(ctx, &gameID)
+	require.NoError(t, err)
+	for _, r := range ranks {
+		if r.Order == order {
+			return r.ID
+		}
+	}
+	t.Fatalf("no rank at order %d", order)
+	return uuid.Nil
+}
+
+func registerPlayerAtRankOrder(t *testing.T, ctx context.Context, tx db.DBTX, s *store.PostgresStore, eventID, userID, gameID uuid.UUID, order int32, canSub bool) {
+	t.Helper()
+	rankID := rankIDAtOrder(t, ctx, s, gameID, order)
+	inGameName := "ranked-player"
+	_, err := s.UpsertGameForUser(ctx, userID, model.UserGame{
+		GameID:      gameID,
+		InGameName:  &inGameName,
+		CurrentRank: &rankID,
+		PeakRank:    &rankID,
+		ShowRank:    true,
+	})
+	require.NoError(t, err)
+	registerUserForEventWithFlags(t, ctx, tx, eventID, userID, canSub, false)
+}
+
+func TestCreateTeamsForGroup_ReportsSubCapacityAdjusted(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+	setGroupSubMin(t, ctx, tx, groupID, 2)
+
+	for i := 0; i < 4; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerAtRankOrder(t, ctx, tx, s, eventID, u.ID, games[0].ID, 21, false)
+	}
+	bronze := createTestUser(t, ctx, s)
+	registerPlayerAtRankOrder(t, ctx, tx, s, eventID, bronze.ID, games[0].ID, 6, false)
+	plat := createTestUser(t, ctx, s)
+	registerPlayerAtRankOrder(t, ctx, tx, s, eventID, plat.ID, games[0].ID, 13, false)
+	silver := createTestUser(t, ctx, s)
+	registerPlayerAtRankOrder(t, ctx, tx, s, eventID, silver.ID, games[0].ID, 8, true)
+	for i := 0; i < 5; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerAtRankOrder(t, ctx, tx, s, eventID, u.ID, games[0].ID, 11, true)
+	}
+
+	adjusted, err := s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
+	assert.True(t, adjusted)
+}
+
 func TestCreateTeamsForGroup_MultiGameSkipsEmptyEvent(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
@@ -1119,7 +1177,7 @@ func TestCreateTeamsForGroup_MultiGameSkipsEmptyEvent(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	var lobbyCount int
@@ -1145,12 +1203,12 @@ func TestGetEventGroupDetail_IncludesSubsInLobby(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, true, false)
 	}
 
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
@@ -1175,7 +1233,7 @@ func TestDeleteTeamsForGroup_AfterLockInRemovesPlayers(t *testing.T) {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	err = s.DeleteTeamsForGroup(ctx, groupID, host.ID)
@@ -1667,7 +1725,8 @@ func TestDeleteRegistrationForEvent_BlockedWhenTeamsExist(t *testing.T) {
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
 	registerUserForEvent(t, ctx, tx, eventID, joiner.ID)
-	require.NoError(t, s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings()))
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
 
 	err = s.DeleteRegistrationForEvent(ctx, eventID, joiner.ID, host.ID)
 	require.Error(t, err)

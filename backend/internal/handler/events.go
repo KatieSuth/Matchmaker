@@ -86,6 +86,10 @@ type moveUnplacedToSubsRequest struct {
 	LobbyID string `json:"lobby_id"`
 }
 
+type createTeamsResponse struct {
+	SubCapacityAdjusted bool `json:"sub_capacity_adjusted"`
+}
+
 // POST /events
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
@@ -495,7 +499,7 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.CreateTeamsForGroup(c.Request.Context(), groupID, userUUID, h.matchmakingSettings)
+	adjusted, err := h.store.CreateTeamsForGroup(c.Request.Context(), groupID, userUUID, h.matchmakingSettings)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrInsufficientPlayers), errors.Is(err, store.ErrInsufficientSubstitutes):
@@ -521,7 +525,7 @@ func (h *Handler) CreateTeamsHandler(c *gin.Context) {
 		}
 		return
 	}
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, createTeamsResponse{SubCapacityAdjusted: adjusted})
 }
 
 // DELETE /events/:groupId/teams

@@ -20,66 +20,30 @@ func playerAtRank(rank float64, canSub bool, gameCount int, at time.Time) matchm
 	}
 }
 
-func TestSelectBalancedRosterPool_CyclesLowMidHigh(t *testing.T) {
+func TestAssignBalanced_SubstituteEligibilityDoesNotAffectSelection(t *testing.T) {
 	now := time.Now()
-	high := playerAtRank(24, false, 1, now)
-	midBand := playerAtRank(16, false, 1, now.Add(3*time.Minute))
-	low := playerAtRank(4, true, 1, now.Add(2*time.Minute))
-	players := []matchmaking.Player{
-		high,
-		midBand,
-		playerAtRank(10, false, 1, now.Add(time.Minute)),
-		playerAtRank(6, false, 1, now.Add(4*time.Minute)),
-		low,
-	}
+	highSub := playerAtRank(21, true, 1, now)
+	highNon := playerAtRank(22, false, 1, now.Add(time.Minute))
+	lowSub := playerAtRank(3, true, 1, now.Add(2*time.Minute))
+	lowNon := playerAtRank(4, false, 1, now.Add(3*time.Minute))
+	players := []matchmaking.Player{highSub, highNon, lowSub, lowNon}
 
-	lobbies := matchmaking.AssignBalanced(players, 1, 3)
-	require.Len(t, lobbies, 1)
-	require.Len(t, lobbies[0].Roster, 3)
-
-	rosteredIDs := make(map[uuid.UUID]bool)
-	for _, p := range lobbies[0].Roster {
-		rosteredIDs[p.UserID] = true
-	}
-	// low → mid (closest to pool mean) → high: skills 4, 16, 24.
-	assert.True(t, rosteredIDs[low.UserID])
-	assert.True(t, rosteredIDs[midBand.UserID], "balanced roster should include a mid-band player from the mean pick")
-	assert.True(t, rosteredIDs[high.UserID])
-}
-
-func TestSelectBalancedRosterPool_SpansHighAndLowSkill(t *testing.T) {
-	now := time.Now()
-	lowSub := playerAtRank(4, true, 1, now)
-	players := []matchmaking.Player{
-		playerAtRank(24, false, 1, now.Add(time.Minute)),
-		playerAtRank(23, false, 1, now.Add(2*time.Minute)),
-		playerAtRank(22, false, 1, now.Add(3*time.Minute)),
-		playerAtRank(21, false, 1, now.Add(4*time.Minute)),
-		playerAtRank(20, false, 1, now.Add(5*time.Minute)),
-		lowSub,
-	}
-
-	lobbies := matchmaking.AssignBalanced(players, 1, 4)
+	lobbies := matchmaking.AssignBalanced(players, matchmaking.Config{
+		TeamSize:   2,
+		LobbyCount: 1,
+		TierCount:  25,
+		Slots:      4,
+	})
 	require.Len(t, lobbies, 1)
 	require.Len(t, lobbies[0].Roster, 4)
-
-	rosteredIDs := make(map[uuid.UUID]bool)
+	ids := map[uuid.UUID]bool{}
 	for _, p := range lobbies[0].Roster {
-		rosteredIDs[p.UserID] = true
+		ids[p.UserID] = true
 	}
-	assert.True(t, rosteredIDs[lowSub.UserID], "balanced roster should include low-skill players")
-}
-
-func TestSelectBalancedRosterPool_SubstituteEligibilityDoesNotAffectSingleLobbyRoster(t *testing.T) {
-	now := time.Now()
-	highSub := playerAtRank(20, true, 1, now)
-	lowNonSub := playerAtRank(4, false, 1, now.Add(time.Minute))
-	players := []matchmaking.Player{highSub, lowNonSub}
-
-	lobbies := matchmaking.AssignBalanced(players, 1, 1)
-	require.Len(t, lobbies, 1)
-	require.Len(t, lobbies[0].Roster, 1)
-	assert.Equal(t, lowNonSub.UserID, lobbies[0].Roster[0].UserID)
+	assert.True(t, ids[highSub.UserID])
+	assert.True(t, ids[highNon.UserID])
+	assert.True(t, ids[lowSub.UserID])
+	assert.True(t, ids[lowNon.UserID])
 }
 
 func TestSelectRankedRosterPool_KeepsLowMajority(t *testing.T) {

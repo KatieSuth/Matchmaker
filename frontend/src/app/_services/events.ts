@@ -5,6 +5,7 @@ import {
   EventsPage,
   EventSortLogic,
   UpsertGroupRegistrationRequest,
+  CreateTeamsResponse,
 } from "@/app/_types/types";
 
 export interface CreateEventRequest {
@@ -61,8 +62,9 @@ export async function setEventGroupRegistrationOpen(groupId: string, registratio
   await api.patch(`/events/${groupId}/registration`, { registration_open: registrationOpen });
 }
 
-export async function createTeams(groupId: string): Promise<void> {
-  await api.post(`/events/${groupId}/teams`);
+export async function createTeams(groupId: string): Promise<CreateTeamsResponse> {
+  const res = await api.post<CreateTeamsResponse>(`/events/${groupId}/teams`);
+  return res.data;
 }
 
 export async function deleteTeams(groupId: string): Promise<void> {

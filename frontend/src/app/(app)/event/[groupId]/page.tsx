@@ -821,6 +821,7 @@ export default function EventGroupPage() {
   const [registrationEditorOpen, setRegistrationEditorOpen] = useState(false);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
   const [warningSheetOpen, setWarningSheetOpen] = useState(false);
+  const [subCapacitySheetOpen, setSubCapacitySheetOpen] = useState(false);
   const [deleteWarningSheetOpen, setDeleteWarningSheetOpen] = useState(false);
   const [swapSheetOpen, setSwapSheetOpen] = useState(false);
   const [lobbyHostConfirmOpen, setLobbyHostConfirmOpen] = useState(false);
@@ -1028,6 +1029,22 @@ export default function EventGroupPage() {
       setWorking(true);
       await action();
       await refreshAndCloseMenus();
+    } catch (err) {
+      setPageError(extractApiError(err, "Could not complete that action."));
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const lockInTeams = async () => {
+    if (!group) return;
+    try {
+      setWorking(true);
+      const result = await createTeams(group.id);
+      await loadGroup();
+      if (result.sub_capacity_adjusted) {
+        setSubCapacitySheetOpen(true);
+      }
     } catch (err) {
       setPageError(extractApiError(err, "Could not complete that action."));
     } finally {
@@ -1580,7 +1597,7 @@ export default function EventGroupPage() {
                       setWarningSheetOpen(true);
                       return;
                     }
-                    void withHostAction(() => createTeams(group.id));
+                    void lockInTeams();
                   }}
                   className={[
                     "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
@@ -2582,6 +2599,30 @@ export default function EventGroupPage() {
               </div>
             </>
           )}
+        </div>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        isOpen={subCapacitySheetOpen}
+        onClose={() => setSubCapacitySheetOpen(false)}
+        title="Substitute minimum changed the teams"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--color-text-soft)]">
+            There were not enough players willing to substitute to keep the most even lineup
+            while still filling the substitute minimum for each lobby. Some players who would
+            have been a closer rank match were placed as substitutes instead. You can still
+            swap players if you want a different lineup.
+          </p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSubCapacitySheetOpen(false)}
+              className="rounded-lg border border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm font-medium text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
+            >
+              Okay
+            </button>
+          </div>
         </div>
       </ResponsiveSheet>
 

@@ -12,17 +12,20 @@ Matchmaking runs **independently per game** in a group. Group-level settings (`s
 
 ```
 ValidateCapacity
-  → strategy (balanced | ranked)
+  → strategy (balanced window fill | ranked packing)
   → ApplySubCapacityRosterConstraint   (n ≥ 2 only)
   → ApplyDuoLobbyGrouping              (n ≥ 2 only; best-effort)
-  → SplitIntoTeams                     (per lobby; best-effort duo pass)
+  → team split                         (windows when balanced; snake when ranked; duo pass)
+  → repairUnfairWindowPairs            (balanced only; leftover in-place, adjacent fringe, then same-window combo)
   → AssignMandatorySubs                (n ≥ 2 only)
   → AssignRemainingAsSubs
   → PickLobbyHost                      (per lobby)
   → IsLobbyUnfair                      (per lobby)
+  → drop n and replan                  (only if this n benches every can-sub and a lobby is still unfair)
+  → clear SubCapacityAdjusted          (if every lobby is fair)
 ```
 
-The only difference between modes is the **strategy** step (roster pool selection and lobby distribution). All subsequent steps are shared.
+Modes differ in **lobby fill** and **team split**. Subs, duo passes, hosts, and fairness are shared.
 
 ---
 
@@ -70,7 +73,7 @@ floored_order = floor((current_rank_order + peak_rank_order) / 2.0)
 AvgRank = game_ranks.order for user_games.avg_rank
 ```
 
-`AverageRankOrder` and `FlooredAverageRankOrder` in `rank.go` compute the numeric average and floored order when persisting or backfilling. Both current and peak ranks must be present on the `user_games` row. `UpsertGameForUser` writes `avg_rank`; matchmaking backfills any missing values before planning. This single value drives sorting, roster selection, team snake drafts, and fairness checks.
+`AverageRankOrder` and `FlooredAverageRankOrder` in `rank.go` compute the numeric average and floored order when persisting or backfilling. Both current and peak ranks must be present on the `user_games` row. `UpsertGameForUser` writes `avg_rank`; matchmaking backfills any missing values before planning. This single value drives sorting, roster selection, team assignment, and fairness checks.
 
 ---
 
@@ -107,6 +110,8 @@ Greedy: increment `n` while:
 1. `registered_count ≥ required(n)`
 2. If `n ≥ 2`: `substitute_count ≥ n × sub_min`
 
+That ceiling **may bench every can-sub** (`MaxSubstituteEligibleOnRoster == 0`). `PlanEvent` still tries that `n`. If every lobby is fair after repair, it keeps the extra lobby. If any lobby is still unfair, it drops to `n − 1` and replans (and repeats while the smaller `n` also benches every can-sub). Spare can-subs on a roster (`MaxSubstituteEligibleOnRoster > 0`) stop the drop — further imbalance is left to repair and the host warning.
+
 `ValidateCapacity` returns the lobby count or a `ValidationError` with a game-specific message. Zero registrations → zero lobbies (game skipped).
 
 ### Example
@@ -114,7 +119,10 @@ Greedy: increment `n` while:
 5v5 (`slots = 10`), `sub_min = 3`:
 
 - 15 registrants → **1 lobby** (need 26 for 2).
-- 26 registrants, 6 sub-eligible → **2 lobbies** (20 roster + 6 mandatory subs).
+- 26 registrants, 6 sub-eligible → **2 lobbies** if the 20 non-sub roster spots stay even; **1 lobby** if they do not (2 would bench all 6 can-subs).
+- 26 registrants, 7 sub-eligible → **2 lobbies** (20 roster + 6 mandatory subs, one can-sub may still be rostered).
+
+2v2 (`slots = 4`), `sub_min = 2`, 18 registrants, 6 sub-eligible → **3 lobbies** when the 12 non-subs form even windows; **2 lobbies** when they cannot.
 
 ---
 
@@ -122,44 +130,47 @@ Greedy: increment `n` while:
 
 **Goal:** Mix skill across lobbies and form even teams. Best for casual play.
 
-Implemented in `balanced.go` and `roster.go`.
+Implemented in `balanced.go`, `windows.go`, and `teams.go`. Ranked packing is a separate mode and is not used here.
 
-### Step 1 — Roster pool (`selectBalancedRosterPool`)
+### Rank windows
 
-If `needed ≥ len(players)`, everyone is rostered.
+The game ladder (`Config.TierCount` = `MAX(game_ranks.order)`) is split into `min(teamSize, tierCount)` contiguous windows. Remainder ranks go to the **lowest** windows.
 
-When trimming is required (`needed < len(players)`), players are picked in a repeating **low → mid → high** cycle from the remaining pool:
+**Ideal:** each team takes **one player from each window** (two from the window, opposite sides). A 5v5 is five mirrored pairs; a 3v3 is three.
 
-| Phase | Selection |
-|-------|-----------|
-| Low | Lowest `AvgRank` in remaining (`index n-1` after desc sort) |
-| Mid | Player closest to the remaining pool mean `AvgRank` (ties → `CompareByRankThenAvailability`) |
-| High | Highest `AvgRank` in remaining (`index 0`) |
+Valorant examples (`tierCount = 25`):
 
-`can_substitute` does **not** affect roster pool selection.
+| Mode | Windows (order ranges) |
+|------|------------------------|
+| 5v5 | 1–5, 6–10, 11–15, 16–20, 21–25 |
+| 3v3 | 1–9, 10–17, 18–25 |
+| 2v2 | 1–13, 14–25 |
 
-**Example:** 5 players with skills 24, 16, 10, 6, 4 — need 3:
+A 4-rank custom 5v5 uses 4 windows, then takes any leftover pair from the fullest band.
 
-| Pick | Phase | Skill |
-|------|-------|-------|
-| 1 | Low | 4 |
-| 2 | Mid | 16 |
-| 3 | High | 24 |
+`AvgRank` is clamped into `1..tierCount`. If `teamSize` or `tierCount` is invalid, lobby fill and team split fall back to snake so planning cannot panic.
 
-Rank 10 is excluded, not rank 16.
+### Lobby fill (`AssignBalanced`)
 
-### Step 2 — Lobby distribution (`AssignBalanced`)
+Lobbies are dealt in **parallel**: each lobby gets its 2 from a window before any lobby gets 4 from that window.
 
-The roster pool is sorted by skill ascending, then assigned via **snake draft** across lobbies (`snakeLobbyIndex`), so lower-ranked players are drafted first:
+1. Start every window at quota 2 (one player per team).
+2. A window with fewer than 2 players is skipped in this pass (the singleton stays available for extras).
+3. Short lobbies then take extra **pairs** from the current fullest remaining window, one pair per lobby per round, so lobby 0 cannot drain a band before lobby 1 is dealt. On a count tie, prefer the **lower-rank** window.
+4. If a donor has fewer than a pair, take everyone they have and continue to the next-fullest. A leftover singleton is used only when a lobby is still short.
+5. When a window is overfull, take the quota players closest to that window’s **ladder midpoint** (ties → `CompareByRankThenAvailability`).
 
-```
-Round 0: L0, L1, L2, ...
-Round 1: L2, L1, L0, ...  (reversed)
-```
+`can_substitute` does **not** affect selection.
 
-With one lobby, all picks go to that lobby in ascending skill order.
+**Example:** 2v2 with Radiant, several Ascendants, Golds, Silver, Bronze, and Iron — one 4-player lobby. High-window midpoint ~19.5 takes two Ascendants; low-window midpoint ~7 takes Silver and Bronze. Radiant and Iron sit.
 
-**Example:** 8 players, 2 lobbies × 4 slots — lobby 0 gets skills 13, 16, 17, 20; lobby 1 gets 14, 15, 18, 19.
+### Team split (`splitIntoTeamsWindowed`)
+
+After shared lobby post-passes, `splitIntoTeamsWindowed` runs `windowDraftIntoTeams` then the same “balance wins” duo post-pass as ranked mode. The roster is bucketed into the same windows:
+
+- A clean pair in a window: opposite teams. The higher of the pair goes to the team with the **lower rank sum so far**.
+- Four from one window (fallback): pair neighbors (1st vs 2nd, 3rd vs 4th) the same way.
+- Odd leftovers: pair leftovers closest in rank first (adjacent windows win equal distance). Do not attach an outlier to a far leftover who has a closer counterpart. The last unpaired leftover goes to the weaker team.
 
 ---
 
@@ -208,13 +219,16 @@ Lobby 1: players [slots .. 2×slots-1]
 **Exception (multi-lobby only):** When `n ≥ 2`, `ApplySubCapacityRosterConstraint` ensures enough sub-eligible players remain unrostered for mandatory subs (`n × sub_min`).
 
 - Max sub-eligible on rosters = `substitute_count − (n × sub_min)` (see `MaxSubstituteEligibleOnRoster`).
-- If rank-based rostering exceeds that cap, lowest-ranked rostered sub-eligible players are swapped out for the best available non-sub players (`bestNonSubReplacement`).
+- If rank-based rostering exceeds that cap, lowest-ranked rostered sub-eligible players are swapped out for an unrostered non-sub in the **same rank window** (`bestNonSubReplacement`). If that window has no eligible non-sub, the nearest window is used; within a band, pick closest to the vacated rank (ties → `CompareByRankThenAvailability`). Do not insert the globally highest leftover — that is how a Radiant lands in a Gold/Silver hole and turns a 2+2 (or 2-per-band 5v5) into 3+1.
+- When any of those swaps run **and at least one lobby is still unfair** after repair and the rest of the pipeline, `GamePlan.SubCapacityAdjusted` is true so the host can be told the substitute minimum changed the lineup. `PlanEvent` clears the flag via `anyLobbyUnfair` when every lobby ends fair.
 
 **Single-lobby games (`n = 1`):** This exception does not run. `sub_min` mandatory subs also do not run.
 
 ---
 
 ## Shared post-processing
+
+Lobby sub-capacity swaps, duo lobby grouping, subs, hosts, and fairness flags are shared. Team split uses windows when `sort_logic` is balanced and snake when ranked; both still run the duo team pass. Balanced mode then runs leftover fairness repair when a lobby is unfair; ranked does not.
 
 ### Duo requests (`ApplyDuoLobbyGrouping` + team pass in `SplitIntoTeams`)
 
@@ -225,7 +239,7 @@ Players may list a **duo request** (Discord name) at registration. Matchmaking a
 | Stage | When | Baseline metric |
 |-------|------|-----------------|
 | Lobby grouping | After sub-capacity constraint; skipped when `n = 1` | Cross-lobby average spread (`max lobby avg − min lobby avg`) |
-| Team split | After snake draft within each lobby | Team average separation (`|avg(team1) − avg(team2)|`) |
+| Team split | After window pairs (balanced) or snake draft (ranked) | Team average separation (`|avg(team1) − avg(team2)|`) |
 
 Rules:
 
@@ -235,17 +249,33 @@ Rules:
 - Partners who are not both rostered (sub or unplaced) cannot be united.
 - Duo placement is best-effort; fairness may require partners to stay in different lobbies or on opposite teams.
 
-### Team split (`SplitIntoTeams`)
+### Team split
 
-Within each lobby, roster players are sorted by skill descending and split into Team 1 and Team 2 via a **snake draft** (same alternating pattern as lobby snake). Each player gets `team_number = 1` or `2`. A duo post-pass then attempts to place mutual pairs on the same team without worsening the snake-draft separation baseline.
+**Ranked** (`SplitIntoTeams`): roster sorted by skill descending, snake draft into Team 1 and Team 2 (1–2–2–1), then duo post-pass against that baseline.
+
+**Balanced** (`splitIntoTeamsWindowed`): `windowDraftIntoTeams` pairing as above, then the same duo post-pass against the window-split baseline.
 
 Subs are not assigned a team number.
+
+### Fairness repair (`repairUnfairWindowPairs`)
+
+Balanced only, after team split and before mandatory subs. Fill and sub-capacity never look back at unplaced players; a lobby can end up **Plat vs Bronze** while a **Gold 2** sits unplaced even though swapping them in place would even the sides.
+
+The pass runs while `IsLobbyUnfair` is true — **either** `teamSeparationExceeds` **or** `outlierExceeds`. Other lobbies are never raided (leftovers are unplaced players only; anyone already on a roster or sub pool is ineligible). Unplaced can-subs are eligible only when enough can-subs would remain unrostered for `n × sub_min`. Apply a change only when the failing check **strictly improves**, and do not newly trip the other check (an outlier fix must not create a team-separation warning, and a team-sep fix must not create an outlier warning). If both checks fail, team-average separation is optimized first. One improving change per pass; repeat while the lobby is still unfair and a swap still helps, up to `min(window count + 2, 8)` passes.
+
+Each pass tries, in order:
+
+1. **In-place 1-for-1, same window.** Replace one rostered player with one unplaced leftover from that rank band. Everyone else keeps their `team_number`. This is the host-style fix (Plat 1 off, leftover Gold 2 on that seat) and does not re-deal the lobby. The leftover must not widen that window's rank spread (a leftover Radiant cannot replace an Ascendant to paper over Plat vs Bronze). Among accepted swaps, pick the best primary metric, then the closer rank delta; on a sep+delta tie, replace the lower-ranked seat so a high leftover cannot mask a low-window hole.
+2. **In-place 1-for-1, adjacent fringe.** Same seat-preserving swap, but the leftover may come from a neighboring window if **both** ranks sit within 2 ladder steps of the shared edge (e.g. 5v5 Gold 1 ↔ Plat 1). A Radiant is not “adjacent” to Gold.
+3. **Same-window combo re-split.** If no 1-for-1 helps, the `k` rostered players in a window plus unplaced players in that window are retried as combinations (current occupants always stay in the search pool; leftovers may be trimmed so the combination count stays small) and the **whole lobby** is re-split with `splitIntoTeamsWindowed` (window pairing + duo pass). Combinations that widen that window's rank spread are skipped. Ties keep more of the current window roster (less churn).
+
+This does **not** set `SubCapacityAdjusted`. If repair (or the rest of the pipeline) leaves every lobby fair, `PlanEvent` clears that flag so the host is not warned. Ranked mode never runs it.
 
 ### Mandatory subs (`AssignMandatorySubs`)
 
 Only when `n ≥ 2` and `sub_min > 0`.
 
-Assigns `sub_min` sub-eligible players per lobby from unassigned players, highest skill first. Sets `team_number = nil`.
+Assigns `sub_min` sub-eligible players per lobby from unassigned sub-eligible players, highest skill first. Sets `team_number = nil`.
 
 ### Overflow subs (`AssignRemainingAsSubs`)
 
@@ -284,7 +314,7 @@ Sort roster `AvgRank` values ascending. Let `highest` and `second` be the top tw
 unfair if (highest − second) > scaledOutlierGap
 ```
 
-Detects one player far above (or below) the rest — e.g. one Radiant among Golds in a Valorant lobby.
+Detects one player far above the rest — e.g. one Platinum among Bronzes in a 2v2. Balanced leftover repair also tries to shrink this gap.
 
 ### Check 2: Team separation (`teamSeparationExceeds`)
 
@@ -295,7 +325,7 @@ team_avg = sum(AvgRank for team) / count(team)
 unfair if |team1_avg − team2_avg| > scaledTeamSeparation
 ```
 
-Detects residual imbalance after the snake team split.
+Detects residual imbalance after the team split (and after balanced fairness repair).
 
 ### Tier scaling (`ScaledFairnessThresholds`)
 
@@ -310,11 +340,11 @@ scaledTeamSeparation = FairnessTeamSeparation × scale
 
 If `tierCount ≤ 0` or `FairnessReferenceTierCount ≤ 0`, baselines are used unscaled.
 
-| Game tiers    | Scaled outlier gap (defaults 8 @ 25) | Scaled team separation (defaults 4 @ 25) |
+| Game tiers    | Scaled outlier gap (defaults 6 @ 25) | Scaled team separation (defaults 3 @ 25) |
 |---------------|--------------------------------------|------------------------------------------|
-| 10            | 3.2                                  | 1.6                                      |
-| 25 (Valorant) | 8.0                                  | 4.0                                      |
-| 31 (LoL)      | 9.9                                  | 5.0                                      |
+| 10            | 2.4                                  | 1.2                                      |
+| 25 (Valorant) | 6.0                                  | 3.0                                      |
+| 31 (LoL)      | 7.4                                  | 3.7                                      |
 
 
 Tier scaling ensures fairness calculations are accurate when the amount of tiers are unknown in advance, such as for a user-defined game.
@@ -345,6 +375,7 @@ All three must be positive if set; invalid values cause startup failure.
   → planTeamsForGroup: GetMaxRankOrderForGame → tierCount per game
   → PlanEvent(players, cfg, settings)
   → IsLobbyUnfair(lobby, settings, cfg.TierCount) per lobby
+  → clear SubCapacityAdjusted if !anyLobbyUnfair
 ```
 
 `FairnessOutlierGap` and `FairnessTeamSeparation` are **baselines**, not absolute thresholds for every game. A 10-tier custom game uses `scale = 10/25 = 0.4`, so default outlier gap becomes `6 × 0.4 = 2.4` rank-order units.
@@ -362,17 +393,19 @@ All three must be positive if set; invalid values cause startup failure.
 | File          | Responsibility                                      |
 |---------------|-----------------------------------------------------|
 | `duos.go`     | Mutual duo detection, lobby grouping, team grouping |
-| `plan.go`     | `PlanEvent` orchestrator                            |
-| `balanced.go` | Balanced lobby snake draft                          |
-| `ranked.go`   | Ranked sequential lobby packing                     |
-| `roster.go`   | Balanced/ranked roster pool selection               |
-| `capacity.go` | Lobby count math                                    |
-| `subs.go`     | Sub-capacity swaps, mandatory/overflow subs         |
-| `teams.go`    | Within-lobby team snake draft                       |
+| `plan.go`     | `PlanEvent` orchestrator; may drop `n` via `shouldDropReservedSubLobby`; clears `SubCapacityAdjusted` via `anyLobbyUnfair` |
+| `balanced.go` | Balanced lobby fill from rank windows                 |
+| `windows.go`  | Rank windows, midpoint picks, windowed team pairing   |
+| `ranked.go`   | Ranked sequential lobby packing                       |
+| `roster.go`   | Ranked roster pool selection                          |
+| `capacity.go` | Lobby count math                                      |
+| `subs.go`     | Sub-capacity swaps, mandatory/overflow subs           |
+| `teams.go`    | Ranked snake draft (`SplitIntoTeams`); snake fallback |
 | `tiebreak.go` | `CompareByRankThenAvailability`                     |
-| `rank.go`     | `AverageRankOrder`                                  |
+| `rank.go`     | `AverageRankOrder`, `FlooredAverageRankOrder`       |
 | `host.go`     | `PickLobbyHost`                                     |
 | `fairness.go` | Threshold scaling and `IsLobbyUnfair`               |
+| `repair.go`   | Balanced leftover in-place, fringe, and combo repair |
 | `types.go`    | Domain types                                        |
 | `errors.go`   | `ValidationError`                                   |
 
@@ -382,11 +415,13 @@ Tests live in `*_test.go` alongside each file (`package matchmaking_test`).
 
 ## Persistence (store layer)
 
-`CreateTeamsForGroup` calls `planTeamsForGroup` (validation only, no writes), then persists inside a transaction:
+`CreateTeamsForGroup` (`store/events.go`) calls `planTeamsForGroup` (full `PlanEvent` per game, no writes) so a validation failure cannot close registration, then persists inside a transaction:
 
 - Closes registration on the group.
 - Creates `lobbies` rows with `fairness_warning`.
 - Inserts `players` rows with `team_number` 1, 2, or `NULL` (subs).
 - Does not insert `players` rows for unplaced non-subs.
 
-See `store/teams_planning.go` and `store/event_lobbies.go` for DB integration.
+The HTTP response is 200 with `{ "sub_capacity_adjusted": bool }`. That bool is the OR of each game's `GamePlan.SubCapacityAdjusted`: the host modal appears if **any** game in the group still has an unfair lobby after a substitute-minimum swap. A repaired, fully fair 2v2 does not hide the warning if a 5v5 in the same group stayed unfair.
+
+See `store/teams_planning.go` for planning and `persistTeamPlans`. `store/event_lobbies.go` is the read path when loading saved lobbies.

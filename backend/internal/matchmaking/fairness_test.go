@@ -97,6 +97,14 @@ func TestTeamAverageSeparationForTest_EmptyTeam(t *testing.T) {
 	assert.Equal(t, 0.0, sep)
 }
 
+func TestOutlierGapForTest(t *testing.T) {
+	assert.Equal(t, 0.0, matchmaking.OutlierGapForTest(nil))
+	assert.Equal(t, 0.0, matchmaking.OutlierGapForTest([]matchmaking.Player{{AvgRank: 13}}))
+	assert.Equal(t, 7.0, matchmaking.OutlierGapForTest([]matchmaking.Player{
+		{AvgRank: 13}, {AvgRank: 6}, {AvgRank: 6}, {AvgRank: 3},
+	}))
+}
+
 func TestSplitRosterByTeamNumberForTest(t *testing.T) {
 	t1 := intPtr(1)
 	t2 := intPtr(2)

@@ -18,8 +18,15 @@ func TestRequiredPlayers(t *testing.T) {
 func TestMaxLobbies(t *testing.T) {
 	assert.Equal(t, 0, matchmaking.MaxLobbies(5, 0, 10, 3))
 	assert.Equal(t, 1, matchmaking.MaxLobbies(20, 0, 10, 3))
-	assert.Equal(t, 2, matchmaking.MaxLobbies(26, 6, 10, 3))
+	assert.Equal(t, 2, matchmaking.MaxLobbies(26, 6, 10, 3), "exact sub_min reservation still fits two lobbies")
+	assert.Equal(t, 2, matchmaking.MaxLobbies(26, 7, 10, 3), "one spare can-sub may sit on a roster")
 	assert.Equal(t, 1, matchmaking.MaxLobbies(26, 5, 10, 3))
+	assert.Equal(t, 2, matchmaking.MaxLobbies(20, 0, 10, 0), "sub_min 0 still allows multiple lobbies with no can-subs")
+}
+
+func TestMaxLobbies_TwoVTwoAllowsThirdLobbyWhenCapacityFits(t *testing.T) {
+	// 18 players, 6 can-sub, 2v2, sub_min=2: n=3 fits; PlanEvent may still drop if those rosters stay unfair.
+	assert.Equal(t, 3, matchmaking.MaxLobbies(18, 6, 4, 2))
 }
 
 func TestValidateCapacity_InsufficientPlayers(t *testing.T) {

@@ -39,10 +39,11 @@ export default function AboutFaq() {
         </p>
         <ul className={listCls}>
           <li>
-            <strong>Balanced</strong> (default). Best for casual games. Matchmaker tries to spread
-            different skill levels across the lobby and split players into two even teams. If more
-            people signed up than can play at once, it picks a mix from high, middle, and low
-            ranks rather than only taking the highest-ranked or lowest-ranked players.
+            <strong>Balanced</strong> (default). Best for casual games. Matchmaker splits the rank
+            ladder into as many bands as there are players per team, then puts one player from each
+            band on each side so the two teams stay even. If more people signed up than can play at
+            once, it still fills those bands (typical ranks of each band first) rather than only
+            taking the highest-ranked or lowest-ranked players.
           </li>
           <li>
             <strong>Rank Grouping</strong>. Best for serious practice. Matchmaker groups players
@@ -64,7 +65,10 @@ export default function AboutFaq() {
           </li>
           <li>
             If enough players signed up, multiple lobbies can be created so more than one game can
-            run at once.
+            run at once. Matchmaker opens as many as the substitute minimum allows. It only skips
+            an extra lobby when filling it would bench every substitute volunteer and the remaining
+            players still cannot form even teams. If those teams would already be even, the extra
+            lobby stays.
           </li>
           <li>
             One player per lobby is assigned as lobby host (whoever volunteered first, or the
