@@ -262,6 +262,9 @@ Operator-supplied in `terraform.tfvars` (not `random_*`):
 | `db_roles_bootstrapped`                  | `false` until after `make gcp-db-bootstrap`; then `true`                                         |
 | `jwt_secret`                             | API JWT (64 hex)                                                                                 |
 | `cookie_hash_key` / `cookie_encrypt_key` | Securecookie (64 hex each)                                                                       |
+| `api_link_encryption_key`                | AES-256 for `api_links` refresh tokens (64 hex; do not reuse `cookie_encrypt_key`)               |
+| `api_link_encryption_key_id`             | Current key id written to `api_links.key_id` (default `1`)                                       |
+| `api_link_encryption_previous_keys`      | Optional `id:hex` list of retired keys (Secret Manager when non-empty)                           |
 | `origin_verify_secret`                   | Worker + API + frontend                                                                          |
 | `discord_client_secret`                  | OAuth                                                                                            |
 | `sentry_dsn_api` / `sentry_dsn_frontend` | Optional                                                                                         |
@@ -350,6 +353,9 @@ Same path contract as local Caddy: do not double-prefix `/api` in server routes 
 | `DATABASE_URL`                           | Secret Manager                               |
 | `JWT_SECRET`                             | Secret Manager                               |
 | `COOKIE_HASH_KEY` / `COOKIE_ENCRYPT_KEY` | Secret Manager                               |
+| `API_LINK_ENCRYPTION_KEY`                | Secret Manager                               |
+| `API_LINK_ENCRYPTION_KEY_ID`             | tfvars (default `1`)                         |
+| `API_LINK_ENCRYPTION_PREVIOUS_KEYS`      | optional Secret Manager                      |
 | `DISCORD_CLIENT_SECRET`                  | Secret Manager                               |
 | `ORIGIN_VERIFY_SECRET`                   | Secret Manager                               |
 | `SENTRY_DSN`                             | optional Secret Manager                      |

@@ -229,7 +229,7 @@ gitignored; do not commit it.
 
 ```bash
 # db_admin_password, db_migrator_password, db_app_password, db_roles_bootstrapped,
-# jwt_secret, cookie_*, origin_verify_secret, discord_client_secret, cloudflare_*, etc.
+# jwt_secret, cookie_*, api_link_encryption_key, origin_verify_secret, discord_client_secret, cloudflare_*, etc.
 # Hex keys: make gen-keys  (or openssl rand -hex 32 each)
 # Start with db_roles_bootstrapped = false (see DB least-privilege cutover below).
 ```

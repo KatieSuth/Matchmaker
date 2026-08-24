@@ -263,12 +263,10 @@ export default function AboutPage() {
                 <p className={bodyText}>
                   You sign in through Discord. Matchmaker never sees a password. Traffic uses
                   HTTPS. We store a hashed version of your session refresh token, not the raw
-                  token. Matchmaker does not currently keep Discord&apos;s authorization tokens
-                  after sign-in. A future server-membership feature may securely store the tokens
-                  needed to check your Discord server memberships periodically without asking you
-                  to authorize again each time. Those tokens would only be used to request the
-                  Discord data needed for that feature. Ranks and pronouns stay visible only to
-                  event hosts unless you choose otherwise.
+                  token. We also store an encrypted Discord refresh token so we can later check
+                  your Discord server memberships without asking you to authorize again. That
+                  token is only used to request the Discord data needed for that feature. Ranks
+                  and pronouns stay visible only to event hosts unless you choose otherwise.
                 </p>
               </div>
 
@@ -379,7 +377,7 @@ export default function AboutPage() {
                   No email. No password. No Discord chat, DMs, or message history. Discord&apos;s
                   login screen asks for permission to see your servers, but Matchmaker does not
                   currently save a list of your Discord servers. A future server-membership feature
-                  may periodically request the current list from Discord using a stored
+                  may periodically request the current list from Discord using the stored encrypted
                   authorization token, use it to check membership, and discard the list rather than
                   storing it. Matchmaker does not set analytics cookies or run its own advertising
                   or visitor trackers. Your avatar image stays on Discord&apos;s network; we only

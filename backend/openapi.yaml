@@ -82,9 +82,10 @@ paths:
       description: >
         Handles the redirect from Discord after the user authorizes the application.
         Validates the state parameter against the `oauth_state` cookie, exchanges the
-        authorization code for a Discord token, fetches the Discord user, and
-        upserts the local user record. Issues a short-lived one-time code (OTC)
-        and redirects the browser to the frontend callback URL.
+        authorization code for a Discord token, fetches the Discord user, upserts the
+        local user record, and encrypts the Discord refresh token into `api_links`.
+        Issues a short-lived one-time code (OTC) and redirects the browser to the
+        frontend callback URL.
       parameters:
         - name: code
           in: query
@@ -111,7 +112,7 @@ paths:
         "401":
           description: Missing or invalid `oauth_state` cookie, state mismatch, or failed code exchange
         "500":
-          description: Discord API unreachable, malformed Discord response, or failed to upsert user
+          description: Discord API unreachable, malformed Discord response, failed to upsert user, or failed to persist the Discord refresh token
 
   /auth/complete:
     post:

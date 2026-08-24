@@ -41,6 +41,10 @@ type MockStore struct {
 	GetRefreshTokenFn       func(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
 	DeleteRefreshTokenFn    func(ctx context.Context, refreshTokenHash string) error
 
+	// api links
+	UpsertApiLinkFn           func(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error)
+	GetApiLinkByUserAndNameFn func(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
+
 	// one-time codes
 	CreateOneTimeCodeFn  func(ctx context.Context, code string, userID uuid.UUID) error
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
@@ -130,6 +134,14 @@ func (m *MockStore) GetRefreshToken(ctx context.Context, refreshTokenHash string
 
 func (m *MockStore) DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error {
 	return m.DeleteRefreshTokenFn(ctx, refreshTokenHash)
+}
+
+func (m *MockStore) UpsertApiLink(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error) {
+	return m.UpsertApiLinkFn(ctx, userID, name, ciphertext, nonce, keyID)
+}
+
+func (m *MockStore) GetApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error) {
+	return m.GetApiLinkByUserAndNameFn(ctx, userID, name)
 }
 
 func (m *MockStore) CreateOneTimeCode(ctx context.Context, code string, userID uuid.UUID) error {

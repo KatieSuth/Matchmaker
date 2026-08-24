@@ -1,9 +1,11 @@
 package handler_test
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
@@ -11,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 )
+
+// testAPILinkKey is a fixed AES-256 key for handler tests (not a production secret).
+var testAPILinkKey = bytes.Repeat([]byte{0x04}, 32)
 
 // newTestHandler constructs a real *Handler with controlled dependencies.
 // oauth2Cfg can be nil for tests that don't exercise OAuth code paths.
@@ -34,5 +39,7 @@ func newTestHandlerWithCookieDomain(t *testing.T, s store.Store, oauth2Cfg *oaut
 		FairnessTeamSeparation:     3,
 		FairnessReferenceTierCount: 25,
 	}
-	return handler.New("test", s, sc, oauth2Cfg, cookieDomain, "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl, mmSettings)
+	keyring, err := apilink.NewKeyring(apilink.DefaultKeyID, testAPILinkKey, nil)
+	require.NoError(t, err)
+	return handler.New("test", s, sc, oauth2Cfg, cookieDomain, "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl, mmSettings, keyring)
 }

@@ -82,6 +82,36 @@ resource "google_secret_manager_secret_version" "cookie_encrypt" {
   secret_data = var.cookie_encrypt_key
 }
 
+resource "google_secret_manager_secret" "api_link_encrypt" {
+  secret_id = "${local.name_prefix}-api-link-encrypt"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "api_link_encrypt" {
+  secret      = google_secret_manager_secret.api_link_encrypt.id
+  secret_data = var.api_link_encryption_key
+}
+
+resource "google_secret_manager_secret" "api_link_encrypt_previous" {
+  count     = var.api_link_encryption_previous_keys != "" ? 1 : 0
+  secret_id = "${local.name_prefix}-api-link-encrypt-previous"
+  labels    = local.labels
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "api_link_encrypt_previous" {
+  count       = var.api_link_encryption_previous_keys != "" ? 1 : 0
+  secret      = google_secret_manager_secret.api_link_encrypt_previous[0].id
+  secret_data = var.api_link_encryption_previous_keys
+}
+
 resource "google_secret_manager_secret" "origin_verify" {
   secret_id = "${local.name_prefix}-origin-verify"
   labels    = local.labels

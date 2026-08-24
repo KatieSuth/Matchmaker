@@ -12,12 +12,13 @@ import (
 
 type ApiLink struct {
 	ID             uuid.UUID
-	UserID         *uuid.UUID
-	Name           *string
-	RefreshToken   *string
-	RefreshTokenIv *string
+	UserID         uuid.UUID
+	Name           string
+	RefreshToken   string
+	RefreshTokenIv string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	KeyID          string
 }
 
 type Event struct {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
@@ -197,6 +198,25 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 			}
 		}
 	}
+
+	if token.RefreshToken == "" {
+		slog.ErrorContext(c.Request.Context(), "Discord OAuth response missing refresh token", "user_id", user.ID)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not store Discord authorization",
+		})
+		return
+	}
+
+	if err := h.apiLinkVault.PutRefreshToken(c.Request.Context(), user.ID, apilink.ProviderDiscord, token.RefreshToken); err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to persist Discord refresh token", "user_id", user.ID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not store Discord authorization",
+		})
+		return
+	}
+	slog.InfoContext(c.Request.Context(), "stored encrypted API refresh token", "user_id", user.ID, "provider", apilink.ProviderDiscord)
 
 	//generate a short-lived one-time code to exchange for tokens in /auth/complete
 	otcBytes := make([]byte, 16)

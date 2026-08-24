@@ -7,36 +7,39 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/securecookie"
 	"github.com/google/uuid"
+	"github.com/gorilla/securecookie"
 
 	"golang.org/x/oauth2"
 )
 
 // Handler holds shared dependencies for all HTTP entrypoints. Mutating it after New is not supported.
 type Handler struct {
-	ginMode           string
-	store             store.Store
-	secureCookie      *securecookie.SecureCookie
-	oauth2Config      *oauth2.Config
-	generateState     func() (string, error)
-	encodeStateCookie func(name string, value interface{}) (string, error)
-	cookieDomain      string
-	frontendURL       string
-	jwtSecret         []byte
-	refreshExpiration int
-	discordApiUrl        string
-	matchmakingSettings  matchmaking.Settings
+	ginMode             string
+	store               store.Store
+	secureCookie        *securecookie.SecureCookie
+	oauth2Config        *oauth2.Config
+	generateState       func() (string, error)
+	encodeStateCookie   func(name string, value interface{}) (string, error)
+	cookieDomain        string
+	frontendURL         string
+	jwtSecret           []byte
+	refreshExpiration   int
+	discordApiUrl       string
+	matchmakingSettings matchmaking.Settings
+	apiLinkVault        *apilink.Vault
 }
 
 // New builds a Handler.
 // gm is the Gin run mode; s is the persistence layer; sc signs/encrypts auth cookies;
 // o2c is the Discord OAuth2 config; cd is the cookie domain; fURL is the frontend base URL;
-// jwt is the JWT signing key; refExp is refresh-token Max-Age in seconds; dApi is Discord's API base URL.
-func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string, mmSettings matchmaking.Settings) *Handler {
+// jwt is the JWT signing key; refExp is refresh-token Max-Age in seconds; dApi is Discord's API base URL;
+// apiLinkKeys is the AES-256 keyring for third-party refresh tokens stored in api_links.
+func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string, mmSettings matchmaking.Settings, apiLinkKeys *apilink.Keyring) *Handler {
 	return &Handler{
 		ginMode:             gm,
 		store:               s,
@@ -50,6 +53,7 @@ func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Co
 		refreshExpiration:   refExp,
 		discordApiUrl:       dApi,
 		matchmakingSettings: mmSettings,
+		apiLinkVault:        apilink.New(apiLinkKeys, s),
 	}
 }
 

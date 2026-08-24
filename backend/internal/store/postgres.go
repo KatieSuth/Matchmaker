@@ -32,10 +32,14 @@ type Store interface {
 	GetUserByUserID(ctx context.Context, userID uuid.UUID) (model.User, error)
 	UpdateUser(ctx context.Context, userId uuid.UUID, displayName *string, pronouns *string, showPronous bool, region *string) (model.User, error)
 
-	//refresh tokens
+	//refresh tokens (app session cookie hashes)
 	CreateNewRefreshToken(ctx context.Context, refreshTokenHash string, userID uuid.UUID, expires time.Time) (model.RefreshToken, error)
 	GetRefreshToken(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, refreshTokenHash string) error
+
+	//api links (encrypted third-party refresh tokens)
+	UpsertApiLink(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error)
+	GetApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
 
 	//one-time codes
 	CreateOneTimeCode(ctx context.Context, code string, userID uuid.UUID) error
