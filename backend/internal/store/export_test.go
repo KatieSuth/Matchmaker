@@ -80,6 +80,33 @@ var ResolveSwapDestinationForTest = func(ownPrevious, counterpart SwapPlacementF
 	))
 }
 
+// ValidateSubMinimumAfterSwapForTest exposes validateSubMinimumAfterSwap for black-box unit tests.
+var ValidateSubMinimumAfterSwapForTest = func(
+	before map[uuid.UUID]SwapPlacementForTest,
+	userA, userB uuid.UUID,
+	newA, newB SwapPlacementForTest,
+	lobbyIDs []uuid.UUID,
+	subMin int,
+) error {
+	internal := make(map[uuid.UUID]swapPlacement, len(before))
+	for id, placement := range before {
+		internal[id] = swapPlacementFromTest(placement)
+	}
+	lobbies := make([]db.GetLobbiesForEventRow, len(lobbyIDs))
+	for i, id := range lobbyIDs {
+		lobbies[i] = db.GetLobbiesForEventRow{ID: id}
+	}
+	return validateSubMinimumAfterSwap(
+		internal,
+		userA,
+		userB,
+		swapPlacementFromTest(newA),
+		swapPlacementFromTest(newB),
+		lobbies,
+		subMin,
+	)
+}
+
 // RecomputeLobbyAfterSwapForTest exposes recomputeLobbyAfterSwap for integration tests.
 func NewPostgresStoreFromDBTXForTest(dbtx db.DBTX) *PostgresStore {
 	return &PostgresStore{q: db.New(dbtx)}

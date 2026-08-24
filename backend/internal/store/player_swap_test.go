@@ -135,6 +135,64 @@ func TestResolveSwapDestinationForTest(t *testing.T) {
 	assert.False(t, store.ResolveSwapDestinationForTest(rosterSlot, unplacedSlot, false).Placed)
 }
 
+func TestValidateSubMinimumAfterSwap(t *testing.T) {
+	lobbyA := uuid.New()
+	lobbyB := uuid.New()
+	rosterUser := uuid.New()
+	subUser := uuid.New()
+	otherSub := uuid.New()
+	team1 := teamNumberPtr(1)
+	rosterA := store.SwapPlacementForTest{Placed: true, LobbyID: lobbyA, TeamNumber: team1}
+	subInB := store.SwapPlacementForTest{Placed: true, LobbyID: lobbyB, TeamNumber: nil}
+	subInA := store.SwapPlacementForTest{Placed: true, LobbyID: lobbyA, TeamNumber: nil}
+	unplaced := store.SwapPlacementForTest{Placed: false}
+
+	t.Run("skips single lobby", func(t *testing.T) {
+		err := store.ValidateSubMinimumAfterSwapForTest(
+			map[uuid.UUID]store.SwapPlacementForTest{rosterUser: rosterA, subUser: subInA},
+			rosterUser, subUser, unplaced, rosterA, []uuid.UUID{lobbyA}, 1,
+		)
+		assert.NoError(t, err)
+	})
+
+	t.Run("skips zero sub min", func(t *testing.T) {
+		err := store.ValidateSubMinimumAfterSwapForTest(
+			map[uuid.UUID]store.SwapPlacementForTest{
+				rosterUser: rosterA,
+				subUser:    subInB,
+				otherSub:   subInA,
+			},
+			rosterUser, subUser, unplaced, rosterA, []uuid.UUID{lobbyA, lobbyB}, 0,
+		)
+		assert.NoError(t, err)
+	})
+
+	t.Run("rejects last sub leaving a lobby", func(t *testing.T) {
+		err := store.ValidateSubMinimumAfterSwapForTest(
+			map[uuid.UUID]store.SwapPlacementForTest{
+				rosterUser: rosterA,
+				subUser:    subInB,
+				otherSub:   subInA,
+			},
+			rosterUser, subUser, unplaced, rosterA, []uuid.UUID{lobbyA, lobbyB}, 1,
+		)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, store.ErrInsufficientSubstitutes)
+	})
+
+	t.Run("allows can-sub roster to fill the vacated sub slot", func(t *testing.T) {
+		err := store.ValidateSubMinimumAfterSwapForTest(
+			map[uuid.UUID]store.SwapPlacementForTest{
+				rosterUser: rosterA,
+				subUser:    subInB,
+				otherSub:   subInA,
+			},
+			rosterUser, subUser, subInB, rosterA, []uuid.UUID{lobbyA, lobbyB}, 1,
+		)
+		assert.NoError(t, err)
+	})
+}
+
 func findLobbyTeamPlayers(detail model.EventGroupDetail, eventID uuid.UUID, teamNumber int) []model.LobbyPlayer {
 	var players []model.LobbyPlayer
 	for _, event := range detail.Events {
@@ -180,34 +238,6 @@ func playerInLobbyTeams(lobby model.EventLobby, userID uuid.UUID) bool {
 		}
 	}
 	return false
-}
-
-func findLobbySub(detail model.EventGroupDetail, eventID uuid.UUID) (model.LobbyPlayer, bool) {
-	for _, event := range detail.Events {
-		if event.ID != eventID {
-			continue
-		}
-		for _, lobby := range event.Lobbies {
-			if len(lobby.Subs) > 0 {
-				return lobby.Subs[0], true
-			}
-		}
-	}
-	return model.LobbyPlayer{}, false
-}
-
-func findLobbySubAtCount(detail model.EventGroupDetail, eventID uuid.UUID, n int) (model.LobbyPlayer, bool) {
-	for _, event := range detail.Events {
-		if event.ID != eventID {
-			continue
-		}
-		for _, lobby := range event.Lobbies {
-			if len(lobby.Subs) == n {
-				return lobby.Subs[0], true
-			}
-		}
-	}
-	return model.LobbyPlayer{}, false
 }
 
 func TestSwapPlayersForEvent_SameLobbyTeamSwap(t *testing.T) {
@@ -334,29 +364,36 @@ func TestSwapPlayersForEvent_MultiLobbySubMinViolation(t *testing.T) {
 	require.NoError(t, err)
 	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
-	setGroupSubMin(t, ctx, tx, groupID, 1)
 
 	for i := 0; i < 8; i++ {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
 	}
-	for i := 0; i < 3; i++ {
-		u := createTestUser(t, ctx, s)
-		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, true, false)
-	}
 
+	// Form two lobbies at sub_min 0 (8 non-subs fill 2×2v2), then require one sub each.
 	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
-
-	subPlayer, ok := findLobbySubAtCount(detail, eventID, 1)
+	eventBefore, ok := findEventInDetail(detail, eventID)
 	require.True(t, ok)
-	rosterPlayer, _, ok := findLobbyTeamPlayer(detail, eventID, 1)
+	require.GreaterOrEqual(t, len(eventBefore.Lobbies), 2)
+
+	lobbyA := eventBefore.Lobbies[0]
+	lobbyB := eventBefore.Lobbies[1]
+	rosterPlayer, ok := firstTeamOnePlayerInLobby(lobbyA)
 	require.True(t, ok)
 
-	err = s.SwapPlayersForEvent(ctx, eventID, host.ID, rosterPlayer.UserID, subPlayer.UserID, defaultMatchmakingSettings())
+	setGroupSubMin(t, ctx, tx, groupID, 1)
+	subA := createTestUser(t, ctx, s)
+	subB := createTestUser(t, ctx, s)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subA.ID, games[0].ID, true, false)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subB.ID, games[0].ID, true, false)
+	insertPlayerForLobby(t, ctx, tx, lobbyA.ID, subA.ID, nil)
+	insertPlayerForLobby(t, ctx, tx, lobbyB.ID, subB.ID, nil)
+
+	err = s.SwapPlayersForEvent(ctx, eventID, host.ID, rosterPlayer.UserID, subA.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInsufficientSubstitutes)
 }

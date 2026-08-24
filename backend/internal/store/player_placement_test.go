@@ -265,25 +265,29 @@ func TestMoveSubToUnplacedForEvent_MultiLobbySubMinViolation(t *testing.T) {
 	require.NoError(t, err)
 	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
 	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
-	setGroupSubMin(t, ctx, tx, groupID, 1)
 
 	for i := 0; i < 8; i++ {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
-	}
-	for i := 0; i < 3; i++ {
-		u := createTestUser(t, ctx, s)
-		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, true, false)
 	}
 	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
 	require.NoError(t, err)
 
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
-	subPlayer, ok := findLobbySub(detail, eventID)
+	eventBefore, ok := findEventInDetail(detail, eventID)
 	require.True(t, ok)
+	require.GreaterOrEqual(t, len(eventBefore.Lobbies), 2)
 
-	err = s.MoveSubToUnplacedForEvent(ctx, eventID, host.ID, subPlayer.UserID, defaultMatchmakingSettings())
+	setGroupSubMin(t, ctx, tx, groupID, 1)
+	subA := createTestUser(t, ctx, s)
+	subB := createTestUser(t, ctx, s)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subA.ID, games[0].ID, true, false)
+	registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, subB.ID, games[0].ID, true, false)
+	insertPlayerForLobby(t, ctx, tx, eventBefore.Lobbies[0].ID, subA.ID, nil)
+	insertPlayerForLobby(t, ctx, tx, eventBefore.Lobbies[1].ID, subB.ID, nil)
+
+	err = s.MoveSubToUnplacedForEvent(ctx, eventID, host.ID, subA.ID, defaultMatchmakingSettings())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInsufficientSubstitutes)
 }
