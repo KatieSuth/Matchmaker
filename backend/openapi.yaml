@@ -446,6 +446,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /users/me/discord/guilds:
+    get:
+      tags: [users]
+      summary: List current user's Discord servers
+      operationId: listMyDiscordGuilds
+      description: >
+        Returns the authenticated user's Discord servers from Discord's `/users/@me/guilds`.
+        This is a full list (not cursor-paginated) for the event lock picker; Discord caps
+        the payload at 200 guilds.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Discord servers the user currently belongs to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordGuildsResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Discord authorization expired or missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to load Discord servers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ---------------------------------------------------------------------------
   # Games (protected — requires Bearer JWT)
   # ---------------------------------------------------------------------------
@@ -608,7 +641,7 @@ paths:
       tags: [events]
       summary: Create event group
       operationId: createEventGroup
-      description: Creates an event group and its scheduled events.
+      description: Creates an event group and its scheduled events. Hosts may lock the group to Discord servers they belong to via `discord_guild_ids`.
       security:
         - bearerAuth: []
       requestBody:
@@ -639,12 +672,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /events/{groupId}/access:
+    get:
+      tags: [events]
+      summary: Check Discord lock access for an event group
+      operationId: getEventGroupAccess
+      description: >
+        Event page gate. Returns 200 if the viewer may open the group (host, unrestricted,
+        or member of at least one selected Discord server). Otherwise 403 with `details.code`
+        `discord_guild_restricted`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          description: UUID of the event group
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viewer may open the event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    examples: [ok]
+        "400":
+          description: Invalid or unparseable `groupId`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Event is locked to Discord servers the viewer is not in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to verify event access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /events/{groupId}:
     get:
       tags: [events]
       summary: Get event group detail
       operationId: getEventGroup
-      description: Returns detailed event group data, including nested events and registrations.
+      description: Returns detailed event group data, including nested events and registrations. Discord-locked groups return 403 unless the viewer is the host or a member of at least one selected server.
       security:
         - bearerAuth: []
       parameters:
@@ -670,6 +761,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Missing or invalid JWT
+        "403":
+          description: Event is locked to Discord servers the viewer is not in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Event group not found
           content:
@@ -686,7 +783,7 @@ paths:
       tags: [events]
       summary: Update event group settings
       operationId: updateEventGroupSettings
-      description: Updates editable event group settings (region, subs, sort logic, registration, game mode). Game mode must stay within the same game.
+      description: Updates editable event group settings (region, subs, sort logic, registration, game mode, Discord lock). Game mode must stay within the same game. An empty `discord_guild_ids` array clears the lock.
       security:
         - bearerAuth: []
       parameters:
@@ -1458,6 +1555,33 @@ components:
         message:
           type: string
           examples: ["Could not generate required tokens"]
+        details:
+          type: object
+          additionalProperties: true
+          description: >
+            Optional machine-readable extras. Discord lock 403s include `code`
+            (`discord_guild_restricted`), `event_title`, `event_named` (true when
+            `event_title` is a host-assigned name), and `discord_guilds`.
+
+    DiscordGuild:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Discord snowflake
+        name:
+          type: string
+          description: Server display name (live from Discord, or snapshot on the event)
+
+    DiscordGuildsResponse:
+      type: object
+      required: [guilds]
+      properties:
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordGuild"
 
     User:
       type: object
@@ -1849,6 +1973,13 @@ components:
             Optional custom event-group title. Max 50 Unicode code points after trim.
             Disallows control characters and paired ASCII < and > (either alone is allowed).
             Omit or send empty/whitespace to leave unset (stored as null).
+        discord_guild_ids:
+          type: array
+          items:
+            type: string
+          description: >
+            Discord snowflakes to lock this event to. Empty or omitted means unrestricted.
+            The host must belong to every selected server.
 
     CreateEventResponse:
       type: object
@@ -1902,6 +2033,13 @@ components:
           description: One entry per scheduled game in the group; each event_id must belong to this group.
           items:
             $ref: "#/components/schemas/PatchGroupEventScheduleItem"
+        discord_guild_ids:
+          type: array
+          items:
+            type: string
+          description: >
+            Discord snowflakes to lock this event to. Empty or omitted replaces the lock with
+            zero rows (unrestricted). The host must belong to every selected server.
 
     UpdateRegistrationStatusRequest:
       type: object
@@ -2136,6 +2274,7 @@ components:
         - created_at
         - updated_at
         - events
+        - discord_guilds
       properties:
         id:
           type: string
@@ -2196,6 +2335,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EventGroupEvent"
+        discord_guilds:
+          type: array
+          description: Host-selected Discord servers for the lock. Empty means unrestricted.
+          items:
+            $ref: "#/components/schemas/DiscordGuild"
 
     CreateTeamsResponse:
       type: object

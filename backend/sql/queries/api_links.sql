@@ -21,3 +21,12 @@ RETURNING *;
 -- name: GetApiLinkByUserAndName :one
 SELECT * FROM api_links
 WHERE user_id = $1 AND name = $2;
+
+-- name: GetApiLinkByUserAndNameForUpdate :one
+SELECT * FROM api_links
+WHERE user_id = $1 AND name = $2
+FOR UPDATE;
+
+-- name: DeleteApiLinkByUserAndName :exec
+DELETE FROM api_links
+WHERE user_id = $1 AND name = $2;

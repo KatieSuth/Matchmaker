@@ -23,6 +23,7 @@ import (
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
 	"github.com/KatieSuth/MatchmakerAPI/internal/cryptoutil"
+	"github.com/KatieSuth/MatchmakerAPI/internal/discord"
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
@@ -370,7 +371,8 @@ func main() {
 	}
 
 	// Handlers
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings, apiLinkKeys)
+	discordClient := discord.New(s, apilink.New(apiLinkKeys, s), discordOauth, discordAPIURL, nil)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings, apiLinkKeys, discordClient)
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())
@@ -416,6 +418,7 @@ func main() {
 			users.PUT("/me/games/:gameId", h.UpsertUsersMeGameHandler)
 			users.DELETE("/me/games/:gameId", h.DeleteUsersMeGameHandler)
 			users.GET("/me/events", h.UsersMeEventsHandler)
+			users.GET("/me/discord/guilds", h.ListMyDiscordGuildsHandler)
 		}
 
 		games := protected.Group("/games")
@@ -429,6 +432,7 @@ func main() {
 		events := protected.Group("/events")
 		{
 			events.POST("", h.CreateEventHandler)
+			events.GET("/:groupId/access", h.GetEventGroupAccessHandler)
 			events.GET("/:groupId", h.GetEventGroupHandler)
 			events.PATCH("/:groupId", h.UpdateEventGroupSettingsHandler)
 			events.DELETE("/:groupId", h.DeleteEventGroupHandler)

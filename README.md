@@ -7,7 +7,7 @@
 
 # Matchmaker
 
-Matchmaker is a free, open-source web application for organizing custom competitive games over Discord. It does this by allowing a game organizer to configure events that players can sign up to join, and it will ask players to provide their competitive rank (to be seen by the organizer but by default hidden to other players for privacy--can be configured in preferences). Once the organizer is ready, they can click a button to create 2 teams of the configured player count and sort players into those teams or a substitute pool as fairly as possibly based on their provided competitive ranks. It will also allow the organizer to make manual edits to the teams as needed.
+Matchmaker is a free, open-source web application for organizing custom competitive games over Discord. It does this by allowing a game organizer to configure events that players can sign up to join, and it will ask players to provide their competitive rank (to be seen by the organizer but by default hidden to other players for privacy--can be configured in preferences). Hosts can optionally lock an event to one or more Discord servers they belong to. Once the organizer is ready, they can click a button to create 2 teams of the configured player count and sort players into those teams or a substitute pool as fairly as possibly based on their provided competitive ranks. It will also allow the organizer to make manual edits to the teams as needed.
 
 It's now available live at https://matchmaker.games and currently supports Valorant and League of Legends. Eventually, users will have the ability to create their own custom settings for non-supported games or modify supported games (for example, 3v3 games instead of 5v5 games). See the roadmap for more information on where things are at & where we're going.
 
@@ -20,7 +20,7 @@ It's now available live at https://matchmaker.games and currently supports Valor
 - [x] One-off event admin team creation
 - [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [x] 1.0 web hosting with public availability
-- [ ] Discord server membership requirement as host option
+- [x] Discord server membership requirement as host option
 - [ ] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Allow hosts to ban users from their events
 - [ ] Host option to auto create teams X time before match

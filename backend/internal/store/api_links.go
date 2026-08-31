@@ -37,3 +37,28 @@ func (s *PostgresStore) GetApiLinkByUserAndName(ctx context.Context, userID uuid
 
 	return model.MapDbApiLinkToApiLink(dbLink), nil
 }
+
+// GetApiLinkByUserAndNameForUpdate loads the encrypted blob and row-locks it until the surrounding tx ends.
+func (s *PostgresStore) GetApiLinkByUserAndNameForUpdate(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error) {
+	dbLink, err := s.q.GetApiLinkByUserAndNameForUpdate(ctx, db.GetApiLinkByUserAndNameForUpdateParams{
+		UserID: userID,
+		Name:   name,
+	})
+	if err != nil {
+		return model.ApiLink{}, fmt.Errorf("locating api link for update for user %s name %s: %w", userID.String(), name, err)
+	}
+
+	return model.MapDbApiLinkToApiLink(dbLink), nil
+}
+
+// DeleteApiLinkByUserAndName removes the encrypted blob for this user and provider name.
+func (s *PostgresStore) DeleteApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) error {
+	err := s.q.DeleteApiLinkByUserAndName(ctx, db.DeleteApiLinkByUserAndNameParams{
+		UserID: userID,
+		Name:   name,
+	})
+	if err != nil {
+		return fmt.Errorf("deleting api link for user %s name %s: %w", userID.String(), name, err)
+	}
+	return nil
+}

@@ -20,6 +20,10 @@ type Store interface {
 	UpsertApiLink(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error)
 	// GetApiLinkByUserAndName loads the encrypted blob for this user and provider.
 	GetApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
+	// GetApiLinkByUserAndNameForUpdate loads the blob and holds a row lock until the tx ends.
+	GetApiLinkByUserAndNameForUpdate(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
+	// DeleteApiLinkByUserAndName removes the blob for this user and provider.
+	DeleteApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) error
 }
 
 // Vault encrypts refresh tokens before writing them and decrypts on read.
@@ -74,4 +78,40 @@ func (v *Vault) GetRefreshToken(ctx context.Context, userID uuid.UUID, provider 
 		return "", fmt.Errorf("decrypt refresh token: %w", err)
 	}
 	return plain, nil
+}
+
+// ForStore returns a Vault that reads and writes through s (typically a transaction-scoped store).
+func (v *Vault) ForStore(s Store) *Vault {
+	return &Vault{keys: v.keys, s: s}
+}
+
+// GetRefreshTokenForUpdate is GetRefreshToken but uses SELECT … FOR UPDATE on the api_links row.
+func (v *Vault) GetRefreshTokenForUpdate(ctx context.Context, userID uuid.UUID, provider string) (string, error) {
+	if provider == "" {
+		return "", errors.New("provider name must not be empty")
+	}
+	link, err := v.s.GetApiLinkByUserAndNameForUpdate(ctx, userID, provider)
+	if err != nil {
+		return "", fmt.Errorf("load refresh token: %w", err)
+	}
+	key, err := v.keys.key(link.KeyID)
+	if err != nil {
+		return "", fmt.Errorf("decrypt refresh token: %w", err)
+	}
+	plain, err := cryptoutil.Decrypt(key, link.RefreshToken, link.RefreshTokenIv, refreshTokenAAD(userID, provider))
+	if err != nil {
+		return "", fmt.Errorf("decrypt refresh token: %w", err)
+	}
+	return plain, nil
+}
+
+// DeleteRefreshToken removes the stored blob for this user and provider. Empty provider is rejected.
+func (v *Vault) DeleteRefreshToken(ctx context.Context, userID uuid.UUID, provider string) error {
+	if provider == "" {
+		return errors.New("provider name must not be empty")
+	}
+	if err := v.s.DeleteApiLinkByUserAndName(ctx, userID, provider); err != nil {
+		return fmt.Errorf("delete refresh token: %w", err)
+	}
+	return nil
 }

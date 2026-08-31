@@ -206,3 +206,126 @@ func TestVault_PutStoreError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "store refresh token")
 }
+
+func TestVault_DeleteRefreshToken(t *testing.T) {
+	userID := uuid.New()
+	ms, links := memoryStore()
+	ms.DeleteApiLinkByUserAndNameFn = func(_ context.Context, _ uuid.UUID, name string) error {
+		delete(links, name)
+		return nil
+	}
+	v := apilink.New(testKeyring(t), ms)
+	require.NoError(t, v.PutRefreshToken(context.Background(), userID, apilink.ProviderDiscord, "to-delete"))
+	require.Contains(t, links, apilink.ProviderDiscord)
+
+	require.NoError(t, v.DeleteRefreshToken(context.Background(), userID, apilink.ProviderDiscord))
+	_, ok := links[apilink.ProviderDiscord]
+	assert.False(t, ok)
+}
+
+func TestVault_DeleteRejectsEmptyProvider(t *testing.T) {
+	v := apilink.New(testKeyring(t), &store.MockStore{})
+	err := v.DeleteRefreshToken(context.Background(), uuid.New(), "")
+	require.Error(t, err)
+}
+
+func TestVault_DeleteStoreError(t *testing.T) {
+	ms := &store.MockStore{
+		DeleteApiLinkByUserAndNameFn: func(context.Context, uuid.UUID, string) error {
+			return errors.New("db down")
+		},
+	}
+	v := apilink.New(testKeyring(t), ms)
+	err := v.DeleteRefreshToken(context.Background(), uuid.New(), apilink.ProviderDiscord)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete refresh token")
+}
+
+func TestVault_GetRefreshTokenForUpdate(t *testing.T) {
+	userID := uuid.New()
+	ms, _ := memoryStore()
+	v := apilink.New(testKeyring(t), ms)
+	require.NoError(t, v.PutRefreshToken(context.Background(), userID, apilink.ProviderDiscord, "locked"))
+
+	got, err := v.GetRefreshTokenForUpdate(context.Background(), userID, apilink.ProviderDiscord)
+	require.NoError(t, err)
+	assert.Equal(t, "locked", got)
+}
+
+func TestVault_GetForUpdateRejectsEmptyProvider(t *testing.T) {
+	v := apilink.New(testKeyring(t), &store.MockStore{})
+	_, err := v.GetRefreshTokenForUpdate(context.Background(), uuid.New(), "")
+	require.Error(t, err)
+}
+
+func TestVault_GetForUpdateStoreError(t *testing.T) {
+	ms := &store.MockStore{
+		GetApiLinkByUserAndNameForUpdateFn: func(context.Context, uuid.UUID, string) (model.ApiLink, error) {
+			return model.ApiLink{}, errors.New("db down")
+		},
+	}
+	v := apilink.New(testKeyring(t), ms)
+	_, err := v.GetRefreshTokenForUpdate(context.Background(), uuid.New(), apilink.ProviderDiscord)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load refresh token")
+}
+
+func TestVault_GetForUpdateUnknownKeyID(t *testing.T) {
+	ms := &store.MockStore{
+		GetApiLinkByUserAndNameForUpdateFn: func(context.Context, uuid.UUID, string) (model.ApiLink, error) {
+			return model.ApiLink{
+				RefreshToken:   "aa",
+				RefreshTokenIv: "bb",
+				KeyID:          "missing",
+			}, nil
+		},
+	}
+	v := apilink.New(testKeyring(t), ms)
+	_, err := v.GetRefreshTokenForUpdate(context.Background(), uuid.New(), apilink.ProviderDiscord)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown encryption key id")
+}
+
+func TestVault_GetForUpdateCopiedBlobDoesNotDecrypt(t *testing.T) {
+	userA := uuid.New()
+	userB := uuid.New()
+	var stored model.ApiLink
+	ms := &store.MockStore{
+		UpsertApiLinkFn: func(_ context.Context, uid uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error) {
+			stored = model.ApiLink{UserID: uid, Name: name, RefreshToken: ciphertext, RefreshTokenIv: nonce, KeyID: keyID}
+			return stored, nil
+		},
+		GetApiLinkByUserAndNameForUpdateFn: func(_ context.Context, uid uuid.UUID, name string) (model.ApiLink, error) {
+			copied := stored
+			copied.UserID = uid
+			copied.Name = name
+			return copied, nil
+		},
+	}
+	v := apilink.New(testKeyring(t), ms)
+	require.NoError(t, v.PutRefreshToken(context.Background(), userA, apilink.ProviderDiscord, "discord-refresh"))
+
+	_, err := v.GetRefreshTokenForUpdate(context.Background(), userB, apilink.ProviderDiscord)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decrypt refresh token")
+}
+
+func TestVault_ForStoreReadsAndWritesThroughProvidedStore(t *testing.T) {
+	userID := uuid.New()
+	outer, outerLinks := memoryStore()
+	inner, innerLinks := memoryStore()
+	v := apilink.New(testKeyring(t), outer)
+	txVault := v.ForStore(inner)
+
+	require.NoError(t, txVault.PutRefreshToken(context.Background(), userID, apilink.ProviderDiscord, "tx-secret"))
+	assert.Empty(t, outerLinks)
+	require.Contains(t, innerLinks, apilink.ProviderDiscord)
+
+	got, err := txVault.GetRefreshToken(context.Background(), userID, apilink.ProviderDiscord)
+	require.NoError(t, err)
+	assert.Equal(t, "tx-secret", got)
+
+	_, err = v.GetRefreshToken(context.Background(), userID, apilink.ProviderDiscord)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load refresh token")
+}

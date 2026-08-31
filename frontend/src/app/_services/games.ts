@@ -29,3 +29,29 @@ export function extractApiError(err: unknown, fallback = "Something went wrong. 
     (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
   );
 }
+
+export interface DiscordGuildRestrictionDetails {
+  code: string;
+  event_title: string;
+  event_named: boolean;
+  discord_guilds: { id: string; name: string }[];
+}
+
+/** Reads a Discord lock 403 `details` object from an axios error, or null if this is a different failure. */
+export function extractDiscordGuildRestriction(err: unknown): DiscordGuildRestrictionDetails | null {
+  const response = (err as {
+    response?: {
+      status?: number;
+      data?: { details?: DiscordGuildRestrictionDetails };
+    };
+  })?.response;
+  if (response?.status !== 403) return null;
+  const details = response.data?.details;
+  if (!details || details.code !== "discord_guild_restricted") return null;
+  return {
+    code: details.code,
+    event_title: details.event_title ?? "",
+    event_named: Boolean(details.event_named),
+    discord_guilds: Array.isArray(details.discord_guilds) ? details.discord_guilds : [],
+  };
+}

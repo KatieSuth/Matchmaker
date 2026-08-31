@@ -783,3 +783,25 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 func ptrInt32(v int32) *int32 {
 	return &v
 }
+
+func TestMapDbEventGroupDiscordGuildsToDiscordGuilds_Empty(t *testing.T) {
+	assert.Empty(t, model.MapDbEventGroupDiscordGuildsToDiscordGuilds(nil))
+	assert.Empty(t, model.MapDbEventGroupDiscordGuildsToDiscordGuilds([]db.EventGroupDiscordGuild{}))
+}
+
+func TestMapDbEventGroupDiscordGuildsToDiscordGuilds_MapsFields(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	row := db.EventGroupDiscordGuild{
+		ID:           uuid.New(),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		EventGroupID: uuid.New(),
+		GuildID:      "123",
+		GuildName:    "Scrims",
+	}
+	got := model.MapDbEventGroupDiscordGuildsToDiscordGuilds([]db.EventGroupDiscordGuild{row})
+	require.Len(t, got, 1)
+	assert.Equal(t, "123", got[0].ID)
+	assert.Equal(t, "Scrims", got[0].Name)
+	assert.Equal(t, model.MapDbEventGroupDiscordGuildToDiscordGuild(row), got[0])
+}

@@ -137,6 +137,38 @@ export default function AboutFaq() {
 
       <div className="flex flex-col gap-2">
         <h2 className={questionCls}>
+          Why is an event blocked, and how does the Discord server lock work?
+        </h2>
+        <p className={bodyText}>
+          Hosts can lock an event to one or more Discord servers they belong to. Anyone else,
+          including lobby hosts, must be in at least one of those servers to open the event or
+          register. The event owner is never locked out. Saving the lock with no servers, or
+          turning it off, makes the event open to anyone with the link again.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          Discord is having trouble and users can&apos;t register for events. What do I do?
+        </h2>
+        <p className={bodyText}>
+          Generally wait, and check{" "}
+          <a
+            href="https://discordstatus.com"
+            className="body-link"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            discordstatus.com
+          </a>
+          . If the Discord API is having an outage, it can affect Matchmaker&apos;s ability to check
+          server membership. Hosts are never locked out of their own events, so they can temporarily
+          turn off the Discord server lock and save until Discord&apos;s API recovers, then lock it again.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
           Why does my display name and event name hit the 50-character limit so fast when I use emojis?
         </h2>
         <p className={bodyText}>

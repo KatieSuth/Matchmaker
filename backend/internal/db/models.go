@@ -46,6 +46,15 @@ type EventGroup struct {
 	Name                *string
 }
 
+type EventGroupDiscordGuild struct {
+	ID           uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	EventGroupID uuid.UUID
+	GuildID      string
+	GuildName    string
+}
+
 type Game struct {
 	ID           uuid.UUID
 	Name         string

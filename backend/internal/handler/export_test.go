@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // SetGenerateAccessTokenForRefreshTest overrides access-token generation during refresh tests.
@@ -44,4 +45,19 @@ func WriteSessionCookieForTest(
 	domain string,
 ) {
 	h.writeSessionCookie(c, name, value, maxAge, httpOnly, domain)
+}
+
+// SetDiscordAPIForTest swaps the Discord client (including nil) for handler tests.
+func SetDiscordAPIForTest(h *Handler, d DiscordAPI) {
+	h.discord = d
+}
+
+// DiscordRestrictionErrorForTest exercises the Discord lock error String/Unwrap paths.
+func DiscordRestrictionErrorForTest(cause error) error {
+	return &discordGuildRestriction{eventTitle: "t", cause: cause}
+}
+
+// WriteDiscordGuildRestrictionForTest writes a 403 with nil guilds to cover the empty-slice branch.
+func WriteDiscordGuildRestrictionForTest(h *Handler, c *gin.Context, userID, groupID uuid.UUID) {
+	h.writeDiscordGuildRestriction(c, userID, groupID, &discordGuildRestriction{eventTitle: "t", guilds: nil})
 }

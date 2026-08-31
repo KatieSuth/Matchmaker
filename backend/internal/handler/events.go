@@ -18,14 +18,15 @@ import (
 const eventGroupNameMaxRunes = 50
 
 type createEventRequest struct {
-	GameModeID       string `json:"game_mode_id"`
-	Region           string `json:"region"`
-	StartTime        string `json:"start_time"`
-	SubMin           int32  `json:"sub_min"`
-	GamesToRun       int32  `json:"games_to_run"`
-	RegistrationOpen bool   `json:"registration_open"`
-	SortLogic        string `json:"sort_logic"`
-	Name             string `json:"name"`
+	GameModeID       string   `json:"game_mode_id"`
+	Region           string   `json:"region"`
+	StartTime        string   `json:"start_time"`
+	SubMin           int32    `json:"sub_min"`
+	GamesToRun       int32    `json:"games_to_run"`
+	RegistrationOpen bool     `json:"registration_open"`
+	SortLogic        string   `json:"sort_logic"`
+	Name             string   `json:"name"`
+	DiscordGuildIDs  []string `json:"discord_guild_ids"`
 }
 
 type patchGroupEventItem struct {
@@ -41,6 +42,7 @@ type updateEventGroupSettingsRequest struct {
 	RegistrationOpen *bool                 `json:"registration_open"`
 	Name             string                `json:"name"`
 	Events           []patchGroupEventItem `json:"events"`
+	DiscordGuildIDs  []string              `json:"discord_guild_ids"`
 }
 
 type updateRegistrationStatusRequest struct {
@@ -91,6 +93,7 @@ type createTeamsResponse struct {
 }
 
 // POST /events
+// Creates a group. discord_guild_ids locks it to those Discord servers (host must belong to each).
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
 	if !ok {
@@ -203,6 +206,20 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		return
 	}
 
+	discordGuilds, err := h.snapshotDiscordGuilds(c.Request.Context(), userUUID, body.DiscordGuildIDs)
+	if err != nil {
+		if errors.Is(err, errDiscordGuildNotMember) {
+			slog.WarnContext(c.Request.Context(), "host selected discord guild they do not belong to", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "You must belong to every selected Discord server",
+			})
+			return
+		}
+		h.writeDiscordGuildsLoadError(c, userUUID, err)
+		return
+	}
+
 	groupID, err := h.store.CreateEventGroupWithEvents(
 		c.Request.Context(),
 		userUUID,
@@ -214,6 +231,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		name,
 		startTime,
 		body.GamesToRun,
+		discordGuilds,
 	)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidSortLogic) {
@@ -247,6 +265,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 }
 
 // GET /events/:groupId
+// Enforces the same Discord lock as /access so skipping the gate cannot load a locked event.
 func (h *Handler) GetEventGroupHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
 	if !ok {
@@ -263,6 +282,10 @@ func (h *Handler) GetEventGroupHandler(c *gin.Context) {
 		return
 	}
 
+	if !h.requireEventDiscordAllowed(c, groupID, userUUID) {
+		return
+	}
+
 	detail, err := h.store.GetEventGroupDetail(c.Request.Context(), groupID, userUUID)
 	if err != nil {
 		if errors.Is(err, store.ErrEventGroupNotFound) || errors.Is(err, pgx.ErrNoRows) {
@@ -276,6 +299,31 @@ func (h *Handler) GetEventGroupHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, detail)
+}
+
+// GET /events/:groupId/access
+// EventPage gate: 200 if the viewer may open the group, 403 with Discord lock details otherwise.
+func (h *Handler) GetEventGroupAccessHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	groupID, err := uuid.Parse(c.Param("groupId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid groupId in GetEventGroupAccessHandler", "user_id", userUUID, "group_id", c.Param("groupId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "groupId must be a valid UUID",
+		})
+		return
+	}
+
+	if !h.requireEventDiscordAllowed(c, groupID, userUUID) {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // PATCH /events/:groupId
@@ -372,7 +420,21 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, name, eventUpdates)
+	discordGuilds, err := h.snapshotDiscordGuilds(c.Request.Context(), userUUID, body.DiscordGuildIDs)
+	if err != nil {
+		if errors.Is(err, errDiscordGuildNotMember) {
+			slog.WarnContext(c.Request.Context(), "host selected discord guild they do not belong to", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "You must belong to every selected Discord server",
+			})
+			return
+		}
+		h.writeDiscordGuildsLoadError(c, userUUID, err)
+		return
+	}
+
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, name, eventUpdates, discordGuilds)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -597,6 +659,10 @@ func (h *Handler) SwapPlayersHandler(c *gin.Context) {
 		return
 	}
 
+	if !h.requireEventDiscordAllowedForEvent(c, eventID, userUUID) {
+		return
+	}
+
 	err = h.store.SwapPlayersForEvent(c.Request.Context(), eventID, userUUID, userA, userB, h.matchmakingSettings)
 	if err != nil {
 		switch {
@@ -697,6 +763,10 @@ func (h *Handler) MoveSubToUnplacedHandler(c *gin.Context) {
 		return
 	}
 
+	if !h.requireEventDiscordAllowedForEvent(c, eventID, userUUID) {
+		return
+	}
+
 	err = h.store.MoveSubToUnplacedForEvent(c.Request.Context(), eventID, userUUID, targetUserID, h.matchmakingSettings)
 	if err != nil {
 		h.respondPlacementMoveError(c, userUUID, eventID, err, "sub-to-unplaced")
@@ -741,6 +811,10 @@ func (h *Handler) MoveUnplacedToSubsHandler(c *gin.Context) {
 		return
 	}
 
+	if !h.requireEventDiscordAllowedForEvent(c, eventID, userUUID) {
+		return
+	}
+
 	err = h.store.MoveUnplacedToSubsForEvent(c.Request.Context(), eventID, userUUID, targetUserID, lobbyID, h.matchmakingSettings)
 	if err != nil {
 		h.respondPlacementMoveError(c, userUUID, eventID, err, "unplaced-to-subs")
@@ -776,6 +850,10 @@ func (h *Handler) SetLobbyHostHandler(c *gin.Context) {
 	if err != nil {
 		slog.WarnContext(c.Request.Context(), "invalid user_id in SetLobbyHostHandler", "user_id", userUUID, "event_id", eventID, "target_user_id", body.UserID, "error", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id must be a valid UUID"})
+		return
+	}
+
+	if !h.requireEventDiscordAllowedForEvent(c, eventID, userUUID) {
 		return
 	}
 
@@ -831,6 +909,10 @@ func (h *Handler) UpdateLobbyJoinCodeHandler(c *gin.Context) {
 		return
 	}
 
+	if !h.requireEventDiscordAllowedForLobby(c, lobbyID, userUUID) {
+		return
+	}
+
 	err = h.store.UpdateLobbyJoinCode(c.Request.Context(), lobbyID, userUUID, body.JoinCode)
 	if err != nil {
 		switch {
@@ -882,6 +964,10 @@ func (h *Handler) UpsertMyRegistrationHandler(c *gin.Context) {
 	var duoRequest *string
 	if trimmed := strings.TrimSpace(body.DuoRequest); trimmed != "" {
 		duoRequest = &trimmed
+	}
+
+	if !h.requireEventDiscordAllowedForEvent(c, eventID, userUUID) {
+		return
 	}
 
 	err = h.store.UpsertRegistrationForEvent(c.Request.Context(), eventID, userUUID, body.CanSubstitute, body.CanLobbyHost, duoRequest)
@@ -957,6 +1043,10 @@ func (h *Handler) UpsertMyGroupRegistrationsHandler(c *gin.Context) {
 	var duoRequest *string
 	if trimmed := strings.TrimSpace(body.DuoRequest); trimmed != "" {
 		duoRequest = &trimmed
+	}
+
+	if !h.requireEventDiscordAllowed(c, groupID, userUUID) {
+		return
 	}
 
 	err = h.store.UpsertRegistrationsForGroup(c.Request.Context(), groupID, userUUID, items, duoRequest)

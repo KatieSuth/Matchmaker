@@ -57,7 +57,7 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, uuid.New(), 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1)
+		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, uuid.New(), 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get game mode by id")
 	})
@@ -72,7 +72,7 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1)
+		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create event group")
 	})
@@ -87,7 +87,7 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: tx, failOnExecCall: 1, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1)
+		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create event #1")
 	})
@@ -145,7 +145,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get event group")
 	})
@@ -154,7 +154,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "count lobbies by group")
 	})
@@ -163,7 +163,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get events by group")
 	})
@@ -172,7 +172,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get event group detail")
 	})
@@ -181,7 +181,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get game mode")
 	})
@@ -190,7 +190,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "update event group settings")
 	})
@@ -199,7 +199,7 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "update event schedule")
 	})
@@ -210,7 +210,7 @@ func TestUpdateEventGroupSettings_UnknownEventID(t *testing.T) {
 	evStart := time.Now().UTC().Add(48 * time.Hour)
 
 	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "",
-		patchEventUpdates(uuid.New(), fixture.modeID, evStart))
+		patchEventUpdates(uuid.New(), fixture.modeID, evStart), nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }
@@ -222,7 +222,7 @@ func TestUpdateEventGroupSettings_DuplicateEventInPayload(t *testing.T) {
 	dup := patchEventUpdates(fixture.eventID, fixture.modeID, evStart)
 	updates := append(dup, dup...)
 
-	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates)
+	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }
@@ -233,7 +233,7 @@ func TestUpdateEventGroupSettings_MismatchedEventCount(t *testing.T) {
 	insertEventInGroupFixture(t, fixture.ctx, fixture.tx, fixture.groupID, fixture.modeID, evStart.Add(24*time.Hour))
 
 	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "",
-		patchEventUpdates(fixture.eventID, fixture.modeID, evStart))
+		patchEventUpdates(fixture.eventID, fixture.modeID, evStart), nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }

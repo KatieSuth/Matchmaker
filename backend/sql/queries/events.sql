@@ -181,6 +181,7 @@ SELECT
     L.id AS lobby_id,
     L.host,
     L.event_id,
+    EG.id AS group_id,
     EG.owner_id,
     G.join_link_base
 FROM lobbies AS L

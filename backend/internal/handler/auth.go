@@ -4,13 +4,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
+	"github.com/KatieSuth/MatchmakerAPI/internal/discord"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
@@ -133,33 +134,36 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	//exchange the code for the user's token
-	token, err := h.oauth2Config.Exchange(c, c.Query("code"))
-	if err != nil {
-		slog.WarnContext(c.Request.Context(), "OAuth code exchange failed", "error", err)
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
-	}
-
-	//use the token to fetch the user from Discord
-	client := h.oauth2Config.Client(c.Request.Context(), token)
-	resp, err := client.Get(h.discordApiUrl + "/users/@me")
-	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to reach Discord API", "error", err)
+	if h.discord == nil {
+		slog.ErrorContext(c.Request.Context(), "discord api not configured for OAuth callback")
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": "Could not reach Discord API",
 		})
 		return
 	}
-	defer resp.Body.Close()
 
-	var discordUser model.DiscordUser
-	if err := json.NewDecoder(resp.Body).Decode(&discordUser); err != nil {
-		slog.ErrorContext(c.Request.Context(), "failed to decode Discord user response", "error", err)
+	token, err := h.discord.Exchange(c.Request.Context(), c.Query("code"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "OAuth code exchange failed", "error", err)
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	discordUser, err := h.discord.FetchMe(c.Request.Context(), token.AccessToken)
+	if err != nil {
+		if errors.Is(err, discord.ErrMalformedUser) {
+			slog.ErrorContext(c.Request.Context(), "failed to decode Discord user response", "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"message": "Unexpected, possibly malformed, response from Discord API",
+			})
+			return
+		}
+		slog.ErrorContext(c.Request.Context(), "failed to reach Discord API", "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": "Unexpected, possibly malformed, response from Discord API",
+			"message": "Could not reach Discord API",
 		})
 		return
 	}
@@ -217,6 +221,10 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		return
 	}
 	slog.InfoContext(c.Request.Context(), "stored encrypted API refresh token", "user_id", user.ID, "provider", apilink.ProviderDiscord)
+
+	if token.AccessToken != "" && !token.Expiry.IsZero() {
+		h.discord.SeedAccessToken(user.ID, token.AccessToken, token.Expiry)
+	}
 
 	//generate a short-lived one-time code to exchange for tokens in /auth/complete
 	otcBytes := make([]byte, 16)

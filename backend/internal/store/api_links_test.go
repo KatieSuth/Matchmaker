@@ -99,3 +99,53 @@ func TestUpsertApiLink_QueryError(t *testing.T) {
 		assert.Contains(t, err.Error(), "upserting api link")
 	})
 }
+
+func TestGetApiLinkByUserAndNameForUpdate_Success(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-al-fu", "alfu")
+		_, err := s.UpsertApiLink(context.Background(), seeded.ID, apilink.ProviderDiscord, "cipher-fu", "nonce-fu", "1")
+		require.NoError(t, err)
+
+		got, err := s.GetApiLinkByUserAndNameForUpdate(context.Background(), seeded.ID, apilink.ProviderDiscord)
+		require.NoError(t, err)
+		assert.Equal(t, "cipher-fu", got.RefreshToken)
+	})
+}
+
+func TestGetApiLinkByUserAndNameForUpdate_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-al-fu-err", "alfuerr")
+		_, err := s.UpsertApiLink(context.Background(), seeded.ID, apilink.ProviderDiscord, "cipher-fu", "nonce-fu", "1")
+		require.NoError(t, err)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = s.GetApiLinkByUserAndNameForUpdate(ctx, seeded.ID, apilink.ProviderDiscord)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "locating api link for update")
+	})
+}
+
+func TestDeleteApiLinkByUserAndName_Success(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-al-del", "aldel")
+		_, err := s.UpsertApiLink(context.Background(), seeded.ID, apilink.ProviderDiscord, "cipher-del", "nonce-del", "1")
+		require.NoError(t, err)
+
+		err = s.DeleteApiLinkByUserAndName(context.Background(), seeded.ID, apilink.ProviderDiscord)
+		require.NoError(t, err)
+
+		_, err = s.GetApiLinkByUserAndName(context.Background(), seeded.ID, apilink.ProviderDiscord)
+		assert.Error(t, err)
+	})
+}
+
+func TestDeleteApiLinkByUserAndName_QueryError(t *testing.T) {
+	test_util.WithTestTx(t, func(q *db.Queries, s *store.PostgresStore) {
+		seeded := seedUser(t, q, "discord-al-del-err", "aldelerr")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := s.DeleteApiLinkByUserAndName(ctx, seeded.ID, apilink.ProviderDiscord)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "deleting api link")
+	})
+}

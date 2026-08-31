@@ -11,6 +11,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteApiLinkByUserAndName = `-- name: DeleteApiLinkByUserAndName :exec
+DELETE FROM api_links
+WHERE user_id = $1 AND name = $2
+`
+
+type DeleteApiLinkByUserAndNameParams struct {
+	UserID uuid.UUID
+	Name   string
+}
+
+func (q *Queries) DeleteApiLinkByUserAndName(ctx context.Context, arg DeleteApiLinkByUserAndNameParams) error {
+	_, err := q.db.Exec(ctx, deleteApiLinkByUserAndName, arg.UserID, arg.Name)
+	return err
+}
+
 const getApiLinkByUserAndName = `-- name: GetApiLinkByUserAndName :one
 SELECT id, user_id, name, refresh_token, refresh_token_iv, created_at, updated_at, key_id FROM api_links
 WHERE user_id = $1 AND name = $2
@@ -23,6 +38,33 @@ type GetApiLinkByUserAndNameParams struct {
 
 func (q *Queries) GetApiLinkByUserAndName(ctx context.Context, arg GetApiLinkByUserAndNameParams) (ApiLink, error) {
 	row := q.db.QueryRow(ctx, getApiLinkByUserAndName, arg.UserID, arg.Name)
+	var i ApiLink
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.RefreshToken,
+		&i.RefreshTokenIv,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.KeyID,
+	)
+	return i, err
+}
+
+const getApiLinkByUserAndNameForUpdate = `-- name: GetApiLinkByUserAndNameForUpdate :one
+SELECT id, user_id, name, refresh_token, refresh_token_iv, created_at, updated_at, key_id FROM api_links
+WHERE user_id = $1 AND name = $2
+FOR UPDATE
+`
+
+type GetApiLinkByUserAndNameForUpdateParams struct {
+	UserID uuid.UUID
+	Name   string
+}
+
+func (q *Queries) GetApiLinkByUserAndNameForUpdate(ctx context.Context, arg GetApiLinkByUserAndNameForUpdateParams) (ApiLink, error) {
+	row := q.db.QueryRow(ctx, getApiLinkByUserAndNameForUpdate, arg.UserID, arg.Name)
 	var i ApiLink
 	err := row.Scan(
 		&i.ID,
