@@ -121,6 +121,31 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
       env {
+        name  = "API_LINK_ENCRYPTION_KEY_ID"
+        value = var.api_link_encryption_key_id
+      }
+      env {
+        name = "API_LINK_ENCRYPTION_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.api_link_encrypt.secret_id
+            version = "latest"
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = var.api_link_encryption_previous_keys != "" ? [1] : []
+        content {
+          name = "API_LINK_ENCRYPTION_PREVIOUS_KEYS"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.api_link_encrypt_previous[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+      env {
         name = "DISCORD_CLIENT_SECRET"
         value_source {
           secret_key_ref {
@@ -165,6 +190,8 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.jwt,
     google_secret_manager_secret_version.cookie_hash,
     google_secret_manager_secret_version.cookie_encrypt,
+    google_secret_manager_secret_version.api_link_encrypt,
+    google_secret_manager_secret_version.api_link_encrypt_previous,
     google_secret_manager_secret_version.discord_client_secret,
     google_secret_manager_secret_version.origin_verify,
   ]

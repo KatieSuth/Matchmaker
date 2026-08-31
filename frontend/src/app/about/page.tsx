@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 const bodyText =
   "font-light leading-[1.8] text-[var(--color-text-body)]";
 
-const PRIVACY_UPDATED = "August 17, 2026";
+const PRIVACY_UPDATED = "August 30, 2026";
 
 export default function AboutPage() {
   const feedbackUrl =
@@ -100,7 +100,10 @@ export default function AboutPage() {
                   Events
                 </Link>
                 , a host creates an event with a name, game and mode, region, schedule, a
-                substitute minimum, and whether registration is open. The first lobby can be created
+                substitute minimum, and whether registration is open. Hosts can optionally lock
+                an event to one or more Discord servers they belong to; only members of at least
+                one selected server can open the event or register. Turning the lock off or
+                saving with no servers selected removes the lock. The first lobby can be created
                 as soon as there are enough players to fill its teams. Before Matchmaker creates a
                 second lobby, there must also be enough players who volunteered to substitute to
                 meet the host&apos;s minimum, with at least one volunteer still able to play so
@@ -129,7 +132,10 @@ export default function AboutPage() {
               <SectionDivider title="Join an event" />
               <p className={bodyText}>
                 When a host sends you an event link, you can open the event page to review the
-                details and register. Before registering, you can review the in-game name and
+                details and register. If the host locked the event to selected Discord servers,
+                Matchmakerchecks your Discord server membership when you open the page and again
+                when you register. Leaving every required server while the tab stays open means
+                you cannot register. Before registering, you can review the in-game name and
                 competitive rank saved for that game and update them there or in{" "}
                 <Link href="/my_account" className="body-link">
                   My Account
@@ -263,12 +269,10 @@ export default function AboutPage() {
                 <p className={bodyText}>
                   You sign in through Discord. Matchmaker never sees a password. Traffic uses
                   HTTPS. We store a hashed version of your session refresh token, not the raw
-                  token. Matchmaker does not currently keep Discord&apos;s authorization tokens
-                  after sign-in. A future server-membership feature may securely store the tokens
-                  needed to check your Discord server memberships periodically without asking you
-                  to authorize again each time. Those tokens would only be used to request the
-                  Discord data needed for that feature. Ranks and pronouns stay visible only to
-                  event hosts unless you choose otherwise.
+                  token. We also store an encrypted Discord refresh token so we can request your
+                  current server list from Discord when a host picks servers or when a locked
+                  event is opened or registered. Ranks and pronouns stay visible only to event
+                  hosts unless you choose otherwise.
                 </p>
               </div>
 
@@ -280,7 +284,9 @@ export default function AboutPage() {
                   Matchmaker does not sell your data, use it for advertising, or share your
                   profile, ranks, or event data with other companies for product or marketing.
                   Discord is used so you can sign in; avatar images are loaded from Discord&apos;s
-                  network in your browser.
+                  network in your browser. Discord also receives guild-list API calls (using your
+                  OAuth user token) when a host picks servers or when a locked event is opened or
+                  registered. We do not send Discord your Matchmaker event roster.
                 </p>
                 <p className={bodyText}>
                   The live site uses cloud providers for hosting and traffic routing. Those
@@ -376,14 +382,15 @@ export default function AboutPage() {
                   What we don&apos;t store
                 </h3>
                 <p className={bodyText}>
-                  No email. No password. No Discord chat, DMs, or message history. Discord&apos;s
-                  login screen asks for permission to see your servers, but Matchmaker does not
-                  currently save a list of your Discord servers. A future server-membership feature
-                  may periodically request the current list from Discord using a stored
-                  authorization token, use it to check membership, and discard the list rather than
-                  storing it. Matchmaker does not set analytics cookies or run its own advertising
-                  or visitor trackers. Your avatar image stays on Discord&apos;s network; we only
-                  store the identifier used to display it.
+                  No email. No password. No Discord chat, DMs, or message history. We do not
+                  persist your full Discord server list in the database. We snapshot only the
+                  host-selected server id and name on an event. Membership checks ask Discord for
+                  your current server list and compare it; that full list is not written to disk.
+                  The API may keep it in memory for up to 60 seconds so nearby checks (for example
+                  opening a locked event) do not each call Discord again. Matchmaker does not set
+                  analytics cookies or run its own advertising or visitor trackers. Your avatar
+                  image stays on Discord&apos;s network; we only store the identifier used to
+                  display it.
                 </p>
               </div>
 
@@ -424,9 +431,14 @@ export default function AboutPage() {
                   Your account and related event data stay until you remove what the app allows
                   (game profiles, leaving or deleting events) or until you ask for the account to
                   be removed. Login sessions stay active while you use the site, end when you log
-                  out, and otherwise lapse after about a week without use. Crash reports
-                  and server logs are kept by those systems only as needed to run the site, not as
-                  a directory of users.
+                  out, and otherwise lapse after about a week without use. Event Discord-server
+                  snapshots last until the host clears the lock or deletes the event. Your full
+                  Discord server list, when fetched for a membership check or the host server
+                  picker, may stay in the API process&apos;s memory for up to 60 seconds and is
+                  not stored in the database. The encrypted Discord refresh token is kept until
+                  Discord login is revoked or the account is removed. Crash reports and server
+                  logs are kept by those systems only as needed to run the site, not as a
+                  directory of users.
                 </p>
               </div>
 

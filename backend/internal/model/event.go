@@ -115,6 +115,7 @@ type EventGroupDetail struct {
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
 	Events           []EventGroupEvent `json:"events"`
+	DiscordGuilds    []DiscordGuild    `json:"discord_guilds"`
 }
 
 /*
@@ -250,5 +251,6 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 		Events:           events,
+		DiscordGuilds:    []DiscordGuild{},
 	}
 }

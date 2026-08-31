@@ -21,6 +21,9 @@ import (
 	"time"
 	_ "time/tzdata" // embed IANA zones; scratch image has no /usr/share/zoneinfo
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
+	"github.com/KatieSuth/MatchmakerAPI/internal/cryptoutil"
+	"github.com/KatieSuth/MatchmakerAPI/internal/discord"
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/logger"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
@@ -320,6 +323,27 @@ func main() {
 		FairnessReferenceTierCount: fairnessReferenceTierCount,
 	}
 
+	apiLinkEncryptionKey := os.Getenv("API_LINK_ENCRYPTION_KEY")
+	if apiLinkEncryptionKey == "" {
+		fatalExit("API_LINK_ENCRYPTION_KEY is required")
+	}
+	apiLinkKeyBytes, err := cryptoutil.ParseAES256Key(apiLinkEncryptionKey)
+	if err != nil {
+		fatalExit("invalid API_LINK_ENCRYPTION_KEY", "error", err)
+	}
+	apiLinkKeyID := os.Getenv("API_LINK_ENCRYPTION_KEY_ID")
+	if apiLinkKeyID == "" {
+		apiLinkKeyID = apilink.DefaultKeyID
+	}
+	previousKeys, err := apilink.ParsePreviousKeys(os.Getenv("API_LINK_ENCRYPTION_PREVIOUS_KEYS"))
+	if err != nil {
+		fatalExit("invalid API_LINK_ENCRYPTION_PREVIOUS_KEYS", "error", err)
+	}
+	apiLinkKeys, err := apilink.NewKeyring(apiLinkKeyID, apiLinkKeyBytes, previousKeys)
+	if err != nil {
+		fatalExit("invalid API_LINK encryption keyring", "error", err)
+	}
+
 	// Optional: reject direct origin traffic when set (Cloudflare Worker injects the header).
 	originVerifySecret := os.Getenv("ORIGIN_VERIFY_SECRET")
 
@@ -347,7 +371,8 @@ func main() {
 	}
 
 	// Handlers
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings)
+	discordClient := discord.New(s, apilink.New(apiLinkKeys, s), discordOauth, discordAPIURL, nil)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings, apiLinkKeys, discordClient)
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())
@@ -393,6 +418,7 @@ func main() {
 			users.PUT("/me/games/:gameId", h.UpsertUsersMeGameHandler)
 			users.DELETE("/me/games/:gameId", h.DeleteUsersMeGameHandler)
 			users.GET("/me/events", h.UsersMeEventsHandler)
+			users.GET("/me/discord/guilds", h.ListMyDiscordGuildsHandler)
 		}
 
 		games := protected.Group("/games")
@@ -406,6 +432,7 @@ func main() {
 		events := protected.Group("/events")
 		{
 			events.POST("", h.CreateEventHandler)
+			events.GET("/:groupId/access", h.GetEventGroupAccessHandler)
 			events.GET("/:groupId", h.GetEventGroupHandler)
 			events.PATCH("/:groupId", h.UpdateEventGroupSettingsHandler)
 			events.DELETE("/:groupId", h.DeleteEventGroupHandler)

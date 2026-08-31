@@ -43,3 +43,11 @@ export async function upsertCurrentUserGame(gameId: string, payload: UpsertUserG
 export async function deleteCurrentUserGame(gameId: string): Promise<void> {
   await api.delete(`/users/me/games/${gameId}`);
 }
+
+export async function fetchMyDiscordGuilds(signal?: AbortSignal): Promise<{ id: string; name: string }[]> {
+  const res = await api.get<{ guilds: { id: string; name: string }[] }>(
+    "/users/me/discord/guilds",
+    signal ? { signal } : undefined,
+  );
+  return res.data.guilds ?? [];
+}

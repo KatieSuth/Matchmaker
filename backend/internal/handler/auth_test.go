@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
 	"github.com/KatieSuth/MatchmakerAPI/internal/handler"
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/store"
@@ -164,6 +165,13 @@ func discordOAuthConfig(tokenURL string) *oauth2.Config {
 	}
 }
 
+const discordTokenJSON = `{"access_token":"fake-token","token_type":"Bearer","refresh_token":"discord-refresh"}`
+const discordTokenJSONNoRefresh = `{"access_token":"fake-token","token_type":"Bearer"}`
+
+func allowUpsertApiLink(_ context.Context, _ uuid.UUID, _ string, _ string, _ string, _ string) (model.ApiLink, error) {
+	return model.ApiLink{}, nil
+}
+
 func newDiscordOAuthServer(t *testing.T, tokenStatus int, tokenBody string, userStatus int, userBody string) *httptest.Server {
 	t.Helper()
 
@@ -201,18 +209,26 @@ func TestDiscordCallbackHandler_Success(t *testing.T) {
 	ts := newDiscordOAuthServer(
 		t,
 		http.StatusOK,
-		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		discordTokenJSON,
 		http.StatusOK,
 		`{"id":"12345","username":"testuser","avatar":"hash"}`,
 	)
 	defer ts.Close()
 
+	var storedName, storedCipher, storedNonce, storedKeyID string
 	ms := &store.MockStore{
 		GetUserByDiscordIDFn: func(ctx context.Context, id string, update bool) (model.User, error) {
 			return model.User{ID: uuid.New(), NewUser: true}, nil
 		},
 		UpdateUserFromLoginFn: func(ctx context.Context, uid uuid.UUID, du model.DiscordUser) (model.User, error) {
 			return model.User{ID: uid}, nil
+		},
+		UpsertApiLinkFn: func(_ context.Context, _ uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error) {
+			storedName = name
+			storedCipher = ciphertext
+			storedNonce = nonce
+			storedKeyID = keyID
+			return model.ApiLink{}, nil
 		},
 		CreateOneTimeCodeFn: func(ctx context.Context, otc string, uid uuid.UUID) error {
 			return nil
@@ -226,6 +242,11 @@ func TestDiscordCallbackHandler_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Contains(t, w.Header().Get("Location"), "/auth/callback?&otc=")
+	assert.Equal(t, apilink.ProviderDiscord, storedName)
+	assert.NotEmpty(t, storedCipher)
+	assert.NotEmpty(t, storedNonce)
+	assert.Equal(t, apilink.DefaultKeyID, storedKeyID)
+	assert.NotEqual(t, "discord-refresh", storedCipher)
 }
 
 func TestDiscordCallbackHandler_MissingStateCookie(t *testing.T) {
@@ -338,7 +359,7 @@ func TestDiscordCallbackHandler_CreateOneTimeCodeFails(t *testing.T) {
 	ts := newDiscordOAuthServer(
 		t,
 		http.StatusOK,
-		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		discordTokenJSON,
 		http.StatusOK,
 		`{"id":"12345","username":"existing-user","avatar":"hash"}`,
 	)
@@ -351,6 +372,7 @@ func TestDiscordCallbackHandler_CreateOneTimeCodeFails(t *testing.T) {
 		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
 			return model.User{ID: uid}, nil
 		},
+		UpsertApiLinkFn: allowUpsertApiLink,
 		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
 			return errors.New("insert failed")
 		},
@@ -369,7 +391,7 @@ func TestDiscordCallbackHandler_NewUserSuccess(t *testing.T) {
 	ts := newDiscordOAuthServer(
 		t,
 		http.StatusOK,
-		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		discordTokenJSON,
 		http.StatusOK,
 		`{"id":"12345","username":"created-user","avatar":"hash"}`,
 	)
@@ -383,6 +405,7 @@ func TestDiscordCallbackHandler_NewUserSuccess(t *testing.T) {
 		CreateNewUserFn: func(context.Context, model.DiscordUser, *string) (model.User, error) {
 			return model.User{ID: userID, NewUser: true}, nil
 		},
+		UpsertApiLinkFn: allowUpsertApiLink,
 		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
 			return nil
 		},
@@ -400,7 +423,7 @@ func TestDiscordCallbackHandler_UpdateUserFailureStillRedirects(t *testing.T) {
 	ts := newDiscordOAuthServer(
 		t,
 		http.StatusOK,
-		`{"access_token":"fake-token","token_type":"Bearer"}`,
+		discordTokenJSON,
 		http.StatusOK,
 		`{"id":"12345","username":"discord-name","avatar":"avatar-hash"}`,
 	)
@@ -421,6 +444,7 @@ func TestDiscordCallbackHandler_UpdateUserFailureStillRedirects(t *testing.T) {
 		UpdateUserFromLoginFn: func(context.Context, uuid.UUID, model.DiscordUser) (model.User, error) {
 			return model.User{}, errors.New("update failed")
 		},
+		UpsertApiLinkFn: allowUpsertApiLink,
 		CreateOneTimeCodeFn: func(context.Context, string, uuid.UUID) error {
 			return nil
 		},
@@ -432,6 +456,65 @@ func TestDiscordCallbackHandler_UpdateUserFailureStillRedirects(t *testing.T) {
 
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Contains(t, w.Header().Get("Location"), "new_user=false")
+}
+
+func TestDiscordCallbackHandler_MissingRefreshToken(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		discordTokenJSONNoRefresh,
+		http.StatusOK,
+		`{"id":"12345","username":"testuser","avatar":"hash"}`,
+	)
+	defer ts.Close()
+
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{ID: uuid.New()}, nil
+		},
+		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
+			return model.User{ID: uid}, nil
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Could not store Discord authorization", body["message"])
+}
+
+func TestDiscordCallbackHandler_UpsertApiLinkFails(t *testing.T) {
+	ts := newDiscordOAuthServer(
+		t,
+		http.StatusOK,
+		discordTokenJSON,
+		http.StatusOK,
+		`{"id":"12345","username":"testuser","avatar":"hash"}`,
+	)
+	defer ts.Close()
+
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(context.Context, string, bool) (model.User, error) {
+			return model.User{ID: uuid.New()}, nil
+		},
+		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
+			return model.User{ID: uid}, nil
+		},
+		UpsertApiLinkFn: func(context.Context, uuid.UUID, string, string, string, string) (model.ApiLink, error) {
+			return model.ApiLink{}, errors.New("db down")
+		},
+	}
+	h := newTestHandler(t, ms, discordOAuthConfig(ts.URL+"/token"), ts.URL+"/api")
+	c, w := callbackRequestWithStateCookie(t, "valid-state", "ok-code")
+
+	h.DiscordCallbackHandler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := test_util.DecodeJSON[map[string]string](t, w)
+	assert.Equal(t, "Could not store Discord authorization", body["message"])
 }
 
 // ============================================================

@@ -145,6 +145,12 @@ export interface EventGroupDetail {
   created_at: string;
   updated_at: string;
   events: EventGroupEvent[];
+  discord_guilds: DiscordGuild[];
+}
+
+export interface DiscordGuild {
+  id: string;
+  name: string;
 }
 
 export interface GroupRegistrationEventInput {

@@ -301,6 +301,7 @@
     content: '';
     position: absolute;
     inset: 0;
+    pointer-events: none;
     background: linear-gradient(105deg,
       transparent 40%,
       rgba(255, 255, 255, 0.12) 50%,
@@ -315,6 +316,7 @@
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 1px;
+    pointer-events: none;
     background: linear-gradient(90deg,
       rgba(100, 160, 255, 0.6),
       rgba(255, 255, 255, 0.3),

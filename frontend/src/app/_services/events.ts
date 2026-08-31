@@ -17,6 +17,7 @@ export interface CreateEventRequest {
   registration_open: boolean;
   sort_logic: EventSortLogic;
   name?: string;
+  discord_guild_ids: string[];
 }
 
 export interface CreateEventResponse {
@@ -41,6 +42,7 @@ export interface UpdateEventGroupRequest {
   registration_open: boolean;
   name?: string;
   events: PatchGroupEventScheduleItem[];
+  discord_guild_ids: string[];
 }
 
 export interface UpdateRegistrationRequest {
@@ -52,6 +54,10 @@ export interface UpdateRegistrationRequest {
 export async function fetchEventGroup(groupId: string, signal?: AbortSignal): Promise<EventGroupDetail> {
   const res = await api.get<EventGroupDetail>(`/events/${groupId}`, signal ? { signal } : undefined);
   return res.data;
+}
+
+export async function fetchEventGroupAccess(groupId: string, signal?: AbortSignal): Promise<void> {
+  await api.get(`/events/${groupId}/access`, signal ? { signal } : undefined);
 }
 
 export async function updateEventGroup(groupId: string, payload: UpdateEventGroupRequest): Promise<void> {

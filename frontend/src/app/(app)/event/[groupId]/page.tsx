@@ -14,7 +14,7 @@ import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
 import { EventForm } from "@/app/_components/forms/EventForm";
 import { UserGameEditor, UserGameEditorValue } from "@/app/_components/forms/UserGameEditor";
 import { useAuth } from "@/app/_context/AuthContext";
-import { EMPTY_VALUE, NO_SUBSTITUTES_MESSAGE } from "@/app/_lib/constants";
+import { EMPTY_VALUE, NO_SUBSTITUTES_MESSAGE, DEFAULT_FEEDBACK_URL } from "@/app/_lib/constants";
 import {
   buildDiscordPingMessage,
   sequentialTeamNumber,
@@ -25,12 +25,13 @@ import {
 } from "@/app/_lib/lobbyJoin";
 import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
 import { inputCls } from "@/app/_lib/styles";
-import { extractApiError, fetchGameRanks } from "@/app/_services/games";
+import { extractApiError, extractDiscordGuildRestriction, fetchGameRanks } from "@/app/_services/games";
 import {
   createTeams,
   deleteRegistration,
   deleteTeams,
   fetchEventGroup,
+  fetchEventGroupAccess,
   moveSubToUnplaced,
   moveUnplacedToSubs,
   setLobbyHost,
@@ -47,6 +48,7 @@ import {
   GameRank,
   LobbyPlayer,
 } from "@/app/_types/types";
+import { DiscordGuildRestrictionDetails } from "@/app/_services/games";
 
 const DATE_TIME_FMT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -116,6 +118,23 @@ function formatDateTime(value: string) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return EMPTY_VALUE;
   return DATE_TIME_FMT.format(date);
+}
+
+/** Joins Discord server names for the lock-denial sentence (or / Oxford or). */
+function joinDiscordGuildNames(names: string[]): string {
+  if (names.length === 0) return "a required Discord server";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} or ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+}
+
+/** Body copy for the Discord lock denial: named events keep the host title; unnamed use the game name. */
+function discordLockLeadSentence(eventNamed: boolean, title: string, serverNames: string): string {
+  if (eventNamed && title) {
+    return `${title} is locked to ${serverNames}.`;
+  }
+  const game = title || "game";
+  return `This ${game} event is locked to ${serverNames}.`;
 }
 
 function formatPlayerCount(count: number) {
@@ -813,6 +832,8 @@ export default function EventGroupPage() {
 
   const [group, setGroup] = useState<EventGroupDetail | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [accessChecking, setAccessChecking] = useState(false);
+  const [accessDenial, setAccessDenial] = useState<DiscordGuildRestrictionDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
@@ -895,6 +916,12 @@ export default function EventGroupPage() {
         (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
         (err as { name?: string })?.name === "CanceledError";
       if (canceled) return;
+      const restriction = extractDiscordGuildRestriction(err);
+      if (restriction) {
+        setAccessDenial(restriction);
+        setGroup(null);
+        return;
+      }
       setPageError("Could not load this event group.");
     } finally {
       if (!signal?.aborted && showFullPageLoading) {
@@ -908,7 +935,34 @@ export default function EventGroupPage() {
     if (!isAuthenticated || !groupId) return;
     const ac = new AbortController();
     const timer = window.setTimeout(() => {
-      void loadGroup(ac.signal);
+      setAccessChecking(true);
+      setAccessDenial(null);
+      void (async () => {
+        try {
+          await fetchEventGroupAccess(groupId, ac.signal);
+          if (ac.signal.aborted) return;
+          await loadGroup(ac.signal);
+        } catch (err) {
+          const canceled =
+            ac.signal.aborted ||
+            (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+            (err as { name?: string })?.name === "CanceledError";
+          if (canceled) return;
+          const restriction = extractDiscordGuildRestriction(err);
+          if (restriction) {
+            setAccessDenial(restriction);
+            setGroup(null);
+            setLoading(false);
+            return;
+          }
+          setPageError("Could not load this event group.");
+          setLoading(false);
+        } finally {
+          if (!ac.signal.aborted) {
+            setAccessChecking(false);
+          }
+        }
+      })();
     }, 0);
     return () => {
       window.clearTimeout(timer);
@@ -1447,6 +1501,13 @@ export default function EventGroupPage() {
       setRegistrationEditorOpen(false);
       await loadGroup();
     } catch (err) {
+      const restriction = extractDiscordGuildRestriction(err);
+      if (restriction) {
+        setAccessDenial(restriction);
+        setGroup(null);
+        setRegistrationEditorOpen(false);
+        return;
+      }
       setRegistrationError(
         `Your game settings were saved, but registration update failed: ${extractApiError(
           err
@@ -1511,9 +1572,9 @@ export default function EventGroupPage() {
     }
   };
   const deletingSelf = !!(pendingDeleteAction && user?.id && pendingDeleteAction.userId === user.id);
+  const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL || DEFAULT_FEEDBACK_URL;
 
-  const waitingForFirstLoad = isAuthenticated && !group && !pageError;
-  if (authLoading || (isAuthenticated && loading) || waitingForFirstLoad) {
+  if (authLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-sm text-[var(--color-text-muted)]">Loading event group...</p>
@@ -1525,6 +1586,59 @@ export default function EventGroupPage() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-sm text-[var(--color-text-muted)]">Please sign in to view this page.</p>
+      </div>
+    );
+  }
+
+  if (accessChecking || (loading && !accessDenial && !pageError && !group)) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-[var(--color-text-muted)]">
+          {accessChecking ? "Checking Discord server membership..." : "Loading event group..."}
+        </p>
+      </div>
+    );
+  }
+
+  if (accessDenial) {
+    const guildNames = accessDenial.discord_guilds.map((g) => g.name).filter(Boolean);
+    const serverNames = joinDiscordGuildNames(guildNames);
+    const title = accessDenial.event_title.trim();
+    const singular = accessDenial.discord_guilds.length <= 1;
+    const lead = discordLockLeadSentence(accessDenial.event_named, title, serverNames);
+    const membership = singular
+      ? "You need to be a member of that Discord server to open it or register."
+      : "You need to be a member of at least one of those Discord servers to open it or register.";
+    const serverPhrase = singular ? "this Discord server" : "these Discord servers";
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+        <div className="card w-full max-w-lg rounded-xl p-6 flex flex-col gap-3">
+          <h1 className="text-lg font-semibold text-[var(--color-text)]">This event is locked</h1>
+          <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">
+            {lead} {membership}
+          </p>
+          <p className="text-xs leading-relaxed text-[var(--color-text-muted)]">
+            If you are a member of {serverPhrase} and you believe this message is an error, check{" "}
+            <a
+              href="https://discordstatus.com"
+              className="body-link"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              discordstatus.com
+            </a>
+            , or send feedback via{" "}
+            <a
+              href={feedbackUrl}
+              className="body-link"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Issues/Feedback
+            </a>
+            .
+          </p>
+        </div>
       </div>
     );
   }
@@ -2141,6 +2255,8 @@ export default function EventGroupPage() {
             sub_min: group.sub_min,
             registration_open: group.registration_open,
             sort_logic: group.sort_logic,
+            discord_lock: (group.discord_guilds?.length ?? 0) > 0,
+            discord_guild_ids: (group.discord_guilds ?? []).map((g) => g.id),
           }}
           onCancel={() => setEditSheetOpen(false)}
           onSubmitted={

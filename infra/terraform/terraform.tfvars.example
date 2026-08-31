@@ -29,10 +29,13 @@ db_app_password       = "replace-with-strong-password" # matchmaker_app (API); a
 db_roles_bootstrapped = false
 
 # App secrets (required)
-jwt_secret           = "replace-with-64-hex-chars"             # openssl rand -hex 32
-cookie_hash_key      = "replace-with-64-hex-chars"             # openssl rand -hex 32
-cookie_encrypt_key   = "replace-with-64-hex-chars"             # openssl rand -hex 32
-origin_verify_secret = "replace-with-strong-secret"            # openssl rand -hex 32
+jwt_secret              = "replace-with-64-hex-chars"             # openssl rand -hex 32
+cookie_hash_key         = "replace-with-64-hex-chars"             # openssl rand -hex 32
+cookie_encrypt_key      = "replace-with-64-hex-chars"             # openssl rand -hex 32
+api_link_encryption_key = "replace-with-64-hex-chars"             # openssl rand -hex 32; do not reuse cookie_encrypt_key
+api_link_encryption_key_id = "1"
+# api_link_encryption_previous_keys = ""                          # optional: "1:<old-64-hex>" after rotating
+origin_verify_secret    = "replace-with-strong-secret"            # openssl rand -hex 32
 
 # Optional — leave empty to disable Sentry on that service
 sentry_dsn_api      = ""

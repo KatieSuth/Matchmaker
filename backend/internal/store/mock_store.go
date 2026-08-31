@@ -41,15 +41,25 @@ type MockStore struct {
 	GetRefreshTokenFn       func(ctx context.Context, refreshTokenHash string) (model.RefreshToken, error)
 	DeleteRefreshTokenFn    func(ctx context.Context, refreshTokenHash string) error
 
+	// api links
+	UpsertApiLinkFn                     func(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error)
+	GetApiLinkByUserAndNameFn           func(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
+	GetApiLinkByUserAndNameForUpdateFn  func(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error)
+	DeleteApiLinkByUserAndNameFn        func(ctx context.Context, userID uuid.UUID, name string) error
+
 	// one-time codes
 	CreateOneTimeCodeFn  func(ctx context.Context, code string, userID uuid.UUID) error
 	ConsumeOneTimeCodeFn func(ctx context.Context, code string) (uuid.UUID, error)
 
 	// events
 	GetEventsForUserFn              func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
-	CreateEventGroupWithEventsFn    func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error)
+	CreateEventGroupWithEventsFn    func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error)
 	GetEventGroupDetailFn           func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
-	UpdateEventGroupSettingsFn      func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error
+	UpdateEventGroupSettingsFn      func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error
+	ListEventGroupDiscordGuildsFn   func(ctx context.Context, groupID uuid.UUID) ([]model.DiscordGuild, error)
+	GetEventGroupAccessMetaFn       func(ctx context.Context, groupID uuid.UUID) (ownerID uuid.UUID, title string, named bool, err error)
+	EventGroupIDByEventIDFn         func(ctx context.Context, eventID uuid.UUID) (uuid.UUID, error)
+	EventGroupIDByLobbyIDFn         func(ctx context.Context, lobbyID uuid.UUID) (uuid.UUID, error)
 	DeleteEventGroupFn              func(ctx context.Context, groupID, ownerID uuid.UUID) error
 	SetEventGroupRegistrationOpenFn func(ctx context.Context, groupID, ownerID uuid.UUID, open bool) error
 	CreateTeamsForGroupFn           func(ctx context.Context, groupID, ownerID uuid.UUID, settings matchmaking.Settings) (bool, error)
@@ -65,7 +75,10 @@ type MockStore struct {
 }
 
 func (m *MockStore) WithTx(ctx context.Context, fn func(Store) error) error {
-	return m.WithTxFn(ctx, fn)
+	if m.WithTxFn != nil {
+		return m.WithTxFn(ctx, fn)
+	}
+	return fn(m)
 }
 
 func (m *MockStore) GetSystemGames(ctx context.Context) ([]model.Game, error) {
@@ -132,6 +145,31 @@ func (m *MockStore) DeleteRefreshToken(ctx context.Context, refreshTokenHash str
 	return m.DeleteRefreshTokenFn(ctx, refreshTokenHash)
 }
 
+func (m *MockStore) UpsertApiLink(ctx context.Context, userID uuid.UUID, name, ciphertext, nonce, keyID string) (model.ApiLink, error) {
+	return m.UpsertApiLinkFn(ctx, userID, name, ciphertext, nonce, keyID)
+}
+
+func (m *MockStore) GetApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error) {
+	return m.GetApiLinkByUserAndNameFn(ctx, userID, name)
+}
+
+func (m *MockStore) GetApiLinkByUserAndNameForUpdate(ctx context.Context, userID uuid.UUID, name string) (model.ApiLink, error) {
+	if m.GetApiLinkByUserAndNameForUpdateFn != nil {
+		return m.GetApiLinkByUserAndNameForUpdateFn(ctx, userID, name)
+	}
+	if m.GetApiLinkByUserAndNameFn != nil {
+		return m.GetApiLinkByUserAndNameFn(ctx, userID, name)
+	}
+	panic("GetApiLinkByUserAndNameForUpdateFn not set")
+}
+
+func (m *MockStore) DeleteApiLinkByUserAndName(ctx context.Context, userID uuid.UUID, name string) error {
+	if m.DeleteApiLinkByUserAndNameFn != nil {
+		return m.DeleteApiLinkByUserAndNameFn(ctx, userID, name)
+	}
+	panic("DeleteApiLinkByUserAndNameFn not set")
+}
+
 func (m *MockStore) CreateOneTimeCode(ctx context.Context, code string, userID uuid.UUID) error {
 	return m.CreateOneTimeCodeFn(ctx, code, userID)
 }
@@ -140,8 +178,8 @@ func (m *MockStore) ConsumeOneTimeCode(ctx context.Context, code string) (uuid.U
 	return m.ConsumeOneTimeCodeFn(ctx, code)
 }
 
-func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
-	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, name, startTime, gamesToRun)
+func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
+	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, name, startTime, gamesToRun, discordGuilds)
 }
 
 func (m *MockStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
@@ -152,8 +190,37 @@ func (m *MockStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID u
 	return m.GetEventGroupDetailFn(ctx, groupID, viewerID)
 }
 
-func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error {
-	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, name, eventUpdates)
+func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
+	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, name, eventUpdates, discordGuilds)
+}
+
+func (m *MockStore) ListEventGroupDiscordGuilds(ctx context.Context, groupID uuid.UUID) ([]model.DiscordGuild, error) {
+	if m.ListEventGroupDiscordGuildsFn == nil {
+		return []model.DiscordGuild{}, nil
+	}
+	return m.ListEventGroupDiscordGuildsFn(ctx, groupID)
+}
+
+// GetEventGroupAccessMeta implements Store; returns zeros when the mock fn is unset.
+func (m *MockStore) GetEventGroupAccessMeta(ctx context.Context, groupID uuid.UUID) (uuid.UUID, string, bool, error) {
+	if m.GetEventGroupAccessMetaFn == nil {
+		return uuid.Nil, "", false, nil
+	}
+	return m.GetEventGroupAccessMetaFn(ctx, groupID)
+}
+
+func (m *MockStore) EventGroupIDByEventID(ctx context.Context, eventID uuid.UUID) (uuid.UUID, error) {
+	if m.EventGroupIDByEventIDFn == nil {
+		return uuid.Nil, nil
+	}
+	return m.EventGroupIDByEventIDFn(ctx, eventID)
+}
+
+func (m *MockStore) EventGroupIDByLobbyID(ctx context.Context, lobbyID uuid.UUID) (uuid.UUID, error) {
+	if m.EventGroupIDByLobbyIDFn == nil {
+		return uuid.Nil, nil
+	}
+	return m.EventGroupIDByLobbyIDFn(ctx, lobbyID)
 }
 
 func (m *MockStore) DeleteEventGroup(ctx context.Context, groupID, ownerID uuid.UUID) error {

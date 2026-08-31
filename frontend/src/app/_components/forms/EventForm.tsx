@@ -9,13 +9,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/app/_context/AuthContext";
-import { Select } from "@/app/_components/Select";
+import { Select, MultiSelect } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { EVENT_NAME_MAX_RUNES, REGIONS } from "@/app/_lib/constants";
 import { DATEPICKER_PORTAL_ID, datepickerStyles, inputCls } from "@/app/_lib/styles";
 import { codePointLength, optionalFreeTextSchema } from "@/app/_lib/textInput";
 import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
+import { fetchMyDiscordGuilds } from "@/app/_services/users";
 import { Game, GameMode } from "@/app/_types/types";
 
 export type EventFormEditScheduleRow = {
@@ -24,6 +25,7 @@ export type EventFormEditScheduleRow = {
   game_mode_id: string;
 };
 
+/** Zod schema for create vs edit: edit omits required start time / mode; Discord lock needs at least one server. */
 function buildEventFormSchema(mode: "create" | "edit") {
   const startTimeField =
     mode === "create"
@@ -66,6 +68,11 @@ function buildEventFormSchema(mode: "create" | "edit") {
       .min(1, "Number of games must be greater than 0."),
     registration_open: z.boolean(),
     sort_logic: z.enum(["balanced", "ranked"]),
+    discord_lock: z.boolean(),
+    discord_guild_ids: z.array(z.string()),
+  }).refine((data) => !data.discord_lock || data.discord_guild_ids.length > 0, {
+    message: "Select at least one Discord server.",
+    path: ["discord_guild_ids"],
   });
 }
 
@@ -344,6 +351,8 @@ export function EventForm({
       games_to_run: initialValues?.games_to_run ?? 1,
       registration_open: initialValues?.registration_open ?? true,
       sort_logic: initialValues?.sort_logic ?? "balanced",
+      discord_lock: initialValues?.discord_lock ?? false,
+      discord_guild_ids: initialValues?.discord_guild_ids ?? [],
     }),
     [initialValues, mode]
   );
@@ -361,6 +370,7 @@ export function EventForm({
 
   const watchedGameId = useWatch({ control, name: "game_id" });
   const watchedName = useWatch({ control, name: "name" }) ?? "";
+  const watchedDiscordLock = useWatch({ control, name: "discord_lock" });
   const nameCodePoints = codePointLength(watchedName);
   const nameOverLimit = nameCodePoints > EVENT_NAME_MAX_RUNES;
 
@@ -377,6 +387,10 @@ export function EventForm({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [discordGuilds, setDiscordGuilds] = useState<{ id: string; name: string }[]>([]);
+  const [discordGuildsLoading, setDiscordGuildsLoading] = useState(false);
+  const [discordGuildsError, setDiscordGuildsError] = useState<string | null>(null);
 
   const editScheduleSig =
     mode === "edit" && editSchedule?.length
@@ -477,6 +491,44 @@ export function EventForm({
     };
   }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated, mode]);
 
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+    if (!watchedDiscordLock) return;
+
+    const ac = new AbortController();
+    const { signal } = ac;
+    const loadGuilds = async () => {
+      setDiscordGuildsLoading(true);
+      setDiscordGuildsError(null);
+      try {
+        const data = await fetchMyDiscordGuilds(signal);
+        if (signal.aborted) return;
+        setDiscordGuilds(
+          [...data].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+        );
+      } catch (err) {
+        if (
+          signal.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError"
+        ) {
+          return;
+        }
+        setDiscordGuilds([]);
+        setDiscordGuildsError(extractApiError(err, "Could not load Discord servers."));
+      } finally {
+        if (!signal.aborted) {
+          setDiscordGuildsLoading(false);
+        }
+      }
+    };
+
+    void loadGuilds();
+    return () => {
+      ac.abort();
+    };
+  }, [authLoading, isAuthenticated, watchedDiscordLock]);
+
   const onValidSubmit = async (data: EventFormValues) => {
     if (readOnly) return;
     setSubmitError(null);
@@ -501,6 +553,7 @@ export function EventForm({
           registration_open: data.registration_open,
           sort_logic: data.sort_logic,
           name: data.name,
+          discord_guild_ids: data.discord_lock ? data.discord_guild_ids : [],
         });
         onCancel();
         router.push(`/event/${result.group_id}`);
@@ -529,6 +582,7 @@ export function EventForm({
         sort_logic: data.sort_logic,
         registration_open: data.registration_open,
         name: data.name,
+        discord_guild_ids: data.discord_lock ? data.discord_guild_ids : [],
         events: perGameDraft.map((row) => ({
           event_id: row.eventId,
           start_time: new Date(row.startLocal).toISOString(),
@@ -900,6 +954,59 @@ export function EventForm({
               />
             )}
           />
+        </div>
+
+        <div className="pt-1 border-t border-white/[0.06] flex flex-col gap-3">
+          <Controller
+            name="discord_lock"
+            control={control}
+            render={({ field }) => (
+              <ToggleRow
+                label="Lock to Discord servers"
+                description={
+                  field.value
+                    ? "Lock this event to one or more Discord servers you belong to. Only members of those servers can open it or register."
+                    : "Anyone with the link can open this event."
+                }
+                checked={field.value}
+                onChange={(next) => {
+                  field.onChange(next);
+                  if (!next) {
+                    setValue("discord_guild_ids", []);
+                  }
+                }}
+                disabled={readOnly}
+              />
+            )}
+          />
+          {watchedDiscordLock && (
+            <div className="flex flex-col gap-1">
+              <Controller
+                name="discord_guild_ids"
+                control={control}
+                render={({ field }) => (
+                  <MultiSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    options={discordGuilds.map((g) => ({ value: g.id, label: g.name }))}
+                    placeholder={
+                      discordGuildsLoading
+                        ? "Loading Discord servers..."
+                        : "Select Discord servers"
+                    }
+                    disabled={readOnly || discordGuildsLoading}
+                    isLoading={discordGuildsLoading}
+                  />
+                )}
+              />
+              {errors.discord_guild_ids && (
+                <p className="text-xs text-[var(--color-text-danger)]">{errors.discord_guild_ids.message}</p>
+              )}
+              {discordGuildsError && (
+                <p className="text-xs text-[var(--color-text-danger)]">{discordGuildsError}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}

@@ -142,6 +142,64 @@ export const buildSelectStyles = (): StylesConfig<SelectOption, false, GroupBase
 
 export const selectStyles = buildSelectStyles();
 
+interface MultiSelectProps {
+  value: string[];
+  onChange: (value: string[]) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  isLoading?: boolean;
+}
+
+export function MultiSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "— Select —",
+  disabled = false,
+  isLoading = false,
+}: MultiSelectProps) {
+  const selected = options.filter((o) => value.includes(o.value));
+  const styles: StylesConfig<SelectOption, true, GroupBase<SelectOption>> = {
+    ...(buildSelectStyles() as unknown as StylesConfig<SelectOption, true, GroupBase<SelectOption>>),
+    multiValue: (base) => ({
+      ...base,
+      background: "rgba(30,120,255,0.16)",
+      borderRadius: "0.375rem",
+    }),
+    multiValueLabel: (base) => ({
+      ...base,
+      color: "var(--color-text)",
+      fontSize: "0.8125rem",
+    }),
+    multiValueRemove: (base) => ({
+      ...base,
+      color: "rgba(180,200,235,0.55)",
+      cursor: "pointer",
+      ":hover": {
+        background: "rgba(30,120,255,0.28)",
+        color: "var(--color-text)",
+      },
+    }),
+  };
+
+  return (
+    <ReactSelect<SelectOption, true>
+      isMulti
+      isSearchable
+      isLoading={isLoading}
+      value={selected}
+      onChange={(opts) => onChange((opts ?? []).map((o) => o.value))}
+      options={options}
+      placeholder={placeholder}
+      isDisabled={disabled}
+      styles={styles}
+      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+      menuPosition="fixed"
+    />
+  );
+}
+
 export function Select({
   value,
   onChange,

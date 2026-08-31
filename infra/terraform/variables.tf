@@ -123,6 +123,35 @@ variable "cookie_encrypt_key" {
   }
 }
 
+variable "api_link_encryption_key" {
+  description = "AES-256 key for api_links refresh tokens as 64 hex chars (openssl rand -hex 32 or make gen-keys)"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{64}$", var.api_link_encryption_key))
+    error_message = "api_link_encryption_key must be exactly 64 hex characters (openssl rand -hex 32)."
+  }
+}
+
+variable "api_link_encryption_key_id" {
+  description = "Current api_links encryption key id written on new rows (rotate with a new key)"
+  type        = string
+  default     = "1"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]+$", var.api_link_encryption_key_id))
+    error_message = "api_link_encryption_key_id must be letters, digits, underscore, or hyphen."
+  }
+}
+
+variable "api_link_encryption_previous_keys" {
+  description = "Optional retired keys as comma-separated id:hex (64 hex chars each) so old api_links rows still decrypt"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "origin_verify_secret" {
   description = "Shared X-Origin-Verify secret (Worker + Cloud Run); use a long random string"
   type        = string

@@ -93,7 +93,7 @@ func TestCreateEventHandler_StoreError(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			return uuid.Nil, errors.New("db exploded")
 		},
 	}
@@ -113,7 +113,7 @@ func TestCreateEventHandler_GameModeNotFound(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			return uuid.Nil, pgx.ErrNoRows
 		},
 	}
@@ -201,7 +201,7 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			assert.Equal(t, gameModeID, inGameModeID)
 			assert.Equal(t, int32(0), subMin)
@@ -247,7 +247,7 @@ func TestCreateEventHandler_NameTooLong(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -276,7 +276,7 @@ func TestCreateEventHandler_NameInvalidChars(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -305,7 +305,7 @@ func TestCreateEventHandler_NameRejectsHTML(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -358,7 +358,7 @@ func TestCreateEventHandler_SortLogicDefaultsToBalanced(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			assert.Equal(t, "balanced", sortLogic)
 			return groupID, nil
 		},
@@ -422,7 +422,7 @@ func TestCreateEventHandler_StoreInvalidSortLogic(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			return uuid.Nil, store.ErrInvalidSortLogic
 		},
 	}
@@ -443,7 +443,7 @@ func TestCreateEventHandler_UserIDAsUUID(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			return groupID, nil
 		},
@@ -485,7 +485,7 @@ func TestCreateEventHandler_SortLogicRanked(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
 			assert.Equal(t, "ranked", sortLogic)
 			return groupID, nil
 		},
@@ -640,7 +640,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, updates []store.GroupEventUpdate) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
 					require.Len(t, updates, 1)
@@ -666,7 +666,7 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, name string, updates []store.GroupEventUpdate) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, name string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
 			assert.Equal(t, "ranked", sortLogic)
@@ -693,7 +693,7 @@ func TestUpdateEventGroupSettingsHandler_NameTooLong(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"` + longName + `","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild) error {
 			storeCalled = true
 			return nil
 		},
@@ -713,7 +713,7 @@ func TestUpdateEventGroupSettingsHandler_NameInvalidChars(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"A < B >","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild) error {
 			storeCalled = true
 			return nil
 		},

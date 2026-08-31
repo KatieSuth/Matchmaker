@@ -44,6 +44,31 @@ func (h *Handler) UsersMeHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// GET /users/me/discord/guilds
+// Returns the authenticated user's current Discord servers (full list, not paginated).
+func (h *Handler) ListMyDiscordGuildsHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	if h.discord == nil {
+		h.writeDiscordGuildsLoadError(c, userUUID, errors.New("discord api not configured"))
+		return
+	}
+
+	guilds, err := h.discord.ListUserGuilds(c.Request.Context(), userUUID)
+	if err != nil {
+		h.writeDiscordGuildsLoadError(c, userUUID, err)
+		return
+	}
+	if guilds == nil {
+		guilds = []model.DiscordGuild{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"guilds": guilds})
+}
+
 // PUT /users/me
 func (h *Handler) UpdateUsersMeHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)

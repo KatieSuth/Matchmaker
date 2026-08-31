@@ -12,12 +12,13 @@ import (
 
 type ApiLink struct {
 	ID             uuid.UUID
-	UserID         *uuid.UUID
-	Name           *string
-	RefreshToken   *string
-	RefreshTokenIv *string
+	UserID         uuid.UUID
+	Name           string
+	RefreshToken   string
+	RefreshTokenIv string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	KeyID          string
 }
 
 type Event struct {
@@ -43,6 +44,15 @@ type EventGroup struct {
 	UpdatedAt           time.Time
 	SortLogic           string
 	Name                *string
+}
+
+type EventGroupDiscordGuild struct {
+	ID           uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	EventGroupID uuid.UUID
+	GuildID      string
+	GuildName    string
 }
 
 type Game struct {

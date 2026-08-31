@@ -182,7 +182,8 @@ func isValidSortLogic(s string) bool {
 	return s == "balanced" || s == "ranked"
 }
 
-func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32) (uuid.UUID, error) {
+// CreateEventGroupWithEvents inserts a group, its scheduled games, and the Discord lock snapshot in one transaction.
+func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
 	if !isValidSortLogic(sortLogic) {
 		return uuid.Nil, ErrInvalidSortLogic
 	}
@@ -233,6 +234,10 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 			}
 
 			nextStart = nextStart.Add(time.Duration(gameMode.Duration) * time.Minute)
+		}
+
+		if err := txStore.replaceEventGroupDiscordGuilds(ctx, groupID, discordGuilds); err != nil {
+			return err
 		}
 
 		return nil
@@ -288,10 +293,17 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 		events = append(events, eventOut)
 	}
 
-	return model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events), nil
+	detail := model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(groupRow, events)
+	guilds, err := s.ListEventGroupDiscordGuilds(ctx, groupID)
+	if err != nil {
+		return model.EventGroupDetail{}, err
+	}
+	detail.DiscordGuilds = guilds
+	return detail, nil
 }
 
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate) error {
+// UpdateEventGroupSettings patches group settings, per-game schedule, and Discord lock rows in one transaction.
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
 	if len(eventUpdates) == 0 {
 		return ErrInvalidGroupEvents
 	}
@@ -413,6 +425,10 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 			if n != 1 {
 				return ErrInvalidGroupEvents
 			}
+		}
+
+		if err := txStore.replaceEventGroupDiscordGuilds(ctx, groupID, discordGuilds); err != nil {
+			return err
 		}
 
 		return nil

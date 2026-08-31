@@ -2,6 +2,7 @@
 package model_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -289,8 +290,54 @@ func TestMapDbRefreshTokenToRefreshToken_MapsAllFields(t *testing.T) {
 }
 
 // ============================================================
-// MapDbUserToUser
+// MapDbApiLinkToApiLink
 // ============================================================
+
+func TestMapDbApiLinkToApiLink_MapsAllFields(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	input := db.ApiLink{
+		ID:             uuid.New(),
+		UserID:         uuid.New(),
+		Name:           "discord",
+		RefreshToken:   "cipher",
+		RefreshTokenIv: "nonce",
+		KeyID:          "1",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	result := model.MapDbApiLinkToApiLink(input)
+
+	assert.Equal(t, input.ID, result.ID)
+	assert.Equal(t, input.UserID, result.UserID)
+	assert.Equal(t, input.Name, result.Name)
+	assert.Equal(t, input.RefreshToken, result.RefreshToken)
+	assert.Equal(t, input.RefreshTokenIv, result.RefreshTokenIv)
+	assert.Equal(t, input.KeyID, result.KeyID)
+	assert.Equal(t, input.CreatedAt, result.CreatedAt)
+	assert.Equal(t, input.UpdatedAt, result.UpdatedAt)
+}
+
+func TestMapDbApiLinkToApiLink_OmitsCiphertextFromJSON(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	link := model.MapDbApiLinkToApiLink(db.ApiLink{
+		ID:             uuid.New(),
+		UserID:         uuid.New(),
+		Name:           "discord",
+		RefreshToken:   "super-secret-cipher",
+		RefreshTokenIv: "super-secret-nonce",
+		KeyID:          "1",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	encoded, err := json.Marshal(link)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "super-secret-cipher")
+	assert.NotContains(t, string(encoded), "super-secret-nonce")
+	assert.NotContains(t, string(encoded), `"key_id"`)
+	assert.Contains(t, string(encoded), `"name":"discord"`)
+}
 
 func TestMapDbUserToUser_MapsAllFields(t *testing.T) {
 	discordID := "discord-123"
@@ -699,12 +746,12 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 	updatedAt := time.Date(2026, 6, 2, 8, 30, 0, 0, time.UTC)
 	duo := "TeammateName"
 	row := db.GetPlayersForLobbyRow{
-		UserID:          uuid.New(),
-		TeamNumber:      ptrInt32(1),
-		DiscordName:     &name,
-		DisplayName:     "Player Display",
-		InGameName:      "IG_PlayerOne",
-		Pronouns:        "they/them",
+		UserID:           uuid.New(),
+		TeamNumber:       ptrInt32(1),
+		DiscordName:      &name,
+		DisplayName:      "Player Display",
+		InGameName:       "IG_PlayerOne",
+		Pronouns:         "they/them",
 		CurrentRankName:  "Gold 1",
 		CurrentRankOrder: 12,
 		PeakRankName:     "Platinum 2",
@@ -735,4 +782,26 @@ func TestMapDbGetPlayersForLobbyRowToLobbyPlayer(t *testing.T) {
 
 func ptrInt32(v int32) *int32 {
 	return &v
+}
+
+func TestMapDbEventGroupDiscordGuildsToDiscordGuilds_Empty(t *testing.T) {
+	assert.Empty(t, model.MapDbEventGroupDiscordGuildsToDiscordGuilds(nil))
+	assert.Empty(t, model.MapDbEventGroupDiscordGuildsToDiscordGuilds([]db.EventGroupDiscordGuild{}))
+}
+
+func TestMapDbEventGroupDiscordGuildsToDiscordGuilds_MapsFields(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	row := db.EventGroupDiscordGuild{
+		ID:           uuid.New(),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		EventGroupID: uuid.New(),
+		GuildID:      "123",
+		GuildName:    "Scrims",
+	}
+	got := model.MapDbEventGroupDiscordGuildsToDiscordGuilds([]db.EventGroupDiscordGuild{row})
+	require.Len(t, got, 1)
+	assert.Equal(t, "123", got[0].ID)
+	assert.Equal(t, "Scrims", got[0].Name)
+	assert.Equal(t, model.MapDbEventGroupDiscordGuildToDiscordGuild(row), got[0])
 }
