@@ -1,6 +1,6 @@
 // Tests for the "Lock to Discord servers" toggle + guild multi-select. Wrapped in a minimal
 // react-hook-form harness since the component is driven by RHF `Control`/`setValue`.
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "@/test/axe";
 import { render, screen, userEvent } from "@/test/render";
@@ -22,7 +22,7 @@ function Harness({
   readOnly?: boolean;
   defaultDiscordLock?: boolean;
 }) {
-  const { control, setValue, watch } = useForm<EventFormValues>({
+  const { control, setValue } = useForm<EventFormValues>({
     defaultValues: {
       name: "",
       game_id: "game-1",
@@ -37,7 +37,7 @@ function Harness({
       discord_guild_ids: [],
     },
   });
-  const watchedDiscordLock = watch("discord_lock");
+  const watchedDiscordLock = useWatch({ control, name: "discord_lock" });
 
   return (
     <DiscordLockFields

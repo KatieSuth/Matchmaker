@@ -122,19 +122,20 @@ describe("useAuth", () => {
   it("throws when used outside AuthProvider", () => {
     // Catch inside the component so React's render does not treat this as an uncaught error
     // (which jsdom would print as a failing-looking stack even though the assertion passes).
-    let caught: unknown;
+    // Keep the message in render output rather than assigning an outer binding — React Compiler
+    // flags reassignment of closed-over variables during render (`react-hooks/globals`).
     function Probe() {
+      let message = "did-not-throw";
       try {
         useAuth();
       } catch (err) {
-        caught = err;
+        message = err instanceof Error ? err.message : "unknown";
       }
-      return null;
+      return <p>{message}</p>;
     }
 
     render(<Probe />);
 
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toMatch(/useAuth must be used within AuthProvider/);
+    expect(screen.getByText(/useAuth must be used within AuthProvider/)).toBeInTheDocument();
   });
 });
