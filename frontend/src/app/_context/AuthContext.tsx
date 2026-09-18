@@ -7,7 +7,7 @@ import { bootstrapSession, clearAuthSessionFlag, setAuthSessionFlag } from "@/ap
 import type { User } from "@/app/_types/types";
 import { logoutUser } from "@/app/_services/auth";
 
-interface AuthContextType {
+export interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     user: User | null;
@@ -16,7 +16,11 @@ interface AuthContextType {
     logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+// Exported (not just `useAuth`) so tests can render `<AuthContext.Provider value={...}>` directly
+// with a controlled auth state, instead of mounting the real `AuthProvider` and its
+// bootstrap-on-mount session refresh (which performs a real network call on every render).
+// See frontend/src/test/render.tsx's `renderWithProviders`.
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);

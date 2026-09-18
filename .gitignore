@@ -3,6 +3,14 @@ node_modules/
 .next/
 frontend/.env*.local
 frontend/tsconfig.tsbuildinfo
+frontend/coverage/
+
+# Playwright
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+e2e/playwright/.cache/
 
 # Go
 backend/tmp/

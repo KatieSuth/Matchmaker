@@ -804,3 +804,155 @@ func TestLogoutHandler_Success(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldRegisterTestLogin(t *testing.T) {
+	assert.False(t, handler.ShouldRegisterTestLogin("release", "true"))
+	assert.False(t, handler.ShouldRegisterTestLogin("debug", "false"))
+	assert.False(t, handler.ShouldRegisterTestLogin("debug", ""))
+	assert.True(t, handler.ShouldRegisterTestLogin("debug", "true"))
+	assert.True(t, handler.ShouldRegisterTestLogin("test", "true"))
+}
+
+func testLoginRequest(t *testing.T, token, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	c, w := test_util.NewGinContext(http.MethodPost, "/auth/test_login")
+	if token != "" {
+		c.Request.Header.Set("X-Test-Auth-Bypass-Token", token)
+	}
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	return c, w
+}
+
+func TestTestLoginHandler_DisabledWithoutToken(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestTestLoginHandler_DisabledInReleaseMode(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "release")
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestTestLoginHandler_WrongToken(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+	c, w := testLoginRequest(t, "nope", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestTestLoginHandler_MissingToken(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+	c, w := testLoginRequest(t, "", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestTestLoginHandler_MissingFields(t *testing.T) {
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"1"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestTestLoginHandler_ExistingUserSuccess(t *testing.T) {
+	userID := uuid.New()
+	var storedOTC string
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(_ context.Context, _ string, _ bool) (model.User, error) {
+			return model.User{ID: userID, NewUser: false}, nil
+		},
+		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
+			return model.User{ID: uid, NewUser: false}, nil
+		},
+		CreateOneTimeCodeFn: func(_ context.Context, otc string, uid uuid.UUID) error {
+			storedOTC = otc
+			assert.Equal(t, userID, uid)
+			return nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"123","username":"host"}`)
+	h.TestLoginHandler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := test_util.DecodeJSON[map[string]any](t, w)
+	assert.Equal(t, storedOTC, body["otc"])
+	assert.Equal(t, false, body["new_user"])
+}
+
+func TestTestLoginHandler_NewUserSuccess(t *testing.T) {
+	userID := uuid.New()
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(_ context.Context, _ string, _ bool) (model.User, error) {
+			return model.User{}, errors.New("not found")
+		},
+		CreateNewUserFn: func(_ context.Context, du model.DiscordUser, displayName *string) (model.User, error) {
+			assert.Equal(t, "456", du.ID)
+			assert.Equal(t, "newbie", du.Username)
+			require.NotNil(t, displayName)
+			assert.Equal(t, "Newbie", *displayName)
+			return model.User{ID: userID, NewUser: true}, nil
+		},
+		CreateOneTimeCodeFn: func(_ context.Context, _ string, _ uuid.UUID) error {
+			return nil
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"456","username":"newbie","global_name":"Newbie"}`)
+	h.TestLoginHandler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := test_util.DecodeJSON[map[string]any](t, w)
+	assert.NotEmpty(t, body["otc"])
+	assert.Equal(t, true, body["new_user"])
+}
+
+func TestTestLoginHandler_CreateUserFails(t *testing.T) {
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(_ context.Context, _ string, _ bool) (model.User, error) {
+			return model.User{}, errors.New("not found")
+		},
+		CreateNewUserFn: func(_ context.Context, _ model.DiscordUser, _ *string) (model.User, error) {
+			return model.User{}, errors.New("db down")
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestTestLoginHandler_CreateOTCFails(t *testing.T) {
+	ms := &store.MockStore{
+		GetUserByDiscordIDFn: func(_ context.Context, _ string, _ bool) (model.User, error) {
+			return model.User{ID: uuid.New(), NewUser: false}, nil
+		},
+		UpdateUserFromLoginFn: func(_ context.Context, uid uuid.UUID, _ model.DiscordUser) (model.User, error) {
+			return model.User{ID: uid, NewUser: false}, nil
+		},
+		CreateOneTimeCodeFn: func(_ context.Context, _ string, _ uuid.UUID) error {
+			return errors.New("db down")
+		},
+	}
+	h := newTestHandler(t, ms, nil, "")
+	handler.SetTestAuthBypassForTest(h, "secret", "debug")
+
+	c, w := testLoginRequest(t, "secret", `{"discord_id":"1","username":"a"}`)
+	h.TestLoginHandler(c)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}

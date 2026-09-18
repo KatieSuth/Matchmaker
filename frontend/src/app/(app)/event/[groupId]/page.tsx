@@ -1,1032 +1,72 @@
 "use client";
 
 // Event group detail: metadata, per-game registration panels, host controls (teams, registration),
-// and participant registration / profile actions. Large presentational pieces live in local helpers below.
+// and participant registration / profile actions. Composes hooks + presentational pieces from
+// ./_hooks, ./_components, and ./_lib; this file is orchestration only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
-import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
-import { Select, SelectOption } from "@/app/_components/Select";
 import { LobbyHostAssignmentBanner } from "@/app/_components/LobbyHostAssignmentBanner";
-import { LobbyHostInfoHint } from "@/app/_components/LobbyHostInfoHint";
-import { ToggleRow } from "@/app/_components/ToggleRow";
-import { ToggleSwitch } from "@/app/_components/ToggleSwitch";
-import { EventForm } from "@/app/_components/forms/EventForm";
-import { UserGameEditor, UserGameEditorValue } from "@/app/_components/forms/UserGameEditor";
 import { useAuth } from "@/app/_context/AuthContext";
-import { EMPTY_VALUE, NO_SUBSTITUTES_MESSAGE, DEFAULT_FEEDBACK_URL } from "@/app/_lib/constants";
+import { useCopyStatus } from "@/app/_hooks/useCopyStatus";
+import { DEFAULT_FEEDBACK_URL } from "@/app/_lib/constants";
+import { buildDiscordPingMessage } from "@/app/_lib/discordPings";
+import { EventGroupDetail, EventRegistration } from "@/app/_types/types";
+import { EventGroupHeaderCard } from "./_components/EventGroupHeaderCard";
+import { GameTabsStrip } from "./_components/GameTabsStrip";
 import {
-  buildDiscordPingMessage,
-  sequentialTeamNumber,
-} from "@/app/_lib/discordPings";
-import {
-  buildLobbyJoinDisplayValue,
-  validateLobbyJoinInput,
-} from "@/app/_lib/lobbyJoin";
-import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
-import { inputCls } from "@/app/_lib/styles";
-import { extractApiError, extractDiscordGuildRestriction, fetchGameRanks } from "@/app/_services/games";
-import {
-  createTeams,
-  deleteRegistration,
-  deleteTeams,
-  fetchEventGroup,
-  fetchEventGroupAccess,
-  moveSubToUnplaced,
-  moveUnplacedToSubs,
-  setLobbyHost,
-  swapPlayers,
-  updateLobbyJoinCode,
-  upsertMyGroupRegistrations,
-} from "@/app/_services/events";
-import { fetchCurrentUserGames, upsertCurrentUserGame } from "@/app/_services/users";
-import {
-  EventGroupDetail,
-  EventGroupEvent,
-  EventLobby,
-  EventRegistration,
-  GameRank,
-  LobbyPlayer,
-} from "@/app/_types/types";
-import { DiscordGuildRestrictionDetails } from "@/app/_services/games";
+  RegistrationEditorForm,
+  RegistrationSaveFooter,
+  RegistrationToggleButton,
+} from "./_components/RegistrationEditorPanel";
+import { EventPanel } from "./_components/EventPanel";
+import { TeamsPanel } from "./_components/TeamsPanel";
+import { DeleteRegistrationSheet } from "./_components/sheets/DeleteRegistrationSheet";
+import { DeleteTeamsWarningSheet } from "./_components/sheets/DeleteTeamsWarningSheet";
+import { EditEventSheet } from "./_components/sheets/EditEventSheet";
+import { JoinLobbySheet } from "./_components/sheets/JoinLobbySheet";
+import { LobbyHostConfirmSheet } from "./_components/sheets/LobbyHostConfirmSheet";
+import { MoveToSubsSheet } from "./_components/sheets/MoveToSubsSheet";
+import { RegistrationDetailsSheet } from "./_components/sheets/RegistrationDetailsSheet";
+import { SubCapacitySheet } from "./_components/sheets/SubCapacitySheet";
+import { SwapPlayerSheet } from "./_components/sheets/SwapPlayerSheet";
+import { useDeleteRegistration } from "./_hooks/useDeleteRegistration";
+import { useEventGroupData } from "./_hooks/useEventGroupData";
+import { useHostRosterActions } from "./_hooks/useHostRosterActions";
+import { useJoinLobbySheet } from "./_hooks/useJoinLobbySheet";
+import { useRegistrationEditor } from "./_hooks/useRegistrationEditor";
+import { discordLockLeadSentence, formatDateTime, formatPlayerCount, joinDiscordGuildNames } from "./_lib/formatters";
+import { findUserLobbyHostAssignments } from "./_lib/placements";
 
-const DATE_TIME_FMT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-interface EventRegistrationDraft {
-  can_substitute: boolean;
-  can_lobby_host: boolean;
-}
-
-interface RegistrationDraft {
-  selected_event_ids: string[];
-  per_event: Record<string, EventRegistrationDraft>;
-  duo_request: string;
-}
-
-interface PendingDeleteAction {
-  mode: "single" | "all";
-  userId: string;
-  userName: string;
-  eventId: string;
-  gameNumber: number;
-  registrationsInGroup: number;
-}
-
-/** Identifies a roster/sub/unplaced player within a locked-in game for host swap actions. */
-interface PlayerPlacement {
-  eventId: string;
-  userId: string;
-  discordName: string;
-  lobbyId: string | null;
-  sourceLobbyIndex: number | null;
-  teamNumber: number | null | undefined;
-}
-
-interface PendingJoinLobby {
-  lobby: EventLobby;
-  lobbyIndex: number;
-  gameNumber: number;
-  startTime: string;
-}
-
-interface LobbyHostVolunteer {
-  userId: string;
-  discordName: string;
-  teamNumber: number;
-  isCurrentHost: boolean;
-}
-
-interface PendingLobbyHostChange {
-  placement: PlayerPlacement;
-  volunteerOptions: LobbyHostVolunteer[];
-}
-
-function emptyUserGameDraft(gameId: string): UserGameEditorValue {
-  return {
-    game_id: gameId,
-    in_game_name: "",
-    current_rank: "",
-    peak_rank: "",
-    show_rank: false,
-  };
-}
-
-function formatDateTime(value: string) {
-  if (!value.trim()) return EMPTY_VALUE;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return EMPTY_VALUE;
-  return DATE_TIME_FMT.format(date);
-}
-
-/** Joins Discord server names for the lock-denial sentence (or / Oxford or). */
-function joinDiscordGuildNames(names: string[]): string {
-  if (names.length === 0) return "a required Discord server";
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} or ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
-}
-
-/** Body copy for the Discord lock denial: named events keep the host title; unnamed use the game name. */
-function discordLockLeadSentence(eventNamed: boolean, title: string, serverNames: string): string {
-  if (eventNamed && title) {
-    return `${title} is locked to ${serverNames}.`;
-  }
-  const game = title || "game";
-  return `This ${game} event is locked to ${serverNames}.`;
-}
-
-function formatPlayerCount(count: number) {
-  return `${count} ${count === 1 ? "Player" : "Players"}`;
-}
-
-/** Per-player skill value used for team averages — mirrors backend stored avg_rank_order. */
-function playerSkillOrder(player: LobbyPlayer): number | null {
-  if (player.avg_rank_order <= 0) {
-    return null;
-  }
-  return player.avg_rank_order;
-}
-
-/** Maps a numeric skill value to the closest game rank name by order distance. */
-function nearestRankName(ranks: GameRank[], skillOrder: number): string {
-  if (ranks.length === 0) return EMPTY_VALUE;
-  let nearest = ranks[0];
-  let bestDistance = Math.abs(nearest.order - skillOrder);
-  for (const rank of ranks) {
-    const distance = Math.abs(rank.order - skillOrder);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      nearest = rank;
-    }
-  }
-  return nearest.name;
-}
-
-/** Returns the nearest rank name for a team's mean skill, or EMPTY_VALUE when no rank data exists. */
-function teamAverageRankLabel(players: LobbyPlayer[], ranks: GameRank[]): string {
-  const skillOrders = players
-    .map(playerSkillOrder)
-    .filter((order): order is number => order !== null);
-  if (skillOrders.length === 0) {
-    return EMPTY_VALUE;
-  }
-  const average =
-    skillOrders.reduce((sum, order) => sum + order, 0) / skillOrders.length;
-  return nearestRankName(ranks, average);
-}
-
-function formatGroupTeamSizeLabel(events: EventGroupEvent[]) {
-  const sizes = [...new Set(events.map((e) => e.team_size))];
-  if (sizes.length === 0) return "—";
-  if (sizes.length === 1) return String(sizes[0]);
-  return "Varies";
-}
-
-function formatHostDisplayLabel(
-  isViewerHost: boolean,
-  ownerDisplayName: string,
-  ownerName: string,
-  ownerPronouns: string,
-) {
-  if (isViewerHost) return "You";
-  const label = formatUserDisplayLabel(ownerDisplayName, ownerName);
-  const pronouns = ownerPronouns.trim();
-  if (pronouns) return `${label} (${pronouns})`;
-  return label;
-}
-
-/** Compact subtitle fragment for chips / roster rows (game mode · formatted time). */
-function formatGameModeAndTime(modeName: string, startISO: string) {
-  return `${modeName} · ${formatDateTime(startISO)}`;
-}
-
-/** Human-readable placement label for swap candidates (team, subs, or unplaced). */
-function formatPlacementCategory(
-  sourceLobbyIndex: number | null,
-  targetLobbyIndex: number,
-  teamNumber: number | null | undefined,
-): string {
-  if (teamNumber === undefined) {
-    return "Unplaced";
-  }
-  if (teamNumber === null) {
-    // Substitutes are a single per-game pool in the UI (not per lobby).
-    return "Subs";
-  }
-  const displayTeam = sequentialTeamNumber(targetLobbyIndex, teamNumber);
-  if (sourceLobbyIndex !== null && sourceLobbyIndex === targetLobbyIndex) {
-    return `Team ${displayTeam}`;
-  }
-  return `Lobby ${targetLobbyIndex + 1} · Team ${displayTeam}`;
-}
-
-/** Formats a swap dropdown option as "Name (Category) · Rank". */
-function formatSwapCandidateLabel(
-  displayName: string,
-  discordName: string,
-  category: string,
-  currentRankName?: string,
-): string {
-  const name = formatUserDisplayLabel(displayName, discordName);
-  const rank = currentRankName?.trim() || EMPTY_VALUE;
-  return `${name} (${category}) · ${rank}`;
-}
-
-/** True when a player is assigned to a team (not subs or unplaced). */
-function isTeamAssignedPlacement(
-  placement?: PlayerPlacement,
-): placement is PlayerPlacement & { lobbyId: string; teamNumber: number } {
-  return !!placement && placement.lobbyId !== null && typeof placement.teamNumber === "number";
-}
-
-/** True when a player is in a lobby sub pool. */
-function isSubPlacement(
-  placement?: PlayerPlacement,
-): placement is PlayerPlacement & { lobbyId: string; teamNumber: null } {
-  return !!placement && placement.lobbyId !== null && placement.teamNumber === null;
-}
-
-/** True when a player is registered but not on a team or sub pool. */
-function isUnplacedPlacement(
-  placement?: PlayerPlacement,
-): placement is PlayerPlacement & { lobbyId: null; teamNumber: undefined } {
-  return !!placement && placement.teamNumber === undefined;
-}
-
-/** Lists team players in a lobby who volunteered to host, excluding the selected player. */
-function buildLobbyHostVolunteers(
-  lobby: EventLobby,
-  lobbyIndex: number,
-  excludeUserId: string,
-  lobbyHostId?: string | null,
-): LobbyHostVolunteer[] {
-  const volunteers: LobbyHostVolunteer[] = [];
-  for (const team of lobby.teams) {
-    for (const player of team.players) {
-      if (player.user_id === excludeUserId || !player.can_lobby_host) {
-        continue;
-      }
-      volunteers.push({
-        userId: player.user_id,
-        discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
-        teamNumber: sequentialTeamNumber(lobbyIndex, team.team_number),
-        isCurrentHost: !!lobbyHostId && player.user_id === lobbyHostId,
-      });
-    }
-  }
-  return volunteers;
-}
-
-/** Lists eligible swap targets for a player, excluding same-team roster mates and other substitutes when the source is a sub. */
-function buildSwapCandidates(event: EventGroupEvent, source: PlayerPlacement): SelectOption[] {
-  const options: SelectOption[] = [];
-  const lobbies = event.lobbies ?? [];
-  const sourceIsSub = isSubPlacement(source);
-  const sourceIsUnplaced = isUnplacedPlacement(source);
-
-  for (let lobbyIndex = 0; lobbyIndex < lobbies.length; lobbyIndex++) {
-    const lobby = lobbies[lobbyIndex];
-    for (const team of lobby.teams) {
-      for (const player of team.players) {
-        if (player.user_id === source.userId) {
-          continue;
-        }
-        if (
-          source.teamNumber !== undefined &&
-          source.teamNumber !== null &&
-          source.lobbyId === lobby.id &&
-          source.teamNumber === team.team_number
-        ) {
-          continue;
-        }
-        const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, team.team_number);
-        options.push({
-          value: player.user_id,
-          label: formatSwapCandidateLabel(player.display_name, player.discord_name, category, player.avg_rank_name),
-        });
-      }
-    }
-    for (const player of lobby.subs) {
-      if (player.user_id === source.userId) {
-        continue;
-      }
-      // Unplaced cannot swap with subs; subs cannot swap with other game subs.
-      if (sourceIsUnplaced || sourceIsSub) {
-        continue;
-      }
-      const category = formatPlacementCategory(source.sourceLobbyIndex, lobbyIndex, null);
-      options.push({
-        value: player.user_id,
-        label: formatSwapCandidateLabel(player.display_name, player.discord_name, category, player.avg_rank_name),
-      });
-    }
-  }
-
-  for (const registration of event.unplaced ?? []) {
-    if (registration.user_id === source.userId) {
-      continue;
-    }
-    // Sub↔unplaced and unplaced↔unplaced are rejected by the backend.
-    if (sourceIsSub || sourceIsUnplaced) {
-      continue;
-    }
-    options.push({
-      value: registration.user_id,
-      label: formatSwapCandidateLabel(
-        registration.display_name,
-        registration.discord_name,
-        "Unplaced",
-        registration.avg_rank_name,
-      ),
-    });
-  }
-
-  options.sort((a, b) => a.label.localeCompare(b.label));
-  return options;
-}
-
-function PlayerCard({
-  registration,
-  gameNumber,
-  eventRegion,
-  currentUserRegion,
-  isHostView,
-  currentUserId,
-  canEditRegistration,
-  allowRegistrationDelete = true,
-  onShowDetails,
-  onDeleteRegistrationForGame,
-  onDeleteAllFromUser,
-  placement,
-  onSwap,
-  onMoveToUnplaced,
-  onMoveToSubs,
-  onMakeLobbyHost,
-  lobbyHostId,
-  showDuoRequest = false,
-}: {
-  registration: EventRegistration;
-  gameNumber: number;
-  eventRegion: string;
-  currentUserRegion?: string | null;
-  isHostView: boolean;
-  currentUserId?: string;
-  canEditRegistration: boolean;
-  allowRegistrationDelete?: boolean;
-  onShowDetails: (registration: EventRegistration) => void;
-  onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
-  onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
-  placement?: PlayerPlacement;
-  onSwap?: (placement: PlayerPlacement) => void;
-  onMoveToUnplaced?: (placement: PlayerPlacement) => void;
-  onMoveToSubs?: (placement: PlayerPlacement) => void;
-  onMakeLobbyHost?: (placement: PlayerPlacement) => void;
-  lobbyHostId?: string | null;
-  showDuoRequest?: boolean;
-}) {
-  const canOpenMenu = isHostView || canEditRegistration;
-  const canDelete =
-    allowRegistrationDelete && (isHostView || registration.user_id === currentUserId);
-  const regionMismatch =
-    canEditRegistration &&
-    !!currentUserRegion &&
-    currentUserRegion.trim().toUpperCase() !== eventRegion.trim().toUpperCase();
-  const menuOptions: EllipsisMenuOption[] = [];
-  menuOptions.push({
-    label: "Show More Details",
-    onSelect: () => onShowDetails(registration),
-  });
-  if (
-    isHostView &&
-    placement &&
-    (isTeamAssignedPlacement(placement) || isSubPlacement(placement) || isUnplacedPlacement(placement)) &&
-    onSwap
-  ) {
-    menuOptions.push({
-      label: "Swap",
-      onSelect: () => onSwap(placement),
-    });
-  }
-  if (isHostView && placement && isSubPlacement(placement) && onMoveToUnplaced) {
-    menuOptions.push({
-      label: "Move to Unplaced",
-      onSelect: () => onMoveToUnplaced(placement),
-    });
-  }
-  if (
-    isHostView &&
-    placement &&
-    isUnplacedPlacement(placement) &&
-    registration.can_substitute &&
-    onMoveToSubs
-  ) {
-    menuOptions.push({
-      label: "Move to Substitutes",
-      onSelect: () => onMoveToSubs(placement),
-    });
-  }
-  if (
-    isHostView &&
-    isTeamAssignedPlacement(placement) &&
-    onMakeLobbyHost &&
-    placement.userId !== lobbyHostId
-  ) {
-    menuOptions.push({
-      label: "Make Lobby Host",
-      onSelect: () => onMakeLobbyHost(placement),
-    });
-  }
-  if (canDelete) {
-    menuOptions.push({
-      label: `Delete for Game ${gameNumber}`,
-      onSelect: () => onDeleteRegistrationForGame(registration, gameNumber),
-      tone: "danger",
-    });
-    menuOptions.push({
-      label: `Delete All`,
-      onSelect: () => onDeleteAllFromUser(registration, gameNumber),
-      tone: "danger",
-    });
-  }
-
-  return (
-    <div
-      className={[
-        "card rounded-xl p-4 flex flex-col gap-3 relative overflow-visible",
-        regionMismatch ? "ring-1 ring-amber-400/35" : "",
-      ].join(" ")}
-    >
-      <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-            {formatUserDisplayLabel(registration.display_name, registration.discord_name)}
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
-            {registration.pronouns || EMPTY_VALUE}
-          </p>
-          {regionMismatch && (
-            <p className="text-[11px] text-amber-300 mt-1">
-              Region: {currentUserRegion}
-            </p>
-          )}
-        </div>
-        {canOpenMenu && (
-          <EllipsisMenu options={menuOptions} ariaLabel="Registration actions" />
-        )}
-      </div>
-
-      <div className="h-px bg-white/[0.06]" />
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">In-game name</p>
-          <p className="text-xs text-[var(--color-text-soft)] truncate" title={registration.in_game_name || undefined}>
-            {registration.in_game_name?.trim() || EMPTY_VALUE}
-          </p>
-        </div>
-        <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Average Rank</p>
-          <p className="text-xs text-[var(--color-text-soft)]">{registration.avg_rank_name || EMPTY_VALUE}</p>
-        </div>
-        <div>
-          <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
-          <p className="text-xs text-[var(--color-text-soft)]">{registration.can_substitute ? "Yes" : "No"}</p>
-        </div>
-        {showDuoRequest && (
-          <div>
-            <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Duo request</p>
-            <p className="text-xs text-[var(--color-text-soft)] truncate" title={registration.duo_request || undefined}>
-              {registration.duo_request || EMPTY_VALUE}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Lists every lobby the given user hosts across all games in the group. */
-function findUserLobbyHostAssignments(
-  events: EventGroupEvent[],
-  userId: string,
-): { gameNumber: number; lobbyNumber: number }[] {
-  const assignments: { gameNumber: number; lobbyNumber: number }[] = [];
-  events.forEach((event, eventIndex) => {
-    (event.lobbies ?? []).forEach((lobby, lobbyIndex) => {
-      if (lobby.host_id === userId) {
-        assignments.push({
-          gameNumber: eventIndex + 1,
-          lobbyNumber: lobbyIndex + 1,
-        });
-      }
-    });
-  });
-  return assignments;
-}
-
-/** True when any lobby in the game is currently flagged unfair. */
-function eventHasUnfairLobby(event: EventGroupEvent): boolean {
-  return (event.lobbies ?? []).some((lobby) => lobby.fairness_warning);
-}
-
-/** Returns the lobby fairness banner copy for lock-in vs post-edit warnings. */
-function lobbyFairnessWarningMessage(lobby: EventLobby): string {
-  if (lobby.fairness_warning_at_lock) {
-    return "Teams were formed with the best available balance, but rank spread was too wide for fully fair teams in this lobby.";
-  }
-  return "This lobby was fair when teams were locked in, but a manual roster change has made the rank spread too wide for fully fair teams.";
-}
-
-/** Adapts a lobby player row so TeamsPanel can reuse PlayerCard and registration actions. */
-function lobbyPlayerAsRegistration(player: LobbyPlayer, eventId: string): EventRegistration {
-  return {
-    event_id: eventId,
-    user_id: player.user_id,
-    discord_name: player.discord_name,
-    display_name: player.display_name,
-    in_game_name: player.in_game_name,
-    pronouns: player.pronouns,
-    current_rank_name: player.current_rank_name,
-    peak_rank_name: player.peak_rank_name,
-    avg_rank_name: player.avg_rank_name,
-    can_substitute: player.can_substitute,
-    can_lobby_host: player.can_lobby_host,
-    duo_request: player.duo_request,
-    created_at: player.created_at,
-    updated_at: player.updated_at,
-  };
-}
-
-/** Resolves the lobby host's UI label from roster, subs, or unplaced players. */
-function lobbyHostName(lobby: EventLobby, event: EventGroupEvent): string | null {
-  if (!lobby.host_id) return null;
-  const allPlayers = [
-    ...lobby.teams.flatMap((team) => team.players),
-    ...lobby.subs,
-    ...(event.unplaced ?? []),
-  ];
-  const host = allPlayers.find((p) => p.user_id === lobby.host_id);
-  if (!host) return null;
-  return formatUserDisplayLabel(host.display_name, host.discord_name);
-}
-
-function TeamsPanel({
-  event,
-  gameNumber,
-  eventRegion,
-  currentUserRegion,
-  isHostView,
-  currentUserId,
-  gameRanks,
-  onShowDetails,
-  onDeleteRegistrationForGame,
-  onDeleteAllFromUser,
-  onSwapPlayer,
-  onMoveToUnplaced,
-  onMoveToSubs,
-  onMakeLobbyHost,
-  onJoinLobby,
-  showJoinLobby,
-}: {
-  event: EventGroupEvent;
-  gameNumber: number;
-  eventRegion: string;
-  currentUserRegion?: string | null;
-  isHostView: boolean;
-  currentUserId?: string;
-  gameRanks: GameRank[];
-  onShowDetails: (registration: EventRegistration) => void;
-  onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
-  onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
-  onSwapPlayer?: (placement: PlayerPlacement) => void;
-  onMoveToUnplaced?: (placement: PlayerPlacement) => void;
-  onMoveToSubs?: (placement: PlayerPlacement) => void;
-  onMakeLobbyHost?: (placement: PlayerPlacement) => void;
-  onJoinLobby: (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => void;
-  showJoinLobby: boolean;
-}) {
-  const lobbies = event.lobbies ?? [];
-  if (lobbies.length === 0) {
-    return null;
-  }
-
-  const substituteEntries = lobbies.flatMap((lobby, lobbyIndex) =>
-    lobby.subs.map((player) => ({ lobby, lobbyIndex, player })),
-  );
-
-  return (
-    <div className="flex flex-col gap-4">
-      {lobbies.map((lobby, lobbyIndex) => (
-        <div key={lobby.id} className="flex flex-col gap-3">
-          {lobby.fairness_warning && (
-            <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-              {lobbyFairnessWarningMessage(lobby)}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.9375rem] font-semibold text-[var(--color-text)]">
-            <span className="min-w-0 break-words">
-              Lobby {lobbyIndex + 1}
-              {lobbyHostName(lobby, event) ? ` · Host: ${lobbyHostName(lobby, event)}` : ""}
-              {showJoinLobby && (
-                <>
-                  {" · "}
-                  <button
-                    type="button"
-                    onClick={() => onJoinLobby(lobby, lobbyIndex, gameNumber, event.start_time)}
-                    className="font-medium text-[var(--color-accent-blue)] hover:underline"
-                  >
-                    Join Lobby
-                  </button>
-                </>
-              )}
-            </span>
-            {lobby.fairness_warning && <span className="text-amber-400" aria-label="Unfair lobby">⚠</span>}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {lobby.teams.map((team) => {
-              const averageRank = isHostView ? teamAverageRankLabel(team.players, gameRanks) : EMPTY_VALUE;
-              const displayTeamNumber = sequentialTeamNumber(lobbyIndex, team.team_number);
-              return (
-              <div key={team.team_number} className="flex flex-col gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Team {displayTeamNumber}
-                  {averageRank !== EMPTY_VALUE ? ` · Average: ${averageRank}` : ""}
-                </p>
-                {team.players.map((player) => (
-                  <PlayerCard
-                    key={player.user_id}
-                    registration={lobbyPlayerAsRegistration(player, event.id)}
-                    gameNumber={gameNumber}
-                    eventRegion={eventRegion}
-                    currentUserRegion={currentUserRegion}
-                    isHostView={isHostView}
-                    currentUserId={currentUserId}
-                    canEditRegistration={false}
-                    allowRegistrationDelete={false}
-                    onShowDetails={onShowDetails}
-                    onDeleteRegistrationForGame={onDeleteRegistrationForGame}
-                    onDeleteAllFromUser={onDeleteAllFromUser}
-                    showDuoRequest
-                    placement={{
-                      eventId: event.id,
-                      userId: player.user_id,
-                      discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
-                      lobbyId: lobby.id,
-                      sourceLobbyIndex: lobbyIndex,
-                      teamNumber: team.team_number,
-                    }}
-                    lobbyHostId={lobby.host_id}
-                    onSwap={onSwapPlayer}
-                    onMoveToUnplaced={onMoveToUnplaced}
-                    onMoveToSubs={onMoveToSubs}
-                    onMakeLobbyHost={onMakeLobbyHost}
-                  />
-                ))}
-              </div>
-            );
-            })}
-          </div>
-        </div>
-      ))}
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-          Substitutes
-          {substituteEntries.length > 0
-            ? ` · ${formatPlayerCount(substituteEntries.length)}`
-            : ""}
-        </p>
-        {substituteEntries.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/[0.08] py-8 text-center text-sm text-[var(--color-text-muted)]">
-            {NO_SUBSTITUTES_MESSAGE}
-          </div>
-        ) : (
-          substituteEntries.map(({ lobby, lobbyIndex, player }) => (
-            <PlayerCard
-              key={player.user_id}
-              registration={lobbyPlayerAsRegistration(player, event.id)}
-              gameNumber={gameNumber}
-              eventRegion={eventRegion}
-              currentUserRegion={currentUserRegion}
-              isHostView={isHostView}
-              currentUserId={currentUserId}
-              canEditRegistration={false}
-              allowRegistrationDelete={false}
-              onShowDetails={onShowDetails}
-              onDeleteRegistrationForGame={onDeleteRegistrationForGame}
-              onDeleteAllFromUser={onDeleteAllFromUser}
-              showDuoRequest
-              placement={{
-                eventId: event.id,
-                userId: player.user_id,
-                discordName: formatUserDisplayLabel(player.display_name, player.discord_name),
-                lobbyId: lobby.id,
-                sourceLobbyIndex: lobbyIndex,
-                teamNumber: null,
-              }}
-              onSwap={onSwapPlayer}
-              onMoveToUnplaced={onMoveToUnplaced}
-              onMoveToSubs={onMoveToSubs}
-            />
-          ))
-        )}
-      </div>
-      {isHostView && (event.unplaced ?? []).length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-            Unplaced · {formatPlayerCount((event.unplaced ?? []).length)}
-          </p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Registered but not assigned to a team or sub pool for this game.
-          </p>
-          {event.unplaced.map((registration) => (
-            <PlayerCard
-              key={registration.user_id}
-              registration={registration}
-              gameNumber={gameNumber}
-              eventRegion={eventRegion}
-              currentUserRegion={currentUserRegion}
-              isHostView={isHostView}
-              currentUserId={currentUserId}
-              canEditRegistration={false}
-              allowRegistrationDelete={false}
-              onShowDetails={onShowDetails}
-              onDeleteRegistrationForGame={onDeleteRegistrationForGame}
-              onDeleteAllFromUser={onDeleteAllFromUser}
-              showDuoRequest
-              placement={{
-                eventId: event.id,
-                userId: registration.user_id,
-                discordName: formatUserDisplayLabel(registration.display_name, registration.discord_name),
-                lobbyId: null,
-                sourceLobbyIndex: null,
-                teamNumber: undefined,
-              }}
-              onSwap={onSwapPlayer}
-              onMoveToUnplaced={onMoveToUnplaced}
-              onMoveToSubs={onMoveToSubs}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EventPanel({
-  event,
-  gameNumber,
-  eventRegion,
-  currentUserRegion,
-  isHostView,
-  currentUserId,
-  onShowDetails,
-  onDeleteRegistrationForGame,
-  onDeleteAllFromUser,
-}: {
-  event: EventGroupEvent;
-  gameNumber: number;
-  eventRegion: string;
-  currentUserRegion?: string | null;
-  isHostView: boolean;
-  currentUserId?: string;
-  onShowDetails: (registration: EventRegistration) => void;
-  onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
-  onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      {event.registrations.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-white/[0.08] py-8 text-center text-sm text-[var(--color-text-muted)]">
-          No registered players yet.
-        </div>
-      ) : (
-        event.registrations.map((registration) => (
-          <PlayerCard
-            key={registration.user_id}
-            registration={registration}
-            gameNumber={gameNumber}
-            eventRegion={eventRegion}
-            currentUserRegion={currentUserRegion}
-            isHostView={isHostView}
-            currentUserId={currentUserId}
-            canEditRegistration={registration.user_id === currentUserId}
-            allowRegistrationDelete={event.lobbies_count === 0}
-            onShowDetails={onShowDetails}
-            onDeleteRegistrationForGame={onDeleteRegistrationForGame}
-            onDeleteAllFromUser={onDeleteAllFromUser}
-          />
-        ))
-      )}
-    </div>
-  );
-}
-
-// EventGroupPage - loads GET /events/:groupId and drives host vs guest UI, sheets, and mutations.
 export default function EventGroupPage() {
   const params = useParams<{ groupId: string }>();
   const groupId = Array.isArray(params?.groupId) ? params.groupId[0] : params?.groupId;
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const {
+    group,
+    setGroup,
+    pageError,
+    setPageError,
+    accessChecking,
+    accessDenial,
+    setAccessDenial,
+    loading,
+    gameRanks,
+    loadGroup,
+    activeEventId,
+    setActiveEventId,
+  } = useEventGroupData(groupId, user, authLoading, isAuthenticated);
 
-  const [group, setGroup] = useState<EventGroupDetail | null>(null);
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [accessChecking, setAccessChecking] = useState(false);
-  const [accessDenial, setAccessDenial] = useState<DiscordGuildRestrictionDetails | null>(null);
-  const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
-  const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(true);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
-  const [registrationEditorOpen, setRegistrationEditorOpen] = useState(false);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
-  const [warningSheetOpen, setWarningSheetOpen] = useState(false);
-  const [subCapacitySheetOpen, setSubCapacitySheetOpen] = useState(false);
-  const [deleteWarningSheetOpen, setDeleteWarningSheetOpen] = useState(false);
-  const [swapSheetOpen, setSwapSheetOpen] = useState(false);
-  const [lobbyHostConfirmOpen, setLobbyHostConfirmOpen] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState<EventRegistration | null>(null);
-  const [pendingDeleteAction, setPendingDeleteAction] = useState<PendingDeleteAction | null>(null);
-  const [pendingSwap, setPendingSwap] = useState<PlayerPlacement | null>(null);
-  const [pendingLobbyHostChange, setPendingLobbyHostChange] = useState<PendingLobbyHostChange | null>(null);
-  const [swapTargetUserId, setSwapTargetUserId] = useState("");
-  const [swapError, setSwapError] = useState<string | null>(null);
-  const [moveToSubsSheetOpen, setMoveToSubsSheetOpen] = useState(false);
-  const [pendingMoveToSubs, setPendingMoveToSubs] = useState<PlayerPlacement | null>(null);
-  const [moveToSubsLobbyId, setMoveToSubsLobbyId] = useState("");
-  const [moveToSubsError, setMoveToSubsError] = useState<string | null>(null);
-  const [joinLobbySheetOpen, setJoinLobbySheetOpen] = useState(false);
-  const [pendingJoinLobby, setPendingJoinLobby] = useState<PendingJoinLobby | null>(null);
-  const [joinLobbyDraft, setJoinLobbyDraft] = useState("");
-  const [joinLobbyError, setJoinLobbyError] = useState<string | null>(null);
-  const [joinLobbyCopyStatus, setJoinLobbyCopyStatus] = useState<"idle" | "success" | "error">("idle");
-  const [shareStatus, setShareStatus] = useState<"idle" | "success" | "error">("idle");
-  const [pingStatus, setPingStatus] = useState<"idle" | "success" | "error">("idle");
-  const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
-    selected_event_ids: [],
-    per_event: {},
-    duo_request: "",
-  });
-  const [userGameDraft, setUserGameDraft] = useState<UserGameEditorValue>({
-    game_id: "",
-    in_game_name: "",
-    current_rank: "",
-    peak_rank: "",
-    show_rank: false,
-  });
-  const [userGameRanks, setUserGameRanks] = useState<GameRank[]>([]);
-  const [gameRanks, setGameRanks] = useState<GameRank[]>([]);
-  const [registrationError, setRegistrationError] = useState<string | null>(null);
-  const [registrationLoading, setRegistrationLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const topAnchorRef = useRef<HTMLDivElement | null>(null);
   const eventSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  /** Prevents re-opening the registration form after the user cancels an auto-open. */
-  const didAutoOpenRegistrationRef = useRef(false);
-
-  const loadGroup = useCallback(async (signal?: AbortSignal) => {
-    if (!groupId) return;
-    let showFullPageLoading = false;
-    setGroup((current) => {
-      showFullPageLoading = current === null;
-      return current;
-    });
-    if (showFullPageLoading) {
-      setLoading(true);
-    }
-    setPageError(null);
-    try {
-      const data = await fetchEventGroup(groupId, signal);
-      if (signal?.aborted) return;
-      setGroup(data);
-      if (user?.id === data.owner_id) {
-        const ranks = await fetchGameRanks(data.game_id, signal);
-        if (signal?.aborted) return;
-        setGameRanks(ranks);
-      } else {
-        setGameRanks([]);
-      }
-      if (!activeEventId || !data.events.some((event) => event.id === activeEventId)) {
-        setActiveEventId(data.events[0]?.id ?? null);
-      }
-    } catch (err) {
-      const canceled =
-        signal?.aborted ||
-        (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-        (err as { name?: string })?.name === "CanceledError";
-      if (canceled) return;
-      const restriction = extractDiscordGuildRestriction(err);
-      if (restriction) {
-        setAccessDenial(restriction);
-        setGroup(null);
-        return;
-      }
-      setPageError("Could not load this event group.");
-    } finally {
-      if (!signal?.aborted && showFullPageLoading) {
-        setLoading(false);
-      }
-    }
-  }, [activeEventId, groupId, user]);
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated || !groupId) return;
-    const ac = new AbortController();
-    const timer = window.setTimeout(() => {
-      setAccessChecking(true);
-      setAccessDenial(null);
-      void (async () => {
-        try {
-          await fetchEventGroupAccess(groupId, ac.signal);
-          if (ac.signal.aborted) return;
-          await loadGroup(ac.signal);
-        } catch (err) {
-          const canceled =
-            ac.signal.aborted ||
-            (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-            (err as { name?: string })?.name === "CanceledError";
-          if (canceled) return;
-          const restriction = extractDiscordGuildRestriction(err);
-          if (restriction) {
-            setAccessDenial(restriction);
-            setGroup(null);
-            setLoading(false);
-            return;
-          }
-          setPageError("Could not load this event group.");
-          setLoading(false);
-        } finally {
-          if (!ac.signal.aborted) {
-            setAccessChecking(false);
-          }
-        }
-      })();
-    }, 0);
-    return () => {
-      window.clearTimeout(timer);
-      ac.abort();
-    };
-  }, [authLoading, groupId, isAuthenticated, loadGroup]);
-
-  useEffect(() => {
-    didAutoOpenRegistrationRef.current = false;
-  }, [groupId]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 2500);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  useEffect(() => {
-    if (shareStatus === "idle") return;
-    const timer = window.setTimeout(() => setShareStatus("idle"), 1600);
-    return () => window.clearTimeout(timer);
-  }, [shareStatus]);
-
-  useEffect(() => {
-    if (joinLobbyCopyStatus === "idle") return;
-    const timer = window.setTimeout(() => setJoinLobbyCopyStatus("idle"), 1600);
-    return () => window.clearTimeout(timer);
-  }, [joinLobbyCopyStatus]);
-
-  useEffect(() => {
-    if (pingStatus === "idle") return;
-    const timer = window.setTimeout(() => setPingStatus("idle"), 1600);
-    return () => window.clearTimeout(timer);
-  }, [pingStatus]);
-
-  const activeEvent = useMemo(
-    () => group?.events.find((event) => event.id === activeEventId) ?? group?.events[0] ?? null,
-    [activeEventId, group?.events]
-  );
-  const activeEventNumber = useMemo(() => {
-    if (!group || !activeEvent) return 1;
-    const idx = group.events.findIndex((event) => event.id === activeEvent.id);
-    return idx >= 0 ? idx + 1 : 1;
-  }, [activeEvent, group]);
-  const myLobbyHostAssignments = useMemo(() => {
-    if (!group || !user?.id) return [];
-    return findUserLobbyHostAssignments(group.events, user.id);
-  }, [group, user]);
-  const scrollToEventSection = useCallback((eventId: string) => {
-    eventSectionRefs.current[eventId]?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, []);
-  const scrollToTop = useCallback(() => {
-    topAnchorRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, []);
-
-  const firstEventStart = group?.events[0]?.start_time ?? "";
   const isHost = !!(group && user?.id && user.id === group.owner_id);
   const hasAnyLobbies = !!group?.events.some((event) => event.lobbies_count > 0);
+
   const myRegistrationsByEvent = useMemo(() => {
     const map = new Map<string, EventRegistration>();
     if (!group || !user?.id) return map;
@@ -1039,539 +79,83 @@ export default function EventGroupPage() {
     return map;
   }, [group, user]);
 
-  const selectedValidEventIds = useMemo(() => {
-    if (!group) return [];
-    const validIds = new Set(group.events.map((event) => event.id));
-    return Array.from(new Set(registrationDraft.selected_event_ids)).filter((eventId) => validIds.has(eventId));
-  }, [group, registrationDraft.selected_event_ids]);
-  const userGameErrors = useMemo(
-    () => ({
-      in_game_name: userGameDraft.in_game_name.trim() ? undefined : "In-game name is required",
-      current_rank: userGameDraft.current_rank ? undefined : "Current rank is required",
-      peak_rank: userGameDraft.peak_rank ? undefined : "Peak rank is required",
-    }),
-    [userGameDraft.current_rank, userGameDraft.in_game_name, userGameDraft.peak_rank]
-  );
-  const hasUserGameErrors = !!(userGameErrors.in_game_name || userGameErrors.current_rank || userGameErrors.peak_rank);
-  const registrationIsEditMode = myRegistrationsByEvent.size > 0;
-  const canDeleteAllViaSave =
-    registrationIsEditMode &&
-    selectedValidEventIds.length === 0 &&
-    !!user?.id &&
-    !hasAnyLobbies &&
-    !working &&
-    !registrationLoading;
-  const canSaveRegistration =
-    selectedValidEventIds.length > 0 && !working && !registrationLoading && !hasUserGameErrors;
-  const canSubmitRegistration = canSaveRegistration || canDeleteAllViaSave;
-  const regionMismatchWarning = (() => {
-    if (!group || !user?.region || selectedValidEventIds.length === 0) return null;
-    const preferredRegion = user.region.trim();
-    const eventRegion = group.region.trim();
-    if (!preferredRegion || !eventRegion) return null;
-    if (preferredRegion.toUpperCase() === eventRegion.toUpperCase()) return null;
-    return `Heads up: your preferred region is ${preferredRegion}, but this event is in ${eventRegion}.`;
-  })();
-
-  const refreshAndCloseMenus = async () => {
-    await loadGroup();
-    setWarningSheetOpen(false);
-  };
-
-  const withHostAction = async (action: () => Promise<void>) => {
-    try {
-      setWorking(true);
-      await action();
-      await refreshAndCloseMenus();
-    } catch (err) {
-      setPageError(extractApiError(err, "Could not complete that action."));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const lockInTeams = async () => {
-    if (!group) return;
-    try {
-      setWorking(true);
-      const result = await createTeams(group.id);
-      await loadGroup();
-      if (result.sub_capacity_adjusted) {
-        setSubCapacitySheetOpen(true);
-      }
-    } catch (err) {
-      setPageError(extractApiError(err, "Could not complete that action."));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const openSwapSheet = useCallback((placement: PlayerPlacement) => {
-    setPendingSwap(placement);
-    setSwapTargetUserId("");
-    setSwapError(null);
-    setSwapSheetOpen(true);
-  }, []);
-
-  const closeSwapSheet = useCallback(() => {
-    setSwapSheetOpen(false);
-    setPendingSwap(null);
-    setSwapTargetUserId("");
-    setSwapError(null);
-  }, []);
-
-  const openJoinLobbySheet = useCallback(
-    (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => {
-      const display = buildLobbyJoinDisplayValue(lobby.join_code, group?.join_link_base);
-      setPendingJoinLobby({ lobby, lobbyIndex, gameNumber, startTime });
-      setJoinLobbyDraft(display?.value ?? lobby.join_code ?? "");
-      setJoinLobbyError(null);
-      setJoinLobbyCopyStatus("idle");
-      setJoinLobbySheetOpen(true);
-    },
-    [group?.join_link_base],
+  const activeEvent = useMemo(
+    () => group?.events.find((event) => event.id === activeEventId) ?? group?.events[0] ?? null,
+    [activeEventId, group?.events],
   );
 
-  const closeJoinLobbySheet = useCallback(() => {
-    setJoinLobbySheetOpen(false);
-    setPendingJoinLobby(null);
-    setJoinLobbyDraft("");
-    setJoinLobbyError(null);
-    setJoinLobbyCopyStatus("idle");
-  }, []);
+  const activeEventNumber = useMemo(() => {
+    if (!group || !activeEvent) return 1;
+    const idx = group.events.findIndex((event) => event.id === activeEvent.id);
+    return idx >= 0 ? idx + 1 : 1;
+  }, [activeEvent, group]);
 
-  const canEditPendingJoinLobby = !!(
-    pendingJoinLobby &&
-    user?.id &&
-    (isHost || pendingJoinLobby.lobby.host_id === user.id)
-  );
+  const myLobbyHostAssignments = useMemo(() => {
+    if (!group || !user?.id) return [];
+    return findUserLobbyHostAssignments(group.events, user.id);
+  }, [group, user]);
 
-  const pendingJoinDisplay = pendingJoinLobby
-    ? buildLobbyJoinDisplayValue(pendingJoinLobby.lobby.join_code, group?.join_link_base)
-    : null;
-
-  const handleCopyJoinLobby = async () => {
-    const value = canEditPendingJoinLobby
-      ? joinLobbyDraft.trim()
-      : pendingJoinDisplay?.value;
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setJoinLobbyCopyStatus("success");
-    } catch {
-      setJoinLobbyCopyStatus("error");
-    }
-  };
-
-  const handleSaveJoinLobby = async () => {
-    if (!pendingJoinLobby || !canEditPendingJoinLobby) return;
-    const validationError = validateLobbyJoinInput(joinLobbyDraft, group?.join_link_base ?? null);
-    if (validationError) {
-      setJoinLobbyError(validationError);
-      return;
-    }
-    try {
-      setWorking(true);
-      setJoinLobbyError(null);
-      const trimmed = joinLobbyDraft.trim();
-      await updateLobbyJoinCode(pendingJoinLobby.lobby.id, trimmed === "" ? null : trimmed);
-      await loadGroup();
-      closeJoinLobbySheet();
-      setToast("Lobby join info saved.");
-    } catch (err) {
-      setJoinLobbyError(extractApiError(err, "Could not save lobby join info."));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const closeLobbyHostConfirm = useCallback(() => {
-    setLobbyHostConfirmOpen(false);
-    setPendingLobbyHostChange(null);
-  }, []);
-
-  const submitLobbyHostChange = useCallback(async (placement: PlayerPlacement) => {
-    try {
-      setWorking(true);
-      await setLobbyHost(placement.eventId, placement.userId);
-      await loadGroup();
-      closeLobbyHostConfirm();
-    } catch (err) {
-      setPageError(extractApiError(err, "Could not complete that action."));
-    } finally {
-      setWorking(false);
-    }
-  }, [closeLobbyHostConfirm, loadGroup]);
-
-  const handleMakeLobbyHost = useCallback(
-    (placement: PlayerPlacement) => {
-      if (!group) return;
-      const event = group.events.find((item) => item.id === placement.eventId);
-      if (!event || !isTeamAssignedPlacement(placement)) return;
-
-      const lobby = (event.lobbies ?? []).find((item) => item.id === placement.lobbyId);
-      if (!lobby) return;
-      const lobbyIndex = (event.lobbies ?? []).findIndex((item) => item.id === placement.lobbyId);
-
-      const player = lobby.teams
-        .flatMap((team) => team.players)
-        .find((item) => item.user_id === placement.userId);
-      if (!player) return;
-
-      if (player.can_lobby_host) {
-        void submitLobbyHostChange(placement);
-        return;
-      }
-
-      setPendingLobbyHostChange({
-        placement,
-        volunteerOptions: buildLobbyHostVolunteers(
-          lobby,
-          lobbyIndex >= 0 ? lobbyIndex : 0,
-          placement.userId,
-          lobby.host_id,
-        ),
-      });
-      setLobbyHostConfirmOpen(true);
-    },
-    [group, submitLobbyHostChange],
-  );
-
-  const handleSwapSubmit = async () => {
-    if (!pendingSwap || !swapTargetUserId) return;
-    try {
-      setWorking(true);
-      setSwapError(null);
-      await swapPlayers(pendingSwap.eventId, pendingSwap.userId, swapTargetUserId);
-      await loadGroup();
-      closeSwapSheet();
-    } catch (err) {
-      setSwapError(extractApiError(err, "Could not complete that action."));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const closeMoveToSubsSheet = useCallback(() => {
-    setMoveToSubsSheetOpen(false);
-    setPendingMoveToSubs(null);
-    setMoveToSubsLobbyId("");
-    setMoveToSubsError(null);
-  }, []);
-
-  const handleMoveToUnplaced = (placement: PlayerPlacement) => {
-    void withHostAction(() => moveSubToUnplaced(placement.eventId, placement.userId));
-  };
-
-  const handleMoveToSubs = (placement: PlayerPlacement) => {
-    if (!group) return;
-    const event = group.events.find((item) => item.id === placement.eventId);
-    if (!event) return;
-    const lobbies = event.lobbies ?? [];
-    if (lobbies.length === 1) {
-      void withHostAction(() =>
-        moveUnplacedToSubs(placement.eventId, placement.userId, lobbies[0].id),
-      );
-      return;
-    }
-    setPendingMoveToSubs(placement);
-    setMoveToSubsLobbyId("");
-    setMoveToSubsError(null);
-    setMoveToSubsSheetOpen(true);
-  };
-
-  const handleMoveToSubsSubmit = async () => {
-    if (!pendingMoveToSubs || !moveToSubsLobbyId) return;
-    try {
-      setWorking(true);
-      setMoveToSubsError(null);
-      await moveUnplacedToSubs(pendingMoveToSubs.eventId, pendingMoveToSubs.userId, moveToSubsLobbyId);
-      await loadGroup();
-      closeMoveToSubsSheet();
-    } catch (err) {
-      setMoveToSubsError(extractApiError(err, "Could not complete that action."));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const swapEvent = useMemo(() => {
-    if (!group || !pendingSwap) return null;
-    return group.events.find((event) => event.id === pendingSwap.eventId) ?? null;
-  }, [group, pendingSwap]);
-
-  const swapCandidateOptions = useMemo(() => {
-    if (!swapEvent || !pendingSwap) return [];
-    return buildSwapCandidates(swapEvent, pendingSwap);
-  }, [swapEvent, pendingSwap]);
-
-  const moveToSubsEvent = useMemo(() => {
-    if (!group || !pendingMoveToSubs) return null;
-    return group.events.find((event) => event.id === pendingMoveToSubs.eventId) ?? null;
-  }, [group, pendingMoveToSubs]);
-
-  const moveToSubsLobbyOptions = useMemo((): SelectOption[] => {
-    if (!moveToSubsEvent) return [];
-    return (moveToSubsEvent.lobbies ?? []).map((lobby, lobbyIndex) => ({
-      value: lobby.id,
-      label: `Lobby ${lobbyIndex + 1}`,
-    }));
-  }, [moveToSubsEvent]);
-
-  const handleShare = async () => {
-    const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setShareStatus("success");
-    } catch {
-      setShareStatus("error");
-    }
-  };
-
-  const handleCopyDiscordPings = async () => {
-    if (!group) return;
-    try {
-      await navigator.clipboard.writeText(buildDiscordPingMessage(group));
-      setPingStatus("success");
-    } catch {
-      setPingStatus("error");
-    }
-  };
-
-  const handleOpenRegistrationSheet = async (registration?: EventRegistration) => {
-    if (!group) return;
-    setRegistrationError(null);
-    setRegistrationLoading(true);
-    const selectedEventIds: string[] = [];
-    const perEvent: Record<string, EventRegistrationDraft> = {};
-    let duoRequest = "";
-
-    for (const event of group.events) {
-      const existing = myRegistrationsByEvent.get(event.id);
-      if (!existing) continue;
-      selectedEventIds.push(event.id);
-      perEvent[event.id] = {
-        can_substitute: existing.can_substitute,
-        can_lobby_host: existing.can_lobby_host,
-      };
-      if (!duoRequest && existing.duo_request) {
-        duoRequest = existing.duo_request;
-      }
-    }
-
-    if (selectedEventIds.length === 0) {
-      for (const event of group.events) {
-        selectedEventIds.push(event.id);
-        perEvent[event.id] = {
-          can_substitute: true,
-          can_lobby_host: false,
-        };
-      }
-    }
-
-    if (registration && !selectedEventIds.includes(registration.event_id)) {
-      selectedEventIds.push(registration.event_id);
-      perEvent[registration.event_id] = {
-        can_substitute: registration.can_substitute,
-        can_lobby_host: registration.can_lobby_host,
-      };
-      if (!duoRequest && registration.duo_request) {
-        duoRequest = registration.duo_request;
-      }
-    }
-
-    setRegistrationDraft({
-      selected_event_ids: selectedEventIds,
-      per_event: perEvent,
-      duo_request: duoRequest,
+  const scrollToEventSection = useCallback((eventId: string) => {
+    eventSectionRefs.current[eventId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
     });
-    try {
-      const [userGames, ranks] = await Promise.all([
-        fetchCurrentUserGames(),
-        fetchGameRanks(group.game_id),
-      ]);
-      const existing = userGames.find((userGame) => userGame.game_id === group.game_id);
-      setUserGameRanks(ranks);
-      setUserGameDraft(
-        existing
-          ? {
-              game_id: group.game_id,
-              in_game_name: existing.in_game_name ?? "",
-              current_rank: existing.current_rank ?? "",
-              peak_rank: existing.peak_rank ?? "",
-              show_rank: existing.show_rank,
-            }
-          : emptyUserGameDraft(group.game_id)
-      );
-    } catch (err) {
-      setUserGameRanks([]);
-      setUserGameDraft(emptyUserGameDraft(group.game_id));
-      setRegistrationError(extractApiError(err, "Could not load your game settings. Please try again."));
-    } finally {
-      setRegistrationLoading(false);
-    }
-    setRegistrationEditorOpen(true);
-  };
+  }, []);
 
-  const handleCloseRegistrationEditor = async () => {
-    setRegistrationError(null);
-    setRegistrationEditorOpen(false);
-    await loadGroup();
-  };
+  const scrollToTop = useCallback(() => {
+    topAnchorRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
 
-  // Auto-open register form for guests who aren't registered yet (same as clicking Register Now).
-  useEffect(() => {
-    if (authLoading || !isAuthenticated || !user || !group || loading) return;
-    if (didAutoOpenRegistrationRef.current || registrationEditorOpen) return;
-    if (isHost || myRegistrationsByEvent.size > 0 || !group.registration_open) return;
+  const firstEventStart = group?.events[0]?.start_time ?? "";
 
-    didAutoOpenRegistrationRef.current = true;
-    const timer = window.setTimeout(() => {
-      void handleOpenRegistrationSheet();
-    }, 0);
-    return () => window.clearTimeout(timer);
-    // handleOpenRegistrationSheet closes over the latest group/registrations for this render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once per group visit via ref guard
-  }, [
-    authLoading,
+  const deleteRegistration = useDeleteRegistration(group, user, loadGroup, setWorking, setPageError);
+  const registrationEditor = useRegistrationEditor({
+    groupId,
     group,
-    isAuthenticated,
-    isHost,
-    loading,
-    myRegistrationsByEvent.size,
-    registrationEditorOpen,
     user,
-  ]);
+    authLoading,
+    isAuthenticated,
+    pageLoading: loading,
+    isHost,
+    myRegistrationsByEvent,
+    hasAnyLobbies,
+    working,
+    setWorking,
+    loadGroup,
+    setAccessDenial,
+    setGroup,
+    openDeleteAllForCurrentUserConfirmation: deleteRegistration.openDeleteAllForCurrentUserConfirmation,
+  });
+  const hostActions = useHostRosterActions(group, loadGroup, setWorking, setPageError);
+  const joinLobby = useJoinLobbySheet(group, user, isHost, loadGroup, setWorking, setToast);
 
-  const deleteAllRegistrationsForUserInGroup = async (targetUserId: string) => {
+  const { status: shareStatus, copy: copyShareLink } = useCopyStatus();
+  const { status: pingStatus, copy: copyDiscordPings } = useCopyStatus();
+
+  const handleShare = () => {
+    const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+    void copyShareLink(shareUrl);
+  };
+
+  const handleCopyDiscordPings = () => {
     if (!group) return;
-    const eventIds = group.events
-      .filter((event) => event.registrations.some((item) => item.user_id === targetUserId))
-      .map((event) => event.id);
-    await Promise.all(eventIds.map((eventId) => deleteRegistration(eventId, targetUserId)));
+    void copyDiscordPings(buildDiscordPingMessage(group));
   };
 
-  const handleSaveRegistration = async () => {
-    if (!group) return;
-    setRegistrationError(null);
-    if (selectedValidEventIds.length === 0) {
-      if (registrationIsEditMode && user?.id) {
-        openDeleteAllForCurrentUserConfirmation();
-        return;
-      }
-      setRegistrationError("Select at least one event, then try saving again.");
-      return;
-    }
-    if (hasUserGameErrors) {
-      setRegistrationError("Complete your game profile (in-game name, current rank, and peak rank) before saving.");
-      return;
-    }
-    setWorking(true);
-    try {
-      await upsertCurrentUserGame(group.game_id, {
-        in_game_name: userGameDraft.in_game_name.trim(),
-        current_rank: userGameDraft.current_rank,
-        peak_rank: userGameDraft.peak_rank,
-        show_rank: userGameDraft.show_rank,
-      });
-    } catch (err) {
-      setRegistrationError(
-        `${extractApiError(err)}. Complete your game profile, then try again.`
-      );
-      setWorking(false);
-      return;
-    }
-
-    try {
-      await upsertMyGroupRegistrations(group.id, {
-        duo_request: registrationDraft.duo_request,
-        events: selectedValidEventIds.map((eventId) => {
-          const eventDraft = registrationDraft.per_event[eventId] ?? {
-            can_substitute: true,
-            can_lobby_host: false,
-          };
-          return {
-            event_id: eventId,
-            can_substitute: eventDraft.can_substitute,
-            can_lobby_host: eventDraft.can_lobby_host,
-          };
-        }),
-      });
-      setRegistrationEditorOpen(false);
-      await loadGroup();
-    } catch (err) {
-      const restriction = extractDiscordGuildRestriction(err);
-      if (restriction) {
-        setAccessDenial(restriction);
-        setGroup(null);
-        setRegistrationEditorOpen(false);
-        return;
-      }
-      setRegistrationError(
-        `Your game settings were saved, but registration update failed: ${extractApiError(
-          err
-        )}. Complete your game profile, then retry Save Registration.`
-      );
-    } finally {
-      setWorking(false);
-    }
+  const handleShowDetails = (registration: EventRegistration) => {
+    setSelectedRegistration(registration);
+    setDetailsSheetOpen(true);
   };
 
-  const openDeleteConfirmation = (
-    registration: EventRegistration,
-    gameNumber: number,
-    mode: "single" | "all"
-  ) => {
-    if (!group) return;
-    const registrationsInGroup = group.events.reduce(
-      (count, event) => count + (event.registrations.some((item) => item.user_id === registration.user_id) ? 1 : 0),
-      0
-    );
-    setPendingDeleteAction({
-      mode,
-      userId: registration.user_id,
-      userName: formatUserDisplayLabel(registration.display_name, registration.discord_name),
-      eventId: registration.event_id,
-      gameNumber,
-      registrationsInGroup,
-    });
-    setDeleteWarningSheetOpen(true);
-  };
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
-  const closeDeleteWarningSheet = () => {
-    setDeleteWarningSheetOpen(false);
-    setPendingDeleteAction(null);
-  };
-
-  const openDeleteAllForCurrentUserConfirmation = () => {
-    if (!group || !user?.id) return;
-    const currentUserRegistration =
-      group.events
-        .flatMap((event, index) => event.registrations.map((item) => ({ item, gameNumber: index + 1 })))
-        .find(({ item }) => item.user_id === user.id) ?? null;
-    if (!currentUserRegistration) return;
-    openDeleteConfirmation(currentUserRegistration.item, currentUserRegistration.gameNumber, "all");
-  };
-
-  const handleDeleteRegistration = async () => {
-    if (!group || !pendingDeleteAction) return;
-    try {
-      setWorking(true);
-      if (pendingDeleteAction.mode === "single") {
-        await deleteRegistration(pendingDeleteAction.eventId, pendingDeleteAction.userId);
-      } else {
-        await deleteAllRegistrationsForUserInGroup(pendingDeleteAction.userId);
-      }
-      closeDeleteWarningSheet();
-      await loadGroup();
-    } catch {
-      setPageError("Could not delete registration.");
-    } finally {
-      setWorking(false);
-    }
-  };
-  const deletingSelf = !!(pendingDeleteAction && user?.id && pendingDeleteAction.userId === user.id);
   const feedbackUrl = process.env.NEXT_PUBLIC_FEEDBACK_URL || DEFAULT_FEEDBACK_URL;
 
   if (authLoading) {
@@ -1651,271 +235,57 @@ export default function EventGroupPage() {
     );
   }
 
+  const hasVisibleGames = registrationEditor.registrationEditorOpen || showAllEvents || (!showAllEvents && !!activeEvent);
+
   return (
     <div className="flex-1 flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-3xl flex flex-col gap-5" style={{ animation: "var(--animate-rise)" }}>
         <div ref={topAnchorRef} />
-        <div className="card rounded-xl p-4 sm:p-5 flex flex-col gap-4 relative overflow-visible">
-          <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-[var(--color-text)] tracking-tight">
-                {group.name.trim() ? group.name : group.game_name}
-              </h1>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                {group.name.trim()
-                  ? `${group.game_name} · ${group.game_mode_name} · ${group.region}`
-                  : `${group.game_mode_name} · ${group.region}`}
-              </p>
-              <p className="text-xs text-[var(--color-text-faint)] mt-1">
-                First event: {firstEventStart ? formatDateTime(firstEventStart) : "Not scheduled"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {isHost && hasAnyLobbies && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyDiscordPings()}
-                    className={[
-                      "rounded-lg border px-3 py-2 text-sm font-medium",
-                      pingStatus === "success"
-                        ? "border-emerald-500/35 bg-white/[0.03] text-emerald-400"
-                        : pingStatus === "error"
-                          ? "border-[var(--color-text-danger)]/35 bg-white/[0.03] text-[var(--color-text-danger)]"
-                          : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
-                    ].join(" ")}
-                  >
-                    Copy Discord Pings
-                  </button>
-                  {pingStatus !== "idle" && (
-                    <div
-                      className={[
-                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.45)]",
-                        pingStatus === "success"
-                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
-                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
-                      ].join(" ")}
-                    >
-                      {pingStatus === "success" ? "Ping message copied" : "Copy failed"}
-                    </div>
-                  )}
-                </div>
-              )}
-              {isHost && (
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() => {
-                    if (!group.registration_open && hasAnyLobbies) {
-                      setWarningSheetOpen(true);
-                      return;
-                    }
-                    void lockInTeams();
-                  }}
-                  className={[
-                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                    "disabled:opacity-40 disabled:cursor-not-allowed",
-                    !group.registration_open && hasAnyLobbies
-                      ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
-                      : "border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]",
-                  ].join(" ")}
-                >
-                  {group.registration_open
-                    ? "Lock In & Create Teams"
-                    : hasAnyLobbies
-                      ? "Delete teams"
-                      : "Create teams"}
-                </button>
-              )}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className={[
-                    "inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.08]",
-                    shareStatus === "success"
-                      ? "border-emerald-500/35 text-emerald-400"
-                      : shareStatus === "error"
-                        ? "border-[var(--color-text-danger)]/35 text-[var(--color-text-danger)]"
-                        : "border-white/10 text-[var(--color-text-soft)]",
-                  ].join(" ")}
-                  aria-label="Copy share link"
-                >
-                  {shareStatus === "success" ? (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path
-                        d="M3.5 8.2l3 3L12.5 5.2"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <circle cx="4" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.4" />
-                      <circle cx="12" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.4" />
-                      <circle cx="12" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.4" />
-                      <path
-                        d="M5.4 7.3L10.6 4.7M5.4 8.7l5.2 2.6"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </button>
-                {shareStatus !== "idle" && (
-                  <div
-                    className={[
-                      "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.45)]",
-                      shareStatus === "success"
-                        ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
-                        : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
-                    ].join(" ")}
-                  >
-                    {shareStatus === "success" ? "Link copied" : "Copy failed"}
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditSheetOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]"
-                aria-label="Event settings"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M6.4 1.6h3.2l.35 1.4a4.8 4.8 0 0 1 1.15.66l1.4-.45 1.6 2.77-1.05 1.02c.07.33.1.67.1 1 0 .33-.03.67-.1 1l1.05 1.02-1.6 2.77-1.4-.45a4.8 4.8 0 0 1-1.15.66l-.35 1.4H6.4l-.35-1.4a4.8 4.8 0 0 1-1.15-.66l-1.4.45L2 10.62l1.05-1.02A4.9 4.9 0 0 1 2.95 8c0-.33.03-.67.1-1L2 5.98 3.6 3.21l1.4.45c.35-.27.73-.5 1.15-.66L6.4 1.6Z"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinejoin="round"
-                  />
-                  <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
-                </svg>
-              </button>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Status</p>
-              <p className="text-xs text-[var(--color-text-soft)]">
-                {group.registration_open ? "Registration Open" : "Registration Closed"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Team Size</p>
-              <p className="text-xs text-[var(--color-text-soft)]">
-                {formatGroupTeamSizeLabel(group.events)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Host</p>
-              <p className="text-xs text-[var(--color-text-soft)]">
-                {formatHostDisplayLabel(
-                  isHost,
-                  group.owner_display_name,
-                  group.owner_name,
-                  group.owner_pronouns ?? "",
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
+        <EventGroupHeaderCard
+          group={group}
+          isHost={isHost}
+          hasAnyLobbies={hasAnyLobbies}
+          working={working}
+          firstEventStart={firstEventStart}
+          pingStatus={pingStatus}
+          onCopyDiscordPings={handleCopyDiscordPings}
+          shareStatus={shareStatus}
+          onShare={handleShare}
+          onOpenEditSheet={() => setEditSheetOpen(true)}
+          onLockInClick={() => {
+            if (!group.registration_open && hasAnyLobbies) {
+              hostActions.setWarningSheetOpen(true);
+              return;
+            }
+            void hostActions.lockInTeams();
+          }}
+        />
 
         <LobbyHostAssignmentBanner assignments={myLobbyHostAssignments} />
 
-        <div className="card rounded-xl p-3 sm:p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-[var(--color-text-soft)]">Games in this group</p>
-            {group.events.length > 1 && (
-              <button
-                type="button"
-                disabled={registrationEditorOpen}
-                onClick={() => setShowAllEvents((v) => !v)}
-                className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] underline underline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline shrink-0"
-              >
-                {showAllEvents ? "Show one at a time" : "View all"}
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {group.events.map((event, index) => (
-              <button
-                key={event.id}
-                type="button"
-                onClick={() => {
-                  if (showAllEvents) {
-                    scrollToEventSection(event.id);
-                    return;
-                  }
-                  setActiveEventId(event.id);
-                  setShowAllEvents(false);
-                }}
-                className={[
-                  "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  !showAllEvents && activeEvent?.id === event.id
-                    ? "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)]"
-                    : "border-white/10 bg-white/[0.02] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)]",
-                ].join(" ")}
-              >
-                <span className="inline-flex items-center gap-1">
-                  Game {index + 1} · {formatGameModeAndTime(event.game_mode_name, event.start_time)}
-                  {eventHasUnfairLobby(event) && (
-                    <span className="text-amber-400" aria-label="Contains unfair lobby">
-                      ⚠
-                    </span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <GameTabsStrip
+          events={group.events}
+          activeEventId={activeEvent?.id ?? null}
+          showAllEvents={showAllEvents}
+          registrationEditorOpen={registrationEditor.registrationEditorOpen}
+          onToggleShowAll={() => setShowAllEvents((v) => !v)}
+          onSelectEvent={(eventId) => {
+            setActiveEventId(eventId);
+            setShowAllEvents(false);
+          }}
+          onScrollToEvent={scrollToEventSection}
+        />
 
-        {(registrationEditorOpen || showAllEvents || (!showAllEvents && activeEvent)) && (
-          <div className="flex justify-center">
-            {registrationEditorOpen ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void handleCloseRegistrationEditor();
-                }}
-                disabled={working}
-                className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 disabled:opacity-40"
-              >
-                Cancel Registration
-              </button>
-            ) : (
-              <span
-                title={!group.registration_open ? "Registration is closed" : undefined}
-                className={[
-                  "inline-flex rounded-lg",
-                  !group.registration_open ? "cursor-not-allowed" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <button
-                  type="button"
-                  disabled={!group.registration_open}
-                  onClick={() => {
-                    void handleOpenRegistrationSheet();
-                  }}
-                  className={[
-                    "rounded-lg border px-5 py-2.5 text-sm font-medium",
-                    group.registration_open
-                      ? "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
-                      : "pointer-events-none border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] opacity-50",
-                  ].join(" ")}
-                >
-                  {myRegistrationsByEvent.size > 0 ? "Edit My Registration" : "Register Now"}
-                </button>
-              </span>
-            )}
-          </div>
+        {hasVisibleGames && (
+          <RegistrationToggleButton
+            group={group}
+            registrationEditorOpen={registrationEditor.registrationEditorOpen}
+            working={working}
+            myRegistrationsCount={myRegistrationsByEvent.size}
+            onOpen={() => void registrationEditor.handleOpenRegistrationSheet()}
+            onClose={() => void registrationEditor.handleCloseRegistrationEditor()}
+          />
         )}
 
         {pageError && (
@@ -1924,208 +294,94 @@ export default function EventGroupPage() {
           </p>
         )}
 
-        {registrationEditorOpen ? (
-          <div className="card rounded-xl p-4 sm:p-5 flex flex-col gap-4 relative overflow-hidden">
-            <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">
-              {myRegistrationsByEvent.size > 0 ? "Edit registration" : "Register"}
-            </h2>
-            {regionMismatchWarning && (
-              <p className="text-xs text-amber-300">{regionMismatchWarning}</p>
-            )}
-            <UserGameEditor
-              hideGameSelector
-              gameLabel={group.game_name}
-              value={userGameDraft}
-              ranks={userGameRanks}
-              ranksLoading={registrationLoading}
-              errors={userGameErrors}
-              onChange={(next) => setUserGameDraft(next)}
-            />
-
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-[var(--color-text-soft)]">Choose games to register for</p>
-              {group.events.map((event, index) => {
-                const checked = registrationDraft.selected_event_ids.includes(event.id);
-                const settings = registrationDraft.per_event[event.id] ?? {
-                  can_substitute: true,
-                  can_lobby_host: false,
-                };
-                return (
-                  <div key={event.id} className="flex flex-col gap-3">
-                    <div className="flex items-start gap-3 select-none">
-                      <ToggleSwitch
-                        checked={checked}
-                        onChange={(nextChecked) => {
-                          setRegistrationDraft((prev) => {
-                            if (nextChecked) {
-                              const nextIds = prev.selected_event_ids.includes(event.id)
-                                ? prev.selected_event_ids
-                                : [...prev.selected_event_ids, event.id];
-                              return {
-                                ...prev,
-                                selected_event_ids: nextIds,
-                                per_event: {
-                                  ...prev.per_event,
-                                  [event.id]: prev.per_event[event.id] ?? {
-                                    can_substitute: true,
-                                    can_lobby_host: false,
-                                  },
-                                },
-                              };
-                            }
-                            return {
-                              ...prev,
-                              selected_event_ids: prev.selected_event_ids.filter((id) => id !== event.id),
-                            };
-                          });
-                        }}
-                        className="mt-0.5"
-                      />
-                      <span className="text-sm font-semibold text-[var(--color-text)] leading-snug pt-0.5">
-                        Game {index + 1} · {event.game_mode_name} · {formatDateTime(event.start_time)}
-                      </span>
-                    </div>
-                    <div className="ml-14 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 flex flex-col gap-2">
-                      <ToggleRow
-                        label="Can substitute"
-                        checked={settings.can_substitute}
-                        disabled={!checked}
-                        onChange={(val) =>
-                          setRegistrationDraft((prev) => ({
-                            ...prev,
-                            per_event: {
-                              ...prev.per_event,
-                              [event.id]: {
-                                ...(prev.per_event[event.id] ?? { can_substitute: true, can_lobby_host: false }),
-                                can_substitute: val,
-                              },
-                            },
-                          }))
-                        }
-                      />
-                      <ToggleRow
-                        label="Can lobby host"
-                        labelAccessory={<LobbyHostInfoHint />}
-                        checked={settings.can_lobby_host}
-                        disabled={!checked}
-                        onChange={(val) =>
-                          setRegistrationDraft((prev) => ({
-                            ...prev,
-                            per_event: {
-                              ...prev.per_event,
-                              [event.id]: {
-                                ...(prev.per_event[event.id] ?? { can_substitute: true, can_lobby_host: false }),
-                                can_lobby_host: val,
-                              },
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-[var(--color-text-soft)]">Duo Request (They must list you here too. Applies to each selected event. Cannot be guaranteed)</label>
-              <input
-                className={inputCls}
-                placeholder="Discord Name"
-                value={registrationDraft.duo_request}
-                onChange={(event) =>
-                  setRegistrationDraft((prev) => ({ ...prev, duo_request: event.target.value }))
-                }
-              />
-            </div>
-            {selectedValidEventIds.length === 0 && !canDeleteAllViaSave && (
-              <p className="text-xs text-[var(--color-text-danger)]">Select at least one event to save your registration.</p>
-            )}
-            {registrationError && (
-              <p className="text-xs text-[var(--color-text-danger)]">{registrationError}</p>
-            )}
-          </div>
+        {registrationEditor.registrationEditorOpen ? (
+          <RegistrationEditorForm
+            group={group}
+            regionMismatchWarning={registrationEditor.regionMismatchWarning}
+            myRegistrationsCount={myRegistrationsByEvent.size}
+            userGameDraft={registrationEditor.userGameDraft}
+            setUserGameDraft={registrationEditor.setUserGameDraft}
+            userGameRanks={registrationEditor.userGameRanks}
+            registrationLoading={registrationEditor.registrationLoading}
+            userGameErrors={registrationEditor.userGameErrors}
+            registrationDraft={registrationEditor.registrationDraft}
+            setRegistrationDraft={registrationEditor.setRegistrationDraft}
+            selectedValidEventIds={registrationEditor.selectedValidEventIds}
+            canDeleteAllViaSave={registrationEditor.canDeleteAllViaSave}
+            registrationError={registrationEditor.registrationError}
+          />
         ) : showAllEvents ? (
           <div className="flex flex-col gap-4">
             {group.events.map((event, index) => (
               <div key={event.id}>
-                {index > 0 && (
-                  <hr className="mb-4 border-0 border-t-2 border-white/20" />
-                )}
+                {index > 0 && <hr className="mb-4 border-0 border-t-2 border-white/20" />}
                 <div
                   ref={(node) => {
                     eventSectionRefs.current[event.id] = node;
                   }}
                   className="flex flex-col gap-3 scroll-mt-24"
                 >
-                <h2 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 text-base font-semibold text-[var(--color-text)]">
-                  <span className="min-w-0 truncate">
-                    Game {index + 1}
-                    <span className="font-normal text-[var(--color-text-muted)]"> · {event.game_mode_name}</span>
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap text-center text-xs font-normal text-[var(--color-text-muted)]">
-                    {formatDateTime(event.start_time)}
-                  </span>
-                  <span className="shrink-0 justify-self-end whitespace-nowrap text-right text-xs font-normal text-[var(--color-text-soft)]">
-                    {formatPlayerCount(event.registrations.length)}
-                  </span>
-                </h2>
-                {!group.registration_open && event.lobbies_count > 0 ? (
-                  <TeamsPanel
-                    event={event}
-                    gameNumber={index + 1}
-                    eventRegion={group.region}
-                    currentUserRegion={user?.region}
-                    isHostView={isHost}
-                    currentUserId={user?.id}
-                    gameRanks={gameRanks}
-                    onShowDetails={(registration) => {
-                      setSelectedRegistration(registration);
-                      setDetailsSheetOpen(true);
-                    }}
-                    onDeleteRegistrationForGame={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "single")
-                    }
-                    onDeleteAllFromUser={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "all")
-                    }
-                    onSwapPlayer={isHost ? openSwapSheet : undefined}
-                    onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
-                    onMoveToSubs={isHost ? handleMoveToSubs : undefined}
-                    onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
-                    onJoinLobby={openJoinLobbySheet}
-                    showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
-                  />
-                ) : (
-                  <EventPanel
-                    event={event}
-                    gameNumber={index + 1}
-                    eventRegion={group.region}
-                    currentUserRegion={user?.region}
-                    isHostView={isHost}
-                    currentUserId={user?.id}
-                    onShowDetails={(registration) => {
-                      setSelectedRegistration(registration);
-                      setDetailsSheetOpen(true);
-                    }}
-                    onDeleteRegistrationForGame={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "single")
-                    }
-                    onDeleteAllFromUser={(registration, gameNumber) =>
-                      openDeleteConfirmation(registration, gameNumber, "all")
-                    }
-                  />
-                )}
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={scrollToTop}
-                    className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] hover:bg-white/[0.08] hover:text-[var(--color-text-soft)]"
-                  >
-                    Back to top
-                  </button>
-                </div>
+                  <h2 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 text-base font-semibold text-[var(--color-text)]">
+                    <span className="min-w-0 truncate">
+                      Game {index + 1}
+                      <span className="font-normal text-[var(--color-text-muted)]"> · {event.game_mode_name}</span>
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap text-center text-xs font-normal text-[var(--color-text-muted)]">
+                      {formatDateTime(event.start_time)}
+                    </span>
+                    <span className="shrink-0 justify-self-end whitespace-nowrap text-right text-xs font-normal text-[var(--color-text-soft)]">
+                      {formatPlayerCount(event.registrations.length)}
+                    </span>
+                  </h2>
+                  {!group.registration_open && event.lobbies_count > 0 ? (
+                    <TeamsPanel
+                      event={event}
+                      gameNumber={index + 1}
+                      eventRegion={group.region}
+                      currentUserRegion={user?.region}
+                      isHostView={isHost}
+                      currentUserId={user?.id}
+                      gameRanks={gameRanks}
+                      onShowDetails={handleShowDetails}
+                      onDeleteRegistrationForGame={(registration, gameNumber) =>
+                        deleteRegistration.openDeleteConfirmation(registration, gameNumber, "single")
+                      }
+                      onDeleteAllFromUser={(registration, gameNumber) =>
+                        deleteRegistration.openDeleteConfirmation(registration, gameNumber, "all")
+                      }
+                      onSwapPlayer={isHost ? hostActions.openSwapSheet : undefined}
+                      onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
+                      onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
+                      onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                      onJoinLobby={joinLobby.openJoinLobbySheet}
+                      showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
+                    />
+                  ) : (
+                    <EventPanel
+                      event={event}
+                      gameNumber={index + 1}
+                      eventRegion={group.region}
+                      currentUserRegion={user?.region}
+                      isHostView={isHost}
+                      currentUserId={user?.id}
+                      onShowDetails={handleShowDetails}
+                      onDeleteRegistrationForGame={(registration, gameNumber) =>
+                        deleteRegistration.openDeleteConfirmation(registration, gameNumber, "single")
+                      }
+                      onDeleteAllFromUser={(registration, gameNumber) =>
+                        deleteRegistration.openDeleteConfirmation(registration, gameNumber, "all")
+                      }
+                    />
+                  )}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={scrollToTop}
+                      className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] hover:bg-white/[0.08] hover:text-[var(--color-text-soft)]"
+                    >
+                      Back to top
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -2153,21 +409,18 @@ export default function EventGroupPage() {
                 isHostView={isHost}
                 currentUserId={user?.id}
                 gameRanks={gameRanks}
-                onShowDetails={(registration) => {
-                  setSelectedRegistration(registration);
-                  setDetailsSheetOpen(true);
-                }}
+                onShowDetails={handleShowDetails}
                 onDeleteRegistrationForGame={(registration, gameNumber) =>
-                  openDeleteConfirmation(registration, gameNumber, "single")
+                  deleteRegistration.openDeleteConfirmation(registration, gameNumber, "single")
                 }
                 onDeleteAllFromUser={(registration, gameNumber) =>
-                  openDeleteConfirmation(registration, gameNumber, "all")
+                  deleteRegistration.openDeleteConfirmation(registration, gameNumber, "all")
                 }
-                onSwapPlayer={isHost ? openSwapSheet : undefined}
-                onMoveToUnplaced={isHost ? handleMoveToUnplaced : undefined}
-                onMoveToSubs={isHost ? handleMoveToSubs : undefined}
-                onMakeLobbyHost={isHost ? handleMakeLobbyHost : undefined}
-                onJoinLobby={openJoinLobbySheet}
+                onSwapPlayer={isHost ? hostActions.openSwapSheet : undefined}
+                onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
+                onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
+                onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                onJoinLobby={joinLobby.openJoinLobbySheet}
                 showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
               />
             ) : (
@@ -2178,15 +431,12 @@ export default function EventGroupPage() {
                 currentUserRegion={user?.region}
                 isHostView={isHost}
                 currentUserId={user?.id}
-                onShowDetails={(registration) => {
-                  setSelectedRegistration(registration);
-                  setDetailsSheetOpen(true);
-                }}
+                onShowDetails={handleShowDetails}
                 onDeleteRegistrationForGame={(registration, gameNumber) =>
-                  openDeleteConfirmation(registration, gameNumber, "single")
+                  deleteRegistration.openDeleteConfirmation(registration, gameNumber, "single")
                 }
                 onDeleteAllFromUser={(registration, gameNumber) =>
-                  openDeleteConfirmation(registration, gameNumber, "all")
+                  deleteRegistration.openDeleteConfirmation(registration, gameNumber, "all")
                 }
               />
             )}
@@ -2202,574 +452,112 @@ export default function EventGroupPage() {
           </div>
         ) : null}
 
-        {registrationEditorOpen && (
-          <div className="w-full flex justify-end pt-2 pb-1 border-t border-white/[0.08]">
-            <div className="flex flex-col items-end gap-2">
-              {!canDeleteAllViaSave && hasUserGameErrors && (
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  Save is disabled until your in-game name, current rank, and peak rank are filled out.
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!canSubmitRegistration) return;
-                  void handleSaveRegistration();
-                }}
-                disabled={!canSubmitRegistration}
-                aria-disabled={!canSubmitRegistration}
-                className={[
-                  "rounded-lg border px-5 py-2.5 text-sm font-medium",
-                  canSubmitRegistration
-                    ? canDeleteAllViaSave
-                      ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
-                      : "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
-                    : "cursor-not-allowed border-white/10 bg-white/[0.03] text-[var(--color-text-muted)]",
-                ].join(" ")}
-              >
-                {working ? (canDeleteAllViaSave ? "Deleting..." : "Saving...") : canDeleteAllViaSave ? "Delete Registration" : "Save Registration"}
-              </button>
-            </div>
-          </div>
+        {registrationEditor.registrationEditorOpen && (
+          <RegistrationSaveFooter
+            working={working}
+            canDeleteAllViaSave={registrationEditor.canDeleteAllViaSave}
+            hasUserGameErrors={registrationEditor.hasUserGameErrors}
+            canSubmitRegistration={registrationEditor.canSubmitRegistration}
+            onSave={() => void registrationEditor.handleSaveRegistration()}
+          />
         )}
       </div>
 
-      <ResponsiveSheet
+      <EditEventSheet
         isOpen={editSheetOpen}
         onClose={() => setEditSheetOpen(false)}
-        title={isHost ? "Edit event settings" : "Event settings"}
-      >
-        <EventForm
-          mode="edit"
-          readOnly={!isHost}
-          eventGroupId={group.id}
-          editSchedule={group.events.map((e) => ({
-            id: e.id,
-            start_time: e.start_time,
-            game_mode_id: e.game_mode_id,
-          }))}
-          initialValues={{
-            name: group.name,
-            game_id: group.game_id,
-            region: group.region,
-            sub_min: group.sub_min,
-            registration_open: group.registration_open,
-            sort_logic: group.sort_logic,
-            discord_lock: (group.discord_guilds?.length ?? 0) > 0,
-            discord_guild_ids: (group.discord_guilds ?? []).map((g) => g.id),
-          }}
-          onCancel={() => setEditSheetOpen(false)}
-          onSubmitted={
-            isHost
-              ? () => {
-                  void loadGroup();
-                  setToast("Event settings updated.");
-                }
-              : undefined
-          }
-        />
-      </ResponsiveSheet>
+        isHost={isHost}
+        group={group}
+        onSubmitted={() => {
+          void loadGroup();
+          setToast("Event settings updated.");
+        }}
+      />
 
-      <ResponsiveSheet
+      <RegistrationDetailsSheet
         isOpen={detailsSheetOpen}
         onClose={() => setDetailsSheetOpen(false)}
-        title="Registration Details"
-      >
-        {selectedRegistration ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Discord</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.discord_name || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Display Name</p>
-              <p className="text-[var(--color-text-soft)]">
-                {selectedRegistration.display_name?.trim() || EMPTY_VALUE}
-              </p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">In-game name</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.in_game_name?.trim() || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Pronouns</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.pronouns || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Current rank</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.current_rank_name || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Average rank</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.avg_rank_name || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Peak rank</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.peak_rank_name || EMPTY_VALUE}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Sign up time</p>
-              <p className="text-[var(--color-text-soft)]">{formatDateTime(selectedRegistration.created_at)}</p>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can lobby host</p>
-                <LobbyHostInfoHint />
-              </div>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.can_lobby_host ? "Yes" : "No"}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Can substitute</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.can_substitute ? "Yes" : "No"}</p>
-            </div>
-            <div>
-              <p className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">Duo request</p>
-              <p className="text-[var(--color-text-soft)]">{selectedRegistration.duo_request || EMPTY_VALUE}</p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-[var(--color-text-muted)]">No registration selected.</p>
-        )}
-      </ResponsiveSheet>
+        registration={selectedRegistration}
+      />
 
-      <ResponsiveSheet
-        isOpen={deleteWarningSheetOpen}
-        onClose={closeDeleteWarningSheet}
-        title={
-          pendingDeleteAction?.mode === "all"
-            ? `Delete All Registrations From ${pendingDeleteAction.userName}`
-            : `Delete Registration for Game ${pendingDeleteAction?.gameNumber ?? 1}`
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-soft)]">
-            {pendingDeleteAction?.mode === "all"
-              ? deletingSelf
-                ? "This will delete your registrations for all games in this event series. This action cannot be undone, and you will need to register again if you want to play."
-                : `This will delete ${pendingDeleteAction.userName}'s registrations for all games in this event series. This action cannot be undone, and they will need to register again if they want to play.`
-              : pendingDeleteAction && pendingDeleteAction.registrationsInGroup > 1
-                ? deletingSelf
-                  ? `You are registered for other games in this series. This action only deletes your registration for Game ${pendingDeleteAction.gameNumber}. It cannot be undone, and you will need to register again to play this game.`
-                  : `${pendingDeleteAction.userName} is registered for other games in this series. This action only deletes their registration for Game ${pendingDeleteAction.gameNumber}. It cannot be undone, and they will need to register again to play this game.`
-                : deletingSelf
-                  ? `This will delete your registration for Game ${pendingDeleteAction?.gameNumber ?? 1}. This action cannot be undone, and you will need to register again to play this game.`
-                  : `This will delete the registration for Game ${pendingDeleteAction?.gameNumber ?? 1}. This action cannot be undone, and they will need to register again to play this game.`}
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeDeleteWarningSheet}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleDeleteRegistration();
-              }}
-              disabled={working || !pendingDeleteAction}
-              className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)] disabled:opacity-40"
-            >
-              {working
-                ? "Deleting..."
-                : pendingDeleteAction?.mode === "all"
-                  ? "Delete All Registrations"
-                  : "Delete Registration"}
-            </button>
-          </div>
-        </div>
-      </ResponsiveSheet>
+      <DeleteRegistrationSheet
+        isOpen={deleteRegistration.deleteWarningSheetOpen}
+        onClose={deleteRegistration.closeDeleteWarningSheet}
+        pendingDeleteAction={deleteRegistration.pendingDeleteAction}
+        deletingSelf={deleteRegistration.deletingSelf}
+        working={working}
+        onConfirm={() => void deleteRegistration.handleDeleteRegistration()}
+      />
 
-      <ResponsiveSheet
-        isOpen={lobbyHostConfirmOpen}
-        onClose={closeLobbyHostConfirm}
-        title={
-          pendingLobbyHostChange
-            ? `Make ${pendingLobbyHostChange.placement.discordName} Lobby Host`
-            : "Make Lobby Host"
-        }
-      >
-        {pendingLobbyHostChange ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-[var(--color-text-soft)]">
-              {pendingLobbyHostChange.placement.discordName} indicated they do not want to be a lobby host.
-            </p>
-            {pendingLobbyHostChange.volunteerOptions.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-sm text-[var(--color-text-soft)]">
-                  Other players on a team in this lobby who want to host:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-[var(--color-text-soft)]">
-                  {pendingLobbyHostChange.volunteerOptions.map((player) => (
-                    <li key={player.userId}>
-                      {player.discordName} · Team {player.teamNumber}
-                      {player.isCurrentHost ? " · (current host)" : ""}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--color-text-soft)]">
-                There are no other players on a team in this lobby who want to host.
-              </p>
-            )}
-            <p className="text-sm text-[var(--color-text-soft)]">
-              Do you still want to make {pendingLobbyHostChange.placement.discordName} the lobby host?
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeLobbyHostConfirm}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-              >
-                No
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void submitLobbyHostChange(pendingLobbyHostChange.placement);
-                }}
-                disabled={working}
-                className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
-              >
-                {working ? "Updating..." : "Yes, make lobby host"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-[var(--color-text-muted)]">No player selected.</p>
-        )}
-      </ResponsiveSheet>
+      <LobbyHostConfirmSheet
+        isOpen={hostActions.lobbyHostConfirmOpen}
+        onClose={hostActions.closeLobbyHostConfirm}
+        pendingLobbyHostChange={hostActions.pendingLobbyHostChange}
+        working={working}
+        onConfirm={() => {
+          if (hostActions.pendingLobbyHostChange) {
+            void hostActions.submitLobbyHostChange(hostActions.pendingLobbyHostChange.placement);
+          }
+        }}
+      />
 
-      <ResponsiveSheet
-        isOpen={swapSheetOpen}
-        onClose={closeSwapSheet}
-        title={pendingSwap ? `Swap ${pendingSwap.discordName}` : "Swap player"}
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-soft)]">
-            Choose a player from another team, lobby, the substitutes list, or unplaced to swap with.
-            Swapping an unplaced player onto a roster seat moves that roster player to substitutes when they can sub, otherwise they become unplaced.
-          </p>
-          <Select
-            value={swapTargetUserId}
-            onChange={(value) => {
-              setSwapTargetUserId(value);
-              setSwapError(null);
-            }}
-            options={swapCandidateOptions}
-            placeholder={swapCandidateOptions.length === 0 ? "No swap candidates" : "— Select player —"}
-            disabled={working || swapCandidateOptions.length === 0}
-          />
-          {swapError && (
-            <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
-              {swapError}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeSwapSheet}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleSwapSubmit();
-              }}
-              disabled={working || !pendingSwap || !swapTargetUserId}
-              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
-            >
-              {working ? "Swapping..." : "Submit"}
-            </button>
-          </div>
-        </div>
-      </ResponsiveSheet>
+      <SwapPlayerSheet
+        isOpen={hostActions.swapSheetOpen}
+        onClose={hostActions.closeSwapSheet}
+        pendingSwap={hostActions.pendingSwap}
+        swapTargetUserId={hostActions.swapTargetUserId}
+        onChangeSwapTarget={(value) => {
+          hostActions.setSwapTargetUserId(value);
+          hostActions.setSwapError(null);
+        }}
+        swapCandidateOptions={hostActions.swapCandidateOptions}
+        swapError={hostActions.swapError}
+        working={working}
+        onSubmit={() => void hostActions.handleSwapSubmit()}
+      />
 
-      <ResponsiveSheet
-        isOpen={moveToSubsSheetOpen}
-        onClose={closeMoveToSubsSheet}
-        title={pendingMoveToSubs ? `Move ${pendingMoveToSubs.discordName} to subs` : "Move to subs"}
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-soft)]">
-            Choose which lobby sub pool this player should join.
-          </p>
-          <Select
-            value={moveToSubsLobbyId}
-            onChange={(value) => {
-              setMoveToSubsLobbyId(value);
-              setMoveToSubsError(null);
-            }}
-            options={moveToSubsLobbyOptions}
-            placeholder={moveToSubsLobbyOptions.length === 0 ? "No lobbies" : "— Select lobby —"}
-            disabled={working || moveToSubsLobbyOptions.length === 0}
-          />
-          {moveToSubsError && (
-            <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
-              {moveToSubsError}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeMoveToSubsSheet}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleMoveToSubsSubmit();
-              }}
-              disabled={working || !pendingMoveToSubs || !moveToSubsLobbyId}
-              className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
-            >
-              {working ? "Moving..." : "Submit"}
-            </button>
-          </div>
-        </div>
-      </ResponsiveSheet>
+      <MoveToSubsSheet
+        isOpen={hostActions.moveToSubsSheetOpen}
+        onClose={hostActions.closeMoveToSubsSheet}
+        pendingMoveToSubs={hostActions.pendingMoveToSubs}
+        moveToSubsLobbyId={hostActions.moveToSubsLobbyId}
+        onChangeLobby={(value) => {
+          hostActions.setMoveToSubsLobbyId(value);
+          hostActions.setMoveToSubsError(null);
+        }}
+        moveToSubsLobbyOptions={hostActions.moveToSubsLobbyOptions}
+        moveToSubsError={hostActions.moveToSubsError}
+        working={working}
+        onSubmit={() => void hostActions.handleMoveToSubsSubmit()}
+      />
 
-      <ResponsiveSheet
-        isOpen={joinLobbySheetOpen}
-        onClose={closeJoinLobbySheet}
-        title={
-          pendingJoinLobby
-            ? `Join Lobby ${pendingJoinLobby.lobbyIndex + 1} (Game ${pendingJoinLobby.gameNumber} · ${formatDateTime(pendingJoinLobby.startTime)})`
-            : "Join Lobby"
-        }
-      >
-        <div className="flex flex-col gap-4">
-          {canEditPendingJoinLobby ? (
-            <>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[0.65rem] uppercase tracking-wide text-[var(--color-text-faint)]">
-                  Lobby
-                </span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={joinLobbyDraft}
-                    onChange={(e) => {
-                      setJoinLobbyDraft(e.target.value);
-                      setJoinLobbyError(null);
-                    }}
-                    className={inputCls}
-                    placeholder="Code or https://gg.riotgames.com/…"
-                    disabled={working}
-                  />
-                  {(joinLobbyDraft.trim() || pendingJoinDisplay) && (
-                    <div className="relative shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleCopyJoinLobby();
-                        }}
-                        className={[
-                          "inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.08]",
-                          joinLobbyCopyStatus === "success"
-                            ? "border-emerald-500/35 text-emerald-400"
-                            : joinLobbyCopyStatus === "error"
-                              ? "border-[var(--color-text-danger)]/35 text-[var(--color-text-danger)]"
-                              : "border-white/10 text-[var(--color-text-soft)]",
-                        ].join(" ")}
-                        aria-label="Copy lobby join info"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                          <rect x="5.5" y="5.5" width="7" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.4" />
-                          <path
-                            d="M3.5 10.5V3.8A1.3 1.3 0 0 1 4.8 2.5h5.7"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </button>
-                      {joinLobbyCopyStatus !== "idle" && (
-                        <div
-                          className={[
-                            "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px]",
-                            joinLobbyCopyStatus === "success"
-                              ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
-                              : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
-                          ].join(" ")}
-                        >
-                          {joinLobbyCopyStatus === "success" ? "Copied" : "Copy failed"}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </label>
-              {joinLobbyError && (
-                <p className="rounded-lg border border-[var(--color-text-danger)]/30 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)]">
-                  {joinLobbyError}
-                </p>
-              )}
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeJoinLobbySheet}
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleSaveJoinLobby();
-                  }}
-                  disabled={working || !!validateLobbyJoinInput(joinLobbyDraft, group?.join_link_base ?? null)}
-                  className="rounded-lg border border-[var(--color-accent-blue)]/40 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors disabled:opacity-40"
-                >
-                  {working ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </>
-          ) : pendingJoinDisplay ? (
-            <>
-              <div className="flex items-start gap-2">
-                {pendingJoinDisplay.kind === "link" ? (
-                  <a
-                    href={pendingJoinDisplay.value}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="min-w-0 flex-1 break-all text-sm text-[var(--color-accent-blue)] hover:underline"
-                  >
-                    {pendingJoinDisplay.value}
-                  </a>
-                ) : (
-                  <p className="min-w-0 flex-1 break-all font-mono text-sm text-[var(--color-text-soft)]">
-                    {pendingJoinDisplay.value}
-                  </p>
-                )}
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleCopyJoinLobby();
-                    }}
-                    className={[
-                      "inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.08]",
-                      joinLobbyCopyStatus === "success"
-                        ? "border-emerald-500/35 text-emerald-400"
-                        : joinLobbyCopyStatus === "error"
-                          ? "border-[var(--color-text-danger)]/35 text-[var(--color-text-danger)]"
-                          : "border-white/10 text-[var(--color-text-soft)]",
-                    ].join(" ")}
-                    aria-label="Copy lobby join info"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <rect x="5.5" y="5.5" width="7" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.4" />
-                      <path
-                        d="M3.5 10.5V3.8A1.3 1.3 0 0 1 4.8 2.5h5.7"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                  {joinLobbyCopyStatus !== "idle" && (
-                    <div
-                      className={[
-                        "pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px]",
-                        joinLobbyCopyStatus === "success"
-                          ? "border-emerald-500/30 bg-[var(--color-bg)] text-emerald-300"
-                          : "border-[var(--color-text-danger)]/30 bg-[var(--color-bg)] text-[var(--color-text-danger)]",
-                      ].join(" ")}
-                    >
-                      {joinLobbyCopyStatus === "success" ? "Copied" : "Copy failed"}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={closeJoinLobbySheet}
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-[var(--color-text-soft)]">
-                The lobby join info has not been added yet. If it&apos;s less than 10 minutes before the match is due to start, reach out to the
-                lobby host or the event host and ask them to add it.
-              </p>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={closeJoinLobbySheet}
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </ResponsiveSheet>
+      <JoinLobbySheet
+        isOpen={joinLobby.joinLobbySheetOpen}
+        onClose={joinLobby.closeJoinLobbySheet}
+        pendingJoinLobby={joinLobby.pendingJoinLobby}
+        canEdit={joinLobby.canEditPendingJoinLobby}
+        joinLobbyDraft={joinLobby.joinLobbyDraft}
+        onChangeDraft={joinLobby.handleJoinLobbyDraftChange}
+        joinLobbyError={joinLobby.joinLobbyError}
+        copyStatus={joinLobby.joinLobbyCopyStatus}
+        onCopy={() => void joinLobby.handleCopyJoinLobby()}
+        onSave={() => void joinLobby.handleSaveJoinLobby()}
+        pendingJoinDisplay={joinLobby.pendingJoinDisplay}
+        joinLinkBase={group.join_link_base}
+        working={working}
+      />
 
-      <ResponsiveSheet
-        isOpen={subCapacitySheetOpen}
-        onClose={() => setSubCapacitySheetOpen(false)}
-        title="Substitute minimum changed the teams"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-soft)]">
-            There were not enough players willing to substitute to keep the most even lineup
-            while still filling the substitute minimum for each lobby. Some players who would
-            have been a closer rank match were placed as substitutes instead. You can still
-            swap players if you want a different lineup.
-          </p>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setSubCapacitySheetOpen(false)}
-              className="rounded-lg border border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 px-3 py-2 text-sm font-medium text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
-            >
-              Okay
-            </button>
-          </div>
-        </div>
-      </ResponsiveSheet>
+      <SubCapacitySheet
+        isOpen={hostActions.subCapacitySheetOpen}
+        onClose={() => hostActions.setSubCapacitySheetOpen(false)}
+      />
 
-      <ResponsiveSheet
-        isOpen={warningSheetOpen}
-        onClose={() => setWarningSheetOpen(false)}
-        title="Delete teams"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-soft)]">
-            All lobbies and teams for this event will be deleted, but registrations will remain. Registration stays closed until you open it from Edit. This action cannot be undone.
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setWarningSheetOpen(false)}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-text-soft)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => withHostAction(() => deleteTeams(group.id))}
-              disabled={working}
-              className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-3 py-2 text-sm text-[var(--color-text-danger)] disabled:opacity-40"
-            >
-              {working ? "Deleting..." : "Delete Teams"}
-            </button>
-          </div>
-        </div>
-      </ResponsiveSheet>
+      <DeleteTeamsWarningSheet
+        isOpen={hostActions.warningSheetOpen}
+        onClose={() => hostActions.setWarningSheetOpen(false)}
+        working={working}
+        onConfirm={hostActions.confirmDeleteTeams}
+      />
 
       {toast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-white/10 bg-[var(--color-bg-soft)] px-3 py-2 text-xs text-[var(--color-text-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.45)]">

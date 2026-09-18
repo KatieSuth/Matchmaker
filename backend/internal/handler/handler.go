@@ -43,6 +43,7 @@ type Handler struct {
 	matchmakingSettings matchmaking.Settings
 	apiLinkVault        *apilink.Vault
 	discord             DiscordAPI
+	testAuthBypassToken string
 }
 
 // New builds a Handler.
@@ -50,8 +51,9 @@ type Handler struct {
 // o2c is the Discord OAuth2 config; cd is the cookie domain; fURL is the frontend base URL;
 // jwt is the JWT signing key; refExp is refresh-token Max-Age in seconds; dApi is Discord's API base URL;
 // apiLinkKeys is the AES-256 keyring for third-party refresh tokens stored in api_links;
-// discordAPI handles OAuth exchange, /users/@me, guild lists, and access-token cache seeding.
-func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string, mmSettings matchmaking.Settings, apiLinkKeys *apilink.Keyring, discordAPI DiscordAPI) *Handler {
+// discordAPI handles OAuth exchange, /users/@me, guild lists, and access-token cache seeding;
+// testAuthBypassToken is the shared secret for POST /auth/test_login (empty disables the handler).
+func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Config, cd string, fURL string, jwt []byte, refExp int, dApi string, mmSettings matchmaking.Settings, apiLinkKeys *apilink.Keyring, discordAPI DiscordAPI, testAuthBypassToken string) *Handler {
 	return &Handler{
 		ginMode:             gm,
 		store:               s,
@@ -67,6 +69,7 @@ func New(gm string, s store.Store, sc *securecookie.SecureCookie, o2c *oauth2.Co
 		matchmakingSettings: mmSettings,
 		apiLinkVault:        apilink.New(apiLinkKeys, s),
 		discord:             discordAPI,
+		testAuthBypassToken: testAuthBypassToken,
 	}
 }
 

@@ -19,6 +19,9 @@ export const TEAMS_PER_LOBBY = 2;
 export const DISCORD_CDN_BASE = "https://cdn.discordapp.com";
 export const DISCORD_DEFAULT_AVATAR_URL = `${DISCORD_CDN_BASE}/embed/avatars/0.png`;
 
+/** sessionStorage key for the post-Discord-OAuth deep-link (`?next=` → event group). */
+export const POST_LOGIN_REDIRECT_STORAGE_KEY = "postLoginRedirect";
+
 export type Region = (typeof REGIONS)[number];
 
 export function discordAvatarUrl(

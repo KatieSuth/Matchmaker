@@ -2,6 +2,7 @@
         dev dev-no-cache dev-build dev-logs dev-ps dev-down dev-down-v dev-clean \
         build push publish pull build-multi push-multi \
         health export-ca fix-certs tls-check test test-coverage test-docker \
+        e2e e2e-up e2e-down \
         seed-users seed-events seed-registrations seed-all \
         seed-matchmaking-all seed-matchmaking-cleanup gen-keys \
         infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy \
@@ -23,13 +24,17 @@ GCP_REGION  ?= us-central1
 GCP_TAG     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo latest)
 AR_REPO     ?= matchmaker-docker
 
-# Exported so Docker Compose picks them up during interpolation
+# Exported so Docker Compose picks them up during interpolation.
+# Do not export COMPOSE_PROJECT_NAME globally: `make e2e` cds into e2e/, and
+# Compose then walks up to docker-compose.yml and would `down -v` the
+# development stack. Each recipe sets the project name for its own command.
 export IMAGE VERSION
-export COMPOSE_PROJECT_NAME := $(PROJECT)
 
 COMPOSE := docker compose
-DEV     := $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
-PROD    := $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml
+DEV     := COMPOSE_PROJECT_NAME=$(PROJECT) $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
+PROD    := COMPOSE_PROJECT_NAME=$(PROJECT) $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml
+E2E     := COMPOSE_PROJECT_NAME=matchmaker-e2e $(COMPOSE) --project-name matchmaker-e2e -f $(CURDIR)/docker-compose.e2e.yml
+TEST    := COMPOSE_PROJECT_NAME=matchmaker-test $(COMPOSE) --project-name matchmaker-test -f $(CURDIR)/docker-compose.test.yml
 BAKE    := docker buildx bake -f docker-compose.yml -f docker-compose.prod.yml -f docker-bake.hcl
 
 TF_DIR  := infra/terraform
@@ -164,10 +169,25 @@ tls-check:
 test:
 	cd backend/internal && go test -p 1 ./...
 
-# Test the code in Docker (no local Go install required)
+# Test the code in Docker (no local Go install required). Does not cd; teardown
+# uses the same TEST compose project as up so it cannot hit the development stack.
 test-docker:
-	docker compose -f docker-compose.test.yml run --rm test
-	docker compose -f docker-compose.test.yml down -v
+	$(TEST) run --rm test
+	$(TEST) down -v
+
+# Playwright against a throwaway Compose stack (needs ports 80/443/18080).
+# Subshell for npm so teardown still runs from the repo root with an absolute
+# -f path; otherwise `cd e2e` makes Compose miss docker-compose.e2e.yml, walk
+# up to the development compose file, and `down -v` that stack instead.
+e2e-up:
+	$(E2E) up --build -d --wait --wait-timeout 600
+
+e2e-down:
+	$(E2E) down -v
+
+e2e: e2e-up
+	( cd e2e && npm ci && npx playwright install chromium && npm test ); \
+	status=$$?; $(E2E) down -v; exit $$status
 
 # Test the code and output coverage percentage, excluding generated files (./backend/internal/db/*, ./backend/internal/test_util/*, and ./backend/internal/store/mock_store.go)
 test-coverage:

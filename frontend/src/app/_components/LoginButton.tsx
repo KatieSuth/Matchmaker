@@ -1,7 +1,7 @@
 "use client";
 
 // Discord OAuth: full-page navigation to GET /auth/login on the API (not XHR).
-import { POST_LOGIN_REDIRECT_STORAGE_KEY } from "@/app/_lib/postLoginRedirect";
+import { POST_LOGIN_REDIRECT_STORAGE_KEY } from "@/app/_lib/constants";
 
 export default function DiscordLoginButton() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";

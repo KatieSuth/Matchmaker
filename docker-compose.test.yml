@@ -1,6 +1,11 @@
 # Ephemeral Postgres + Go test runner for the test suite.
-# Usage: docker compose -f docker-compose.test.yml run --rm test
+# Usage: docker compose --project-name matchmaker-test -f docker-compose.test.yml run --rm test
 # Usage: make test-docker
+# Isolated Compose project `matchmaker-test` so `down -v` cannot touch the
+# development `postgres_data` volume. Makefile also sets COMPOSE_PROJECT_NAME
+# and an absolute -f path.
+name: matchmaker-test
+
 services:
   db-test:
     image: postgres:${POSTGRES_VERSION:-18-alpine}

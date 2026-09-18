@@ -35,11 +35,13 @@ function isSafeStoredPath(path: string): boolean {
   return LINK_PATH_RE.test(path);
 }
 
+export type LobbyJoinDisplayValue = { kind: "link" | "code"; value: string };
+
 /** Rebuild a display/copy value. Returns a full https URL only when safe; otherwise the raw code or null. */
 export function buildLobbyJoinDisplayValue(
   joinCode: string | null | undefined,
   joinLinkBase: string | null | undefined,
-): { kind: "link" | "code"; value: string } | null {
+): LobbyJoinDisplayValue | null {
   if (!joinCode) return null;
   if (isLobbyJoinLinkPath(joinCode) && joinLinkBase) {
     if (!isSafeStoredPath(joinCode)) return null;

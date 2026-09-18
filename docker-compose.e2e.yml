@@ -1,0 +1,157 @@
+# Ephemeral full stack for Playwright. Does not read a host `.env` and must never
+# be pointed at production. Dedicated Compose project `matchmaker-e2e`. The
+# Makefile sets COMPOSE_PROJECT_NAME and an absolute -f path so teardown cannot
+# pick up the development compose file (Compose walks parent dirs from e2e/).
+# Auth: GIN_MODE=debug + TEST_AUTH_BYPASS_* so POST /auth/test_login can mint an OTC.
+name: matchmaker-e2e
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-e2e-secrets: &e2e-secrets
+  POSTGRES_USER: matchmaker
+  POSTGRES_PASSWORD: e2e-postgres-pass
+  POSTGRES_DB: matchmaker
+  COOKIE_HASH_KEY: "0101010101010101010101010101010101010101010101010101010101010101"
+  COOKIE_ENCRYPT_KEY: "0202020202020202020202020202020202020202020202020202020202020202"
+  JWT_SECRET: "0303030303030303030303030303030303030303030303030303030303030303"
+  API_LINK_ENCRYPTION_KEY: "0404040404040404040404040404040404040404040404040404040404040404"
+  DISCORD_CLIENT_ID: e2e-discord-id
+  DISCORD_CLIENT_SECRET: e2e-discord-secret
+
+services:
+  db:
+    image: postgres:${POSTGRES_VERSION:-18-alpine}
+    logging: *default-logging
+    container_name: matchmaker-e2e-db
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+      - -c
+      - datestyle=ISO,YMD
+      - -c
+      - statement_timeout=30s
+      - -c
+      - idle_in_transaction_session_timeout=60s
+      - -c
+      - lock_timeout=5s
+    environment:
+      <<: *e2e-secrets
+    volumes:
+      - e2e_postgres_data:/var/lib/postgresql
+    networks:
+      - e2e_network
+    # psql (not only pg_isready) so a reused volume missing role `matchmaker` is unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U matchmaker -d matchmaker -c 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ${IMAGE:-matchmaker}-api:${VERSION:-latest}-e2e
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: ${GO_VERSION:-1.25}
+        APP_PORT: 8080
+    container_name: matchmaker-e2e-api
+    environment:
+      <<: *e2e-secrets
+      PORT: "8080"
+      GIN_MODE: debug
+      TEST_AUTH_BYPASS_ENABLED: "true"
+      TEST_AUTH_BYPASS_TOKEN: e2e-bypass-token
+      DATABASE_URL: postgres://matchmaker:e2e-postgres-pass@db:5432/matchmaker
+      COOKIE_DOMAIN: matchmaker.localhost
+      FRONTEND_URL: https://matchmaker.localhost
+      DISCORD_REDIRECT_URI: https://matchmaker.localhost/api/auth/discord_redirect
+      DISCORD_API_URL: https://discord.com/api
+      TRUSTED_PROXIES: 172.21.0.0/16
+    ports:
+      - "18080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - e2e_network
+    healthcheck:
+      test: ["CMD", "/server", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    image: ${IMAGE:-matchmaker}-frontend:${VERSION:-latest}-e2e
+    logging: *default-logging
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: ${NODE_VERSION:-24}
+        APP_PORT: 3000
+        NEXT_PUBLIC_API_URL: https://matchmaker.localhost/api
+        NEXT_PUBLIC_FRONTEND_DOMAIN: matchmaker.localhost
+        NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: "604800"
+        NEXT_PUBLIC_FEEDBACK_URL: https://github.com/KatieSuth/Matchmaker/issues
+    container_name: matchmaker-e2e-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: https://matchmaker.localhost/api
+      NEXT_PUBLIC_FRONTEND_DOMAIN: matchmaker.localhost
+      NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT: "604800"
+      NEXT_PUBLIC_FEEDBACK_URL: https://github.com/KatieSuth/Matchmaker/issues
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - e2e_network
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  caddy:
+    image: caddy:${CADDY_VERSION:-2-alpine}
+    logging: *default-logging
+    container_name: matchmaker-e2e-caddy
+    environment:
+      DOMAIN: matchmaker.localhost
+      API_PORT: "8080"
+      FRONTEND_PORT: "3000"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - e2e_caddy_data:/data
+      - e2e_caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - e2e_network
+
+networks:
+  e2e_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  e2e_postgres_data:
+  e2e_caddy_data:
+  e2e_caddy_config:

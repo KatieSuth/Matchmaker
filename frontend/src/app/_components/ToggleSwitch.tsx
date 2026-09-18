@@ -5,15 +5,22 @@ interface ToggleSwitchProps {
   disabled?: boolean;
   id?: string;
   className?: string;
+  /**
+   * Accessible name for the switch. The visible label text next to a `ToggleSwitch` is typically
+   * a separate, unassociated element (e.g. a `<p>` or `<span>` in `ToggleRow`/callers), so screen
+   * readers would otherwise announce this button with no name at all — pass the same text here.
+   */
+  ariaLabel?: string;
 }
 
-export function ToggleSwitch({ checked, onChange, disabled = false, id, className = "" }: ToggleSwitchProps) {
+export function ToggleSwitch({ checked, onChange, disabled = false, id, className = "", ariaLabel }: ToggleSwitchProps) {
   return (
     <button
       type="button"
       id={id}
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => {
         if (!disabled) onChange(!checked);

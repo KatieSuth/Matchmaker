@@ -1,82 +1,41 @@
 "use client";
 
 // Create or edit an event group: zod + react-hook-form, game/mode pickers, and API mutations.
+// Presentational subpieces and pure helpers live in ./eventForm/; this file wires them together.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import DatePicker from "react-datepicker";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import "react-datepicker/dist/react-datepicker.css";
 import { useAuth } from "@/app/_context/AuthContext";
+import { NumberStepper } from "@/app/_components/NumberStepper";
 import { Select, MultiSelect } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
+import { useCancelableFetch } from "@/app/_hooks/useCancelableFetch";
 import { EVENT_NAME_MAX_RUNES, REGIONS } from "@/app/_lib/constants";
-import { DATEPICKER_PORTAL_ID, datepickerStyles, inputCls } from "@/app/_lib/styles";
-import { codePointLength, optionalFreeTextSchema } from "@/app/_lib/textInput";
+import { getUserTimeZone } from "@/app/_lib/dateTime";
+import { datepickerStyles, inputCls } from "@/app/_lib/styles";
+import { codePointLength } from "@/app/_lib/textInput";
 import { createEvent, deleteEventGroup, updateEventGroup } from "@/app/_services/events";
 import { extractApiError, fetchGameModes, fetchGamesForUser } from "@/app/_services/games";
 import { fetchMyDiscordGuilds } from "@/app/_services/users";
 import { Game, GameMode } from "@/app/_types/types";
 
-export type EventFormEditScheduleRow = {
-  id: string;
-  start_time: string;
-  game_mode_id: string;
-};
+import { DeleteEventDialog } from "./eventForm/DeleteEventDialog";
+import { DiscordLockFields } from "./eventForm/DiscordLockFields";
+import { EventFormDateTimePicker } from "./eventForm/EventFormDateTimePicker";
+import { MatchmakingModeField } from "./eventForm/MatchmakingModeField";
+import { PerGameScheduleEditor } from "./eventForm/PerGameScheduleEditor";
+import {
+  EventFormEditScheduleRow,
+  EventFormValues,
+  PerGameDraftRow,
+  buildEventFormSchema,
+  validateEditScheduleDraft,
+} from "./eventForm/schema";
+import { getInitialStartTimeLocal, toDateTimeLocalValue } from "./eventForm/dateTime";
 
-/** Zod schema for create vs edit: edit omits required start time / mode; Discord lock needs at least one server. */
-function buildEventFormSchema(mode: "create" | "edit") {
-  const startTimeField =
-    mode === "create"
-      ? z
-          .string()
-          .min(1, "Start time is required.")
-          .refine((s) => !Number.isNaN(new Date(s).getTime()), {
-            message: "Start time is invalid.",
-          })
-          .refine((s) => {
-            const t = new Date(s).getTime();
-            if (Number.isNaN(t)) return true;
-            return t >= Date.now();
-          }, {
-            message: "Start time cannot be in the past.",
-          })
-      : z.string().optional();
-
-  return z.object({
-    name: optionalFreeTextSchema(EVENT_NAME_MAX_RUNES),
-    game_id: z.string().min(1, "Game is required."),
-    game_mode_id:
-      mode === "create"
-        ? z.string().min(1, "Game mode is required.")
-        : z.string().optional(),
-    region: z
-      .string()
-      .min(1, "Region is required.")
-      .refine((s) => (REGIONS as readonly string[]).includes(s), {
-        message: "Please select a valid region.",
-      }),
-    start_time_local: startTimeField,
-    sub_min: z
-      .number()
-      .int()
-      .min(0, "Minimum subs per lobby cannot be below 0."),
-    games_to_run: z
-      .number()
-      .int()
-      .min(1, "Number of games must be greater than 0."),
-    registration_open: z.boolean(),
-    sort_logic: z.enum(["balanced", "ranked"]),
-    discord_lock: z.boolean(),
-    discord_guild_ids: z.array(z.string()),
-  }).refine((data) => !data.discord_lock || data.discord_guild_ids.length > 0, {
-    message: "Select at least one Discord server.",
-    path: ["discord_guild_ids"],
-  });
-}
-
-export type EventFormValues = z.infer<ReturnType<typeof buildEventFormSchema>>;
+export type { EventFormEditScheduleRow, EventFormValues };
 
 interface EventFormProps {
   mode: "create" | "edit";
@@ -90,240 +49,6 @@ interface EventFormProps {
   readOnly?: boolean;
 }
 
-function toDateTimeLocalValue(date: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
-}
-
-function roundUpToQuarterHour(date: Date): Date {
-  const rounded = new Date(date);
-  rounded.setSeconds(0, 0);
-  const minutes = rounded.getMinutes();
-  const remainder = minutes % 15;
-  if (remainder !== 0) rounded.setMinutes(minutes + (15 - remainder));
-  return rounded;
-}
-
-function getInitialStartTimeLocal(mode: "create" | "edit"): string {
-  if (mode !== "create") return "";
-  const now = roundUpToQuarterHour(new Date(Date.now() + 30 * 60 * 1000));
-  return toDateTimeLocalValue(now);
-}
-
-function parseLocalDateTimeString(s: string): Date | null {
-  if (!s?.trim()) return null;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-/** Local datetime string (same shape as `datetime-local`) for API + zod; 15-minute steps. */
-function EventFormDateTimePicker({
-  value,
-  onChange,
-  onBlur,
-  name,
-  id,
-  disallowPast,
-  placeholderText = "Select date & time",
-  disabled = false,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onBlur?: () => void;
-  name?: string;
-  id?: string;
-  disallowPast?: boolean;
-  placeholderText?: string;
-  disabled?: boolean;
-}) {
-  const selected = parseLocalDateTimeString(value);
-  const filterTime = (time: Date) => {
-    if (!disallowPast) return true;
-    return time.getTime() > Date.now();
-  };
-
-  return (
-    <DatePicker
-      id={id}
-      name={name}
-      onBlur={onBlur}
-      portalId={DATEPICKER_PORTAL_ID}
-      selected={selected}
-      onChange={(date: Date | null) => {
-        onChange(date ? toDateTimeLocalValue(date) : "");
-      }}
-      showTimeSelect
-      timeIntervals={15}
-      timeCaption="Time"
-      showMonthDropdown
-      showYearDropdown
-      dropdownMode="select"
-      dateFormat="MMM d, yyyy h:mm aa"
-      placeholderText={placeholderText}
-      className={inputCls}
-      minDate={disallowPast ? startOfToday() : undefined}
-      filterTime={disallowPast ? filterTime : undefined}
-      popperPlacement="bottom-start"
-      popperProps={{ strategy: "fixed" }}
-      disabled={disabled}
-    />
-  );
-}
-
-interface NumberStepperProps {
-  label: string;
-  value: number;
-  min: number;
-  onChange: (next: number) => void;
-  hint?: string;
-  disabled?: boolean;
-}
-
-function NumberStepper({ label, value, min, onChange, hint, disabled = false }: NumberStepperProps) {
-  const decrement = () => onChange(Math.max(min, value - 1));
-  const increment = () => onChange(value + 1);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">{label}</label>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={decrement}
-          disabled={disabled || value <= min}
-          className="h-9 w-9 rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] transition-colors hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label={`Decrease ${label}`}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="mx-auto">
-            <path d="M2.25 6h7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-        <input
-          type="number"
-          min={min}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(Math.max(min, Number(event.target.value) || min))}
-          className={`${inputCls} no-native-spinner text-center`}
-        />
-        <button
-          type="button"
-          onClick={increment}
-          disabled={disabled}
-          className="h-9 w-9 rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] transition-colors hover:bg-white/[0.08]"
-          aria-label={`Increase ${label}`}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="mx-auto">
-            <path
-              d="M6 2.25v7.5M2.25 6h7.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-      {hint && <p className="text-xs text-[var(--color-text-faint)]">{hint}</p>}
-    </div>
-  );
-}
-
-interface MatchmakingModeOption {
-  value: "balanced" | "ranked";
-  title: string;
-  description: string;
-}
-
-const MATCHMAKING_MODE_OPTIONS: readonly MatchmakingModeOption[] = [
-  {
-    value: "balanced",
-    title: "Balanced",
-    description:
-      "Puts similar ranks on opposite teams (one rank band per player slot) so each side gets a matching mix. Best for casual games.",
-  },
-  {
-    value: "ranked",
-    title: "Rank Grouping",
-    description:
-      "Keeps players of similar skill in the same lobby. Best for serious practice.",
-  },
-];
-
-interface MatchmakingModeFieldProps {
-  value: "balanced" | "ranked";
-  onChange: (next: "balanced" | "ranked") => void;
-  disabled?: boolean;
-}
-
-function MatchmakingModeField({ value, onChange, disabled = false }: MatchmakingModeFieldProps) {
-  return (
-    <div
-      className="flex flex-col gap-2"
-      role="radiogroup"
-      aria-labelledby="matchmaking-mode-label"
-    >
-      {MATCHMAKING_MODE_OPTIONS.map((opt) => {
-        const selected = value === opt.value;
-        return (
-          <label
-            key={opt.value}
-            className={`flex gap-3 rounded-lg border p-3 transition-colors ${
-              disabled
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer"
-            } ${
-              selected
-                ? "border-[var(--color-accent-blue)]/50 bg-[var(--color-accent-blue)]/10"
-                : disabled
-                  ? "border-white/10 bg-white/[0.02]"
-                  : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
-            }`}
-          >
-            <input
-              type="radio"
-              name="sort_logic_form"
-              value={opt.value}
-              checked={selected}
-              disabled={disabled}
-              onChange={() => onChange(opt.value)}
-              className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-accent-blue)]"
-            />
-            <div className="min-w-0 flex flex-col gap-1">
-              <span className="text-sm font-medium text-[var(--color-text-soft)]">{opt.title}</span>
-              <p className="text-xs leading-relaxed text-[var(--color-text-faint)]">{opt.description}</p>
-            </div>
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-type PerGameDraftRow = {
-  eventId: string;
-  startLocal: string;
-  modeId: string;
-};
-
-function validateEditScheduleDraft(rows: PerGameDraftRow[]): string | null {
-  const nowMs = Date.now();
-  for (const row of rows) {
-    if (!row.modeId) return "Game mode is required for each scheduled game.";
-    const t = new Date(row.startLocal).getTime();
-    if (Number.isNaN(t)) return "One or more game times are invalid.";
-    if (t < nowMs) return "Start times cannot be in the past.";
-  }
-  return null;
-}
-
 export function EventForm({
   mode,
   onCancel,
@@ -335,8 +60,7 @@ export function EventForm({
 }: EventFormProps) {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const userTz =
-    typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+  const userTz = getUserTimeZone();
 
   const eventFormSchema = useMemo(() => buildEventFormSchema(mode), [mode]);
 
@@ -354,7 +78,7 @@ export function EventForm({
       discord_lock: initialValues?.discord_lock ?? false,
       discord_guild_ids: initialValues?.discord_guild_ids ?? [],
     }),
-    [initialValues, mode]
+    [initialValues, mode],
   );
 
   const {
@@ -409,125 +133,68 @@ export function EventForm({
             startLocal: toDateTimeLocalValue(new Date(row.start_time)),
             modeId: row.game_mode_id,
           }))
-        : []
+        : [],
     );
   }
 
-  useEffect(() => {
-    if (authLoading || !isAuthenticated || !user?.id) return;
-
-    const ac = new AbortController();
-    const { signal } = ac;
-    const loadGames = async () => {
+  useCancelableFetch({
+    enabled: !authLoading && isAuthenticated && !!user?.id,
+    fetcher: (signal) => fetchGamesForUser(user?.id ?? "", signal),
+    onStart: () => {
       setGamesLoading(true);
       setGamesError(null);
-      try {
-        const data = await fetchGamesForUser(user.id, signal);
-        if (signal.aborted) return;
-        setGames(data);
-      } catch (err) {
-        if (
-          signal.aborted ||
-          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError"
-        ) {
-          return;
-        }
-        setGames([]);
-        setGamesError("Could not load available games.");
-      } finally {
-        if (!signal.aborted) {
-          setGamesLoading(false);
-        }
-      }
-    };
+    },
+    onSuccess: (data) => setGames(data),
+    onError: () => {
+      setGames([]);
+      setGamesError("Could not load available games.");
+    },
+    onSettled: () => setGamesLoading(false),
+    deps: [authLoading, isAuthenticated, user?.id],
+  });
 
-    void loadGames();
-
-    return () => {
-      ac.abort();
-    };
-  }, [authLoading, isAuthenticated, user?.id]);
-
-  useEffect(() => {
-    if (authLoading || !isAuthenticated) return;
-    if (!watchedGameId) return;
-
-    const ac = new AbortController();
-    const { signal } = ac;
-    const loadModes = async () => {
+  useCancelableFetch({
+    enabled: !authLoading && isAuthenticated && !!watchedGameId,
+    fetcher: (signal) => fetchGameModes(watchedGameId, signal),
+    onStart: () => {
       setModesLoading(true);
       setModesError(null);
-      try {
-        const data = await fetchGameModes(watchedGameId, signal);
-        if (signal.aborted) return;
-        setModes(data);
-        const prevModeId = getValues("game_mode_id");
-        if (mode !== "edit") {
-          setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
-        }
-      } catch (err) {
-        if (
-          signal.aborted ||
-          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError"
-        ) {
-          return;
-        }
-        setModes([]);
-        setValue("game_mode_id", "");
-        setModesError("Could not load game modes.");
-      } finally {
-        if (!signal.aborted) {
-          setModesLoading(false);
-        }
+    },
+    onSuccess: (data) => {
+      setModes(data);
+      const prevModeId = getValues("game_mode_id");
+      if (mode !== "edit") {
+        setValue("game_mode_id", data.some((m) => m.id === prevModeId) ? prevModeId : "");
       }
-    };
+    },
+    onError: () => {
+      setModes([]);
+      setValue("game_mode_id", "");
+      setModesError("Could not load game modes.");
+    },
+    onSettled: () => setModesLoading(false),
+    deps: [watchedGameId, getValues, setValue, authLoading, isAuthenticated, mode],
+  });
 
-    void loadModes();
-
-    return () => {
-      ac.abort();
-    };
-  }, [watchedGameId, getValues, setValue, authLoading, isAuthenticated, mode]);
-
-  useEffect(() => {
-    if (authLoading || !isAuthenticated) return;
-    if (!watchedDiscordLock) return;
-
-    const ac = new AbortController();
-    const { signal } = ac;
-    const loadGuilds = async () => {
+  useCancelableFetch({
+    enabled: !authLoading && isAuthenticated && !!watchedDiscordLock,
+    fetcher: (signal) => fetchMyDiscordGuilds(signal),
+    onStart: () => {
       setDiscordGuildsLoading(true);
       setDiscordGuildsError(null);
-      try {
-        const data = await fetchMyDiscordGuilds(signal);
-        if (signal.aborted) return;
-        setDiscordGuilds(
-          [...data].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
-        );
-      } catch (err) {
-        if (
-          signal.aborted ||
-          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError"
-        ) {
-          return;
-        }
-        setDiscordGuilds([]);
-        setDiscordGuildsError(extractApiError(err, "Could not load Discord servers."));
-      } finally {
-        if (!signal.aborted) {
-          setDiscordGuildsLoading(false);
-        }
-      }
-    };
-
-    void loadGuilds();
-    return () => {
-      ac.abort();
-    };
-  }, [authLoading, isAuthenticated, watchedDiscordLock]);
+    },
+    onSuccess: (data) => {
+      setDiscordGuilds(
+        [...data].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+      );
+    },
+    onError: (err) => {
+      setDiscordGuilds([]);
+      setDiscordGuildsError(extractApiError(err, "Could not load Discord servers."));
+    },
+    onSettled: () => setDiscordGuildsLoading(false),
+    deps: [authLoading, isAuthenticated, watchedDiscordLock],
+  });
 
   const onValidSubmit = async (data: EventFormValues) => {
     if (readOnly) return;
@@ -595,8 +262,8 @@ export function EventForm({
       setSubmitError(
         extractApiError(
           err,
-          mode === "create" ? "Could not create event. Please try again." : "Could not update event settings."
-        )
+          mode === "create" ? "Could not create event. Please try again." : "Could not update event settings.",
+        ),
       );
     } finally {
       setIsSubmitting(false);
@@ -663,7 +330,10 @@ export function EventForm({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+            <label
+              htmlFor="event-form-game"
+              className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+            >
               Game *
             </label>
             <Controller
@@ -671,6 +341,7 @@ export function EventForm({
               control={control}
               render={({ field }) => (
                 <Select
+                  inputId="event-form-game"
                   value={field.value ?? ""}
                   onChange={(nextId) => {
                     field.onChange(nextId);
@@ -703,7 +374,10 @@ export function EventForm({
 
           {mode !== "edit" && (
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+              <label
+                htmlFor="event-form-game-mode"
+                className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+              >
                 Game mode *
               </label>
               <Controller
@@ -711,6 +385,7 @@ export function EventForm({
                 control={control}
                 render={({ field }) => (
                   <Select
+                    inputId="event-form-game-mode"
                     value={field.value ?? ""}
                     onChange={field.onChange}
                     disabled={!watchedGameId || modesLoading || !!modesError}
@@ -733,7 +408,10 @@ export function EventForm({
           )}
 
           <div className={`flex flex-col gap-1.5${mode === "edit" ? " sm:col-span-2" : ""}`}>
-            <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
+            <label
+              htmlFor="event-form-region"
+              className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
+            >
               Region *
             </label>
             <Controller
@@ -741,6 +419,7 @@ export function EventForm({
               control={control}
               render={({ field }) => (
                 <Select
+                  inputId="event-form-region"
                   value={field.value ?? ""}
                   onChange={field.onChange}
                   disabled={readOnly}
@@ -870,70 +549,17 @@ export function EventForm({
           )}
         </div>
 
-        {mode === "edit" && perGameDraft.length > 0 && (
-          <div className="flex flex-col gap-3 pt-2 border-t border-white/[0.06]">
-            <p className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-              Games in this series
-            </p>
-            <p className="text-xs text-[var(--color-text-faint)]">
-              {readOnly
-                ? `Each row is one scheduled game. Times use your local timezone (${userTz}).`
-                : `Each row applies to one scheduled game. Times use your local timezone (${userTz}).`}
-            </p>
-            <div className="flex flex-col gap-4">
-              {perGameDraft.map((row, index) => (
-                <div
-                  key={row.eventId}
-                  className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 flex flex-col gap-2"
-                >
-                  <p className="text-xs font-semibold text-[var(--color-text-soft)]">Game {index + 1}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <label
-                        htmlFor={`event-form-game-start-${row.eventId}`}
-                        className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]"
-                      >
-                        Start time *
-                      </label>
-                      <EventFormDateTimePicker
-                        id={`event-form-game-start-${row.eventId}`}
-                        value={row.startLocal}
-                        onChange={(v) => {
-                          setPerGameDraft((prev) =>
-                            prev.map((r) => (r.eventId === row.eventId ? { ...r, startLocal: v } : r))
-                          );
-                        }}
-                        disallowPast={false}
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium tracking-wide text-[var(--color-text-soft)]">
-                        Game mode *
-                      </label>
-                      <Select
-                        value={row.modeId}
-                        onChange={(nextMode) => {
-                          setPerGameDraft((prev) =>
-                            prev.map((r) => (r.eventId === row.eventId ? { ...r, modeId: nextMode } : r))
-                          );
-                        }}
-                        disabled={readOnly || !watchedGameId || modesLoading || !!modesError}
-                        placeholder={
-                          !watchedGameId
-                            ? "Select game first"
-                            : modesLoading
-                              ? "Loading game modes..."
-                              : "Select game mode"
-                        }
-                        options={modes.map((gameMode) => ({ value: gameMode.id, label: gameMode.name }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        {mode === "edit" && (
+          <PerGameScheduleEditor
+            perGameDraft={perGameDraft}
+            setPerGameDraft={setPerGameDraft}
+            modes={modes}
+            modesLoading={modesLoading}
+            modesError={modesError}
+            watchedGameId={watchedGameId}
+            readOnly={readOnly}
+            userTz={userTz}
+          />
         )}
 
         <div className="pt-1 border-t border-white/[0.06]">
@@ -956,58 +582,16 @@ export function EventForm({
           />
         </div>
 
-        <div className="pt-1 border-t border-white/[0.06] flex flex-col gap-3">
-          <Controller
-            name="discord_lock"
-            control={control}
-            render={({ field }) => (
-              <ToggleRow
-                label="Lock to Discord servers"
-                description={
-                  field.value
-                    ? "Lock this event to one or more Discord servers you belong to. Only members of those servers can open it or register."
-                    : "Anyone with the link can open this event."
-                }
-                checked={field.value}
-                onChange={(next) => {
-                  field.onChange(next);
-                  if (!next) {
-                    setValue("discord_guild_ids", []);
-                  }
-                }}
-                disabled={readOnly}
-              />
-            )}
-          />
-          {watchedDiscordLock && (
-            <div className="flex flex-col gap-1">
-              <Controller
-                name="discord_guild_ids"
-                control={control}
-                render={({ field }) => (
-                  <MultiSelect
-                    value={field.value}
-                    onChange={field.onChange}
-                    options={discordGuilds.map((g) => ({ value: g.id, label: g.name }))}
-                    placeholder={
-                      discordGuildsLoading
-                        ? "Loading Discord servers..."
-                        : "Select Discord servers"
-                    }
-                    disabled={readOnly || discordGuildsLoading}
-                    isLoading={discordGuildsLoading}
-                  />
-                )}
-              />
-              {errors.discord_guild_ids && (
-                <p className="text-xs text-[var(--color-text-danger)]">{errors.discord_guild_ids.message}</p>
-              )}
-              {discordGuildsError && (
-                <p className="text-xs text-[var(--color-text-danger)]">{discordGuildsError}</p>
-              )}
-            </div>
-          )}
-        </div>
+        <DiscordLockFields
+          control={control}
+          setValue={setValue}
+          watchedDiscordLock={watchedDiscordLock}
+          discordGuilds={discordGuilds}
+          discordGuildsLoading={discordGuildsLoading}
+          discordGuildsError={discordGuildsError}
+          discordGuildIdsError={errors.discord_guild_ids?.message}
+          readOnly={readOnly}
+        />
 
         {submitError && <p className="text-xs text-[var(--color-text-danger)]">{submitError}</p>}
 
@@ -1061,46 +645,15 @@ export function EventForm({
           </div>
         )}
       </form>
-      {!readOnly && isDeleteConfirmOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[var(--color-bg)] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.7)]">
-            <h3 className="text-base font-semibold text-[var(--color-text)]">Delete Event</h3>
-            <p className="mt-2 text-sm text-[var(--color-text-soft)]">
-              This action cannot be undone. All games, registrations, and teams in this event group will be permanently deleted.
-            </p>
-            {deleteError && <p className="mt-3 text-xs text-[var(--color-text-danger)]">{deleteError}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsDeleteConfirmOpen(false)}
-                disabled={isDeleting}
-                className="px-3 py-2 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-[var(--color-text-soft)] transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onConfirmDelete}
-                disabled={isDeleting}
-                className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors disabled:opacity-50"
-              >
-                {isDeleting ? "Deleting..." : "Delete Permanently"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {!readOnly && (
+        <DeleteEventDialog
+          isOpen={isDeleteConfirmOpen}
+          deleteError={deleteError}
+          isDeleting={isDeleting}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={onConfirmDelete}
+        />
       )}
-      <style jsx global>{`
-        .no-native-spinner {
-          -moz-appearance: textfield;
-          appearance: textfield;
-        }
-        .no-native-spinner::-webkit-outer-spin-button,
-        .no-native-spinner::-webkit-inner-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-      `}</style>
       <style>{datepickerStyles}</style>
     </>
   );

@@ -347,6 +347,13 @@ func main() {
 	// Optional: reject direct origin traffic when set (Cloudflare Worker injects the header).
 	originVerifySecret := os.Getenv("ORIGIN_VERIFY_SECRET")
 
+	// Test-only Discord OAuth bypass (Playwright). Never enabled in GIN_MODE=release.
+	testAuthBypassEnabled := os.Getenv("TEST_AUTH_BYPASS_ENABLED")
+	testAuthBypassToken := os.Getenv("TEST_AUTH_BYPASS_TOKEN")
+	if handler.ShouldRegisterTestLogin(ginEnv, testAuthBypassEnabled) && testAuthBypassToken == "" {
+		fatalExit("TEST_AUTH_BYPASS_ENABLED is true but TEST_AUTH_BYPASS_TOKEN is empty")
+	}
+
 	trustedProxies := []string{"172.20.0.0/16"}
 	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
 		parts := strings.Split(v, ",")
@@ -372,7 +379,7 @@ func main() {
 
 	// Handlers
 	discordClient := discord.New(s, apilink.New(apiLinkKeys, s), discordOauth, discordAPIURL, nil)
-	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings, apiLinkKeys, discordClient)
+	h := handler.New(ginEnv, s, sc, discordOauth, cookieDomain, frontendURL, jwtSecretBytes, refreshInt, discordAPIURL, mmSettings, apiLinkKeys, discordClient, testAuthBypassToken)
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Recovery(), middleware.RequestLogger())
@@ -388,7 +395,7 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{frontendURL},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Origin-Verify"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Origin-Verify", "X-Test-Auth-Bypass-Token"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -404,6 +411,10 @@ func main() {
 		auth.GET("/login", h.LoginHandler)
 		auth.POST("/refresh", h.RefreshHandler)
 		auth.POST("/logout", h.LogoutHandler)
+		if handler.ShouldRegisterTestLogin(ginEnv, testAuthBypassEnabled) {
+			slog.Warn("test auth bypass route registered", "path", "/auth/test_login")
+			auth.POST("/test_login", h.TestLoginHandler)
+		}
 	}
 
 	protected := r.Group("/")

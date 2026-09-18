@@ -2,6 +2,7 @@
 [![Backend](https://github.com/KatieSuth/Matchmaker/actions/workflows/backend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
 [![Backend Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/c21c84f4fba3f91f41a5be25dd59326a/raw/matchmaker-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
 [![Frontend](https://github.com/KatieSuth/Matchmaker/actions/workflows/frontend.yml/badge.svg)](https://github.com/KatieSuth/Matchmaker/actions)
+[![Frontend Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KatieSuth/93394f55db3253b6d5ace7dc1ba7aa8b/raw/matchmaker-frontend-coverage.json)](https://github.com/KatieSuth/Matchmaker/actions)
 
 [Matchmaker](https://matchmaker.games)
 
@@ -167,36 +168,38 @@ Frontend and API settings live in the **root** [`.env.example`](.env.example) (C
 
 ### Environment Variables (`.env.example`)
 
-| Variable                            | Default                                                  | Description                                                                           |
-|-------------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------|
-| `COOKIE_HASH_KEY`                   | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                                 |
-| `COOKIE_ENCRYPT_KEY`                | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login                             |
-| `API_LINK_ENCRYPTION_KEY`           | required, no default                                     | AES-256 key (64 hex chars) for third-party refresh tokens in `api_links`              |
-| `API_LINK_ENCRYPTION_KEY_ID`        | `1`                                                      | Id written to `api_links.key_id` for new tokens; bump when rotating the key           |
-| `API_LINK_ENCRYPTION_PREVIOUS_KEYS` | unset (none)                                             | Optional `id:hex` list of retired keys so old rows still decrypt                      |
-| `COOKIE_DOMAIN`                     | `${DOMAIN}`                                              | The domain used for setting cookies on login                                          |
-| `DATABASE_URL`                      | required, no default                                     | URL to connect to the DB                                                              |
-| `DATABASE_URL_TESTS`                | no default                                               | URL to connect to the DB for testing                                                  |
-| `DB_MAX_CONNS`                      | unset (pgx default)                                      | Optional pgx pool max connections (prod sets `5`)                                     |
-| `DISCORD_CLIENT_ID`                 | required, no default                                     | Client ID provided by Discord developer portal app                                    |
-| `DISCORD_CLIENT_SECRET`             | required, no default                                     | Client Secret provided by Discord developer portal app                                |
-| `DISCORD_REDIRECT_URI`              | `https://${DOMAIN}/api/auth/discord_redirect`            | Discord redirect URI for OAuth2, configured in developer portal                       |
-| `DISCORD_API_URL`                   | `https://discord.com/api`                                | Discord API URL (for test flexibility)                                                |
-| `DOMAIN`                            | `matchmaker.localhost`                                   | Public domain served by Caddy; the other public URLs above default to this value      |
-| `FRONTEND_URL`                      | `https://${DOMAIN}`                                      | CORS allowed origin                                                                   |
-| `GIN_MODE`                          | `release`                                                | `debug` or `release`                                                                  |
-| `JWT_SECRET`                        | required, no default                                     | A key for signing the JWT access tokens                                               |
-| `ORIGIN_VERIFY_SECRET`              | unset (gate off)                                         | When set, require `X-Origin-Verify` (Cloudflare Worker); `/health` exempt             |
-| `PORT`                              | `8080`                                                   | Server port                                                                           |
-| `POSTGRES_DB`                       | required, no default                                     | Postgres Database name                                                                |
-| `POSTGRES_PASSWORD`                 | required, no default                                     | Postgres Database password                                                            |
-| `POSTGRES_USER`                     | required, no default                                     | Postgres Database username                                                            |
-| `REFRESH_EXPIRE_LIMIT`              | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens                              |
-| `SENTRY_DSN`                        | unset                                                    | When set, enables Sentry error reporting                                              |
-| `TRUSTED_PROXIES`                   | `172.20.0.0/16`                                          | Comma-separated CIDRs trusted for `X-Forwarded-For` (Gin)                             |
-| `FAIRNESS_OUTLIER_GAP`              | `6`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)   |
-| `FAIRNESS_TEAM_SEPARATION`          | `3`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count) |
-| `FAIRNESS_REFERENCE_TIER_COUNT`     | `25`                                                     | Tier count the fairness baselines are calibrated for (Valorant)                       |
+| Variable                            | Default                                                  | Description                                                                                                                    |
+|-------------------------------------|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `COOKIE_HASH_KEY`                   | required, no default                                     | A hash key for the secure cookie used on OAuth2 login                                                                          |
+| `COOKIE_ENCRYPT_KEY`                | required, no default                                     | An encrypt key for the secure cookie used on OAuth2 login                                                                      |
+| `API_LINK_ENCRYPTION_KEY`           | required, no default                                     | AES-256 key (64 hex chars) for third-party refresh tokens in `api_links`                                                       |
+| `API_LINK_ENCRYPTION_KEY_ID`        | `1`                                                      | Id written to `api_links.key_id` for new tokens; bump when rotating the key                                                    |
+| `API_LINK_ENCRYPTION_PREVIOUS_KEYS` | unset (none)                                             | Optional `id:hex` list of retired keys so old rows still decrypt                                                               |
+| `COOKIE_DOMAIN`                     | `${DOMAIN}`                                              | The domain used for setting cookies on login                                                                                   |
+| `DATABASE_URL`                      | required, no default                                     | URL to connect to the DB                                                                                                       |
+| `DATABASE_URL_TESTS`                | no default                                               | URL to connect to the DB for testing                                                                                           |
+| `DB_MAX_CONNS`                      | unset (pgx default)                                      | Optional pgx pool max connections (prod sets `5`)                                                                              |
+| `DISCORD_CLIENT_ID`                 | required, no default                                     | Client ID provided by Discord developer portal app                                                                             |
+| `DISCORD_CLIENT_SECRET`             | required, no default                                     | Client Secret provided by Discord developer portal app                                                                         |
+| `DISCORD_REDIRECT_URI`              | `https://${DOMAIN}/api/auth/discord_redirect`            | Discord redirect URI for OAuth2, configured in developer portal                                                                |
+| `DISCORD_API_URL`                   | `https://discord.com/api`                                | Discord API URL (for test flexibility)                                                                                         |
+| `DOMAIN`                            | `matchmaker.localhost`                                   | Public domain served by Caddy; the other public URLs above default to this value                                               |
+| `FRONTEND_URL`                      | `https://${DOMAIN}`                                      | CORS allowed origin                                                                                                            |
+| `GIN_MODE`                          | `release`                                                | `debug` or `release`                                                                                                           |
+| `JWT_SECRET`                        | required, no default                                     | A key for signing the JWT access tokens                                                                                        |
+| `ORIGIN_VERIFY_SECRET`              | unset (gate off)                                         | When set, require `X-Origin-Verify` (Cloudflare Worker); `/health` exempt                                                      |
+| `PORT`                              | `8080`                                                   | Server port                                                                                                                    |
+| `POSTGRES_DB`                       | required, no default                                     | Postgres Database name                                                                                                         |
+| `POSTGRES_PASSWORD`                 | required, no default                                     | Postgres Database password                                                                                                     |
+| `POSTGRES_USER`                     | required, no default                                     | Postgres Database username                                                                                                     |
+| `REFRESH_EXPIRE_LIMIT`              | `604800` (7 days)                                        | Time in seconds for the expiration of the refresh tokens                                                                       |
+| `SENTRY_DSN`                        | unset                                                    | When set, enables Sentry error reporting                                                                                       |
+| `TEST_AUTH_BYPASS_ENABLED`          | unset (off)                                              | When `true` **and** `GIN_MODE` is not `release`, registers `POST /auth/test_login`. Never set in production; E2E Compose only. |
+| `TEST_AUTH_BYPASS_TOKEN`            | unset                                                    | Shared secret required as header `X-Test-Auth-Bypass-Token`. Required if the bypass is enabled. Never set in production.       |
+| `TRUSTED_PROXIES`                   | `172.20.0.0/16`                                          | Comma-separated CIDRs trusted for `X-Forwarded-For` (Gin)                                                                      |
+| `FAIRNESS_OUTLIER_GAP`              | `6`                                                      | Baseline outlier rank gap for per-lobby fairness warnings (at reference tier count)                                            |
+| `FAIRNESS_TEAM_SEPARATION`          | `3`                                                      | Baseline team average rank separation for fairness warnings (at reference tier count)                                          |
+| `FAIRNESS_REFERENCE_TIER_COUNT`     | `25`                                                     | Tier count the fairness baselines are calibrated for (Valorant)                                                                |
 
 ### Production (GCP)
 
@@ -235,6 +238,9 @@ make push-multi         # Build and push the multi-arch manifest to the registry
 make health             # Quick API health check
 make test               # Run Go tests
 make test-coverage      # Run Go tests with coverage percentage output, filtering for test-supporting files
+make e2e                # Throwaway Compose project `matchmaker-e2e`, run Playwright, tear down only that stack (needs ports 80/443/18080; does not wipe the development database)
+make e2e-up             # Start the E2E Compose stack and wait until healthy
+make e2e-down           # Stop the E2E stack and remove its volumes (not the development `postgres_data` volume)
 
 make seed-users         # Dev-only: seed 30 users
 make seed-events        # Dev-only: seed 20 groups and adjacent events (run after seed-users)

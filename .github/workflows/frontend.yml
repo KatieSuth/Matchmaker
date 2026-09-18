@@ -8,8 +8,10 @@ on:
 
 jobs:
   frontend-check:
-    name: Frontend Lint & Build
+    name: Frontend Lint, Typecheck, Test & Build
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_PCT: 0
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -25,13 +27,108 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
+      - name: Typecheck
+        working-directory: ./frontend
+        run: npm run typecheck
+
       - name: Next.js Lint
         working-directory: ./frontend
         run: npm run lint
+
+      - name: Unit tests with coverage
+        working-directory: ./frontend
+        run: npm run test:coverage
+
+      - name: Record coverage percent
+        working-directory: ./frontend
+        run: |
+          PCT=$(node -p "require('./coverage/coverage-summary.json').total.lines.pct")
+          echo "COVERAGE_PCT=$PCT" >> "$GITHUB_ENV"
+          echo "The captured coverage is: $PCT"
+          echo "### Frontend Coverage Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "Lines: ${PCT}%" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          retention-days: 7
+
+      - name: Update coverage badge
+        if: github.ref == 'refs/heads/main'
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 93394f55db3253b6d5ace7dc1ba7aa8b
+          filename: matchmaker-frontend-coverage.json
+          label: Frontend Coverage
+          message: ${{ env.COVERAGE_PCT }}%
+          valColorRange: ${{ env.COVERAGE_PCT }}
+          maxColorRange: 100
+          minColorRange: 0
 
       - name: Next.js Build Check
         working-directory: ./frontend
         run: npm run build
         env:
-          # Next.js often needs these at build time to prevent errors
           NODE_ENV: production
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Map matchmaker.localhost
+        run: echo "127.0.0.1 matchmaker.localhost" | sudo tee -a /etc/hosts
+
+      - name: Install Playwright
+        working-directory: ./e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start E2E stack
+        run: docker compose -f docker-compose.e2e.yml up --build -d --wait --wait-timeout 600
+
+      - name: Wait for HTTPS edge
+        run: |
+          for i in $(seq 1 30); do
+            if curl -kf https://matchmaker.localhost/health >/dev/null 2>&1 \
+              && curl -kf https://matchmaker.localhost/api/health >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Caddy did not become ready"
+          docker compose -f docker-compose.e2e.yml logs
+          exit 1
+
+      - name: Run Playwright
+        working-directory: ./e2e
+        env:
+          E2E_BASE_URL: https://matchmaker.localhost
+          E2E_API_URL: http://127.0.0.1:18080
+          E2E_BYPASS_TOKEN: e2e-bypass-token
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
+
+      - name: Stop E2E stack
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v
