@@ -1,6 +1,6 @@
 import { GITHUB_REPO_URL } from "@/app/_lib/constants";
+import { bodyText } from "@/app/about/_lib/text";
 
-const bodyText = "font-light leading-[1.8] text-[var(--color-text-body)]";
 const questionCls =
   "text-sm font-semibold tracking-wide text-[var(--color-text-soft)]";
 const listCls = `${bodyText} list-disc pl-5 flex flex-col gap-2`;

@@ -1,8 +1,5 @@
 // Preserve deep-link intent across Discord OAuth: middleware adds ?next=, sessionStorage survives the round-trip.
-
-export const POST_LOGIN_REDIRECT_STORAGE_KEY = "postLoginRedirect";
-
-const STORAGE_KEY = POST_LOGIN_REDIRECT_STORAGE_KEY;
+import { POST_LOGIN_REDIRECT_STORAGE_KEY } from "@/app/_lib/constants";
 
 /** Shared validation for middleware + client (event group pages only). */
 export function isAllowedPostLoginPath(path: string): boolean {
@@ -20,7 +17,7 @@ export function capturePostLoginRedirectFromWindowSearch(): void {
   if (typeof window === "undefined") return;
   const next = new URLSearchParams(window.location.search).get("next");
   if (next && isAllowedPostLoginPath(next)) {
-    sessionStorage.setItem(STORAGE_KEY, next);
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_STORAGE_KEY, next);
   }
 }
 
@@ -28,19 +25,19 @@ export function capturePostLoginRedirectFromWindowSearch(): void {
 export function persistPostLoginRedirect(path: string): void {
   if (typeof window === "undefined") return;
   if (isAllowedPostLoginPath(path)) {
-    sessionStorage.setItem(STORAGE_KEY, path);
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_STORAGE_KEY, path);
   }
 }
 
 export function peekPostLoginRedirect(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = sessionStorage.getItem(STORAGE_KEY);
+  const raw = sessionStorage.getItem(POST_LOGIN_REDIRECT_STORAGE_KEY);
   return raw && isAllowedPostLoginPath(raw) ? raw : null;
 }
 
 /** Read validated path and remove from storage (call after successful login routing). */
 export function consumePostLoginRedirect(): string | null {
   const path = peekPostLoginRedirect();
-  if (path) sessionStorage.removeItem(STORAGE_KEY);
+  if (path) sessionStorage.removeItem(POST_LOGIN_REDIRECT_STORAGE_KEY);
   return path;
 }

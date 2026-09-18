@@ -14,6 +14,10 @@ interface SelectProps {
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
+  /** Combobox input id so a visible <label htmlFor> can point at it. */
+  inputId?: string;
+  /** Accessible name when there is no associated <label>. */
+  ariaLabel?: string;
 }
 
 // Exported so pages that need raw ReactSelect (e.g. grouped options, isClearable)
@@ -149,6 +153,12 @@ interface MultiSelectProps {
   placeholder?: string;
   disabled?: boolean;
   isLoading?: boolean;
+  /**
+   * Accessible name for the control. `MultiSelect` renders a real (searchable) text input with no
+   * visible `<label>` of its own — callers that don't already have an associated label (e.g. a
+   * `<label>` wrapping the control) should pass one here so screen readers announce it correctly.
+   */
+  ariaLabel?: string;
 }
 
 export function MultiSelect({
@@ -158,6 +168,7 @@ export function MultiSelect({
   placeholder = "— Select —",
   disabled = false,
   isLoading = false,
+  ariaLabel,
 }: MultiSelectProps) {
   const selected = options.filter((o) => value.includes(o.value));
   const styles: StylesConfig<SelectOption, true, GroupBase<SelectOption>> = {
@@ -193,6 +204,7 @@ export function MultiSelect({
       options={options}
       placeholder={placeholder}
       isDisabled={disabled}
+      aria-label={ariaLabel}
       styles={styles}
       menuPortalTarget={typeof document !== "undefined" ? document.body : null}
       menuPosition="fixed"
@@ -206,11 +218,15 @@ export function Select({
   options,
   placeholder = "— Select —",
   disabled = false,
+  inputId,
+  ariaLabel,
 }: SelectProps) {
   const selected = options.find((o) => o.value === value) ?? null;
 
   return (
     <ReactSelect<SelectOption>
+      inputId={inputId}
+      aria-label={ariaLabel}
       value={selected}
       onChange={(opt) => onChange(opt?.value ?? "")}
       options={options}

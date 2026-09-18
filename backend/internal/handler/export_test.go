@@ -61,3 +61,9 @@ func DiscordRestrictionErrorForTest(cause error) error {
 func WriteDiscordGuildRestrictionForTest(h *Handler, c *gin.Context, userID, groupID uuid.UUID) {
 	h.writeDiscordGuildRestriction(c, userID, groupID, &discordGuildRestriction{eventTitle: "t", guilds: nil})
 }
+
+// SetTestAuthBypassForTest sets the test-login shared secret and Gin mode on a handler.
+func SetTestAuthBypassForTest(h *Handler, token, ginMode string) {
+	h.testAuthBypassToken = token
+	h.ginMode = ginMode
+}

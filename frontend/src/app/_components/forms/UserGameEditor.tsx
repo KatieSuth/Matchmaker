@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { Field } from "@/app/_components/Field";
 import { Select } from "@/app/_components/Select";
 import { ToggleRow } from "@/app/_components/ToggleRow";
@@ -49,6 +50,12 @@ export function UserGameEditor({
   onChange,
   onRemove,
 }: UserGameEditorProps) {
+  const idPrefix = useId();
+  const gameInputId = `${idPrefix}-game`;
+  const inGameNameId = `${idPrefix}-in-game-name`;
+  const currentRankId = `${idPrefix}-current-rank`;
+  const peakRankId = `${idPrefix}-peak-rank`;
+
   return (
     <div className="card rounded-xl p-4 flex flex-col gap-4 relative overflow-hidden">
       <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
@@ -57,6 +64,8 @@ export function UserGameEditor({
         <div className="flex items-center gap-2">
           <div className="flex-1">
             <Select
+              inputId={gameInputId}
+              ariaLabel="Game"
               value={value.game_id}
               onChange={(gameId) =>
                 onChange({
@@ -114,8 +123,9 @@ export function UserGameEditor({
       {value.game_id && !ranksLoading && (
         <>
           <div className="flex flex-col gap-3">
-            <Field label="In-game name *" error={errors?.in_game_name}>
+            <Field label="In-game name *" htmlFor={inGameNameId} error={errors?.in_game_name}>
               <input
+                id={inGameNameId}
                 value={value.in_game_name}
                 onChange={(event) => onChange({ ...value, in_game_name: event.target.value })}
                 placeholder="YourTag#1234"
@@ -126,8 +136,9 @@ export function UserGameEditor({
             {ranks.length > 0 && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Current rank *" error={errors?.current_rank}>
+                  <Field label="Current rank *" htmlFor={currentRankId} error={errors?.current_rank}>
                     <Select
+                      inputId={currentRankId}
                       value={value.current_rank}
                       onChange={(rankId) => onChange({ ...value, current_rank: rankId })}
                       placeholder="— Select rank —"
@@ -135,8 +146,9 @@ export function UserGameEditor({
                     />
                   </Field>
 
-                  <Field label="Peak rank *" error={errors?.peak_rank}>
+                  <Field label="Peak rank *" htmlFor={peakRankId} error={errors?.peak_rank}>
                     <Select
+                      inputId={peakRankId}
                       value={value.peak_rank}
                       onChange={(rankId) => onChange({ ...value, peak_rank: rankId })}
                       placeholder="— Select rank —"

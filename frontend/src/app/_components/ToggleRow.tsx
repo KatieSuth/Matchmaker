@@ -46,7 +46,7 @@ export function ToggleRow({
         )}
       </div>
       <div className="shrink-0">
-        <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} />
+        <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} ariaLabel={label} />
       </div>
     </div>
   );

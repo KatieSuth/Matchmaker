@@ -135,5 +135,5 @@ func newTestHandlerWithDiscord(t *testing.T, s store.Store, oauth2Cfg *oauth2.Co
 		}
 	}
 
-	return handler.New("test", s, sc, oauth2Cfg, cookieDomain, "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl, mmSettings, keyring, discordAPI)
+	return handler.New("test", s, sc, oauth2Cfg, cookieDomain, "http://localhost:3000", jwtSecret, int(7*24*time.Hour/time.Second), discordApiUrl, mmSettings, keyring, discordAPI, "")
 }

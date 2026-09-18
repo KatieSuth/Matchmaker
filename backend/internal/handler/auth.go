@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/apilink"
@@ -15,6 +17,7 @@ import (
 	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/KatieSuth/MatchmakerAPI/internal/textinput"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // OAuthStateCookieMaxAge is the Discord OAuth CSRF cookie lifetime in seconds.
@@ -168,39 +171,14 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	//handle local storage for the user
-	var user model.User
-	user, err = h.store.GetUserByDiscordID(c.Request.Context(), discordUser.ID, true)
+	user, err := h.upsertUserFromDiscordProfile(c.Request.Context(), discordUser)
 	if err != nil {
-		slog.InfoContext(c.Request.Context(), "user not found, creating new account", "discord_id", discordUser.ID)
-		// Seed optional display_name from Discord global_name; never fail signup on normalize errors.
-		var displayNamePtr *string
-		rawGlobalName := ""
-		if discordUser.GlobalName != nil {
-			rawGlobalName = *discordUser.GlobalName
-		}
-		if normalized, normErr := textinput.NormalizeOptional(rawGlobalName, userDisplayNameMaxRunes); normErr == nil && normalized != "" {
-			displayNamePtr = &normalized
-		}
-		user, err = h.store.CreateNewUser(c.Request.Context(), discordUser, displayNamePtr)
-		if err != nil {
-			slog.ErrorContext(c.Request.Context(), "failed to create new user", "discord_id", discordUser.ID, "error", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"message": "Could not locate the user account and could not create a new one",
-			})
-			return
-		}
-		slog.InfoContext(c.Request.Context(), "new user created", "user_id", user.ID, "discord_id", discordUser.ID)
-	} else {
-		//found the user, update them if necessary
-		if user.DiscordName != &discordUser.Username || user.ImageUrl != &discordUser.Avatar {
-			slog.InfoContext(c.Request.Context(), "updating user profile from Discord", "user_id", user.ID)
-			user, err = h.store.UpdateUserFromLogin(c.Request.Context(), user.ID, discordUser)
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "failed to update user from Discord login", "user_id", user.ID, "error", err)
-			}
-		}
+		slog.ErrorContext(c.Request.Context(), "failed to create new user", "discord_id", discordUser.ID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not locate the user account and could not create a new one",
+		})
+		return
 	}
 
 	if token.RefreshToken == "" {
@@ -226,12 +204,8 @@ func (h *Handler) DiscordCallbackHandler(c *gin.Context) {
 		h.discord.SeedAccessToken(user.ID, token.AccessToken, token.Expiry)
 	}
 
-	//generate a short-lived one-time code to exchange for tokens in /auth/complete
-	otcBytes := make([]byte, 16)
-	rand.Read(otcBytes)
-	otc := hex.EncodeToString(otcBytes)
-
-	if err := h.store.CreateOneTimeCode(c.Request.Context(), otc, user.ID); err != nil {
+	otc, err := h.issueOneTimeCode(c.Request.Context(), user.ID)
+	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to store one-time code", "user_id", user.ID, "error", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
@@ -386,4 +360,129 @@ func (h *Handler) LogoutHandler(c *gin.Context) {
 
 	h.setAuthCookies(c, "", -1)
 	c.AbortWithStatus(http.StatusNoContent)
+}
+
+const testAuthBypassHeader = "X-Test-Auth-Bypass-Token"
+
+// ShouldRegisterTestLogin is true only when the bypass flag is explicitly enabled and Gin is
+// not in release mode. Used by main.go so the route cannot register in production even if the
+// flag is accidentally set.
+func ShouldRegisterTestLogin(ginMode, enabled string) bool {
+	return enabled == "true" && ginMode != gin.ReleaseMode
+}
+
+// upsertUserFromDiscordProfile finds or creates the local user for a Discord profile and refreshes
+// discord name/avatar on subsequent logins. Create failures are returned; update failures are
+// logged and the existing user is still returned (matching the original OAuth callback behavior).
+func (h *Handler) upsertUserFromDiscordProfile(ctx context.Context, discordUser model.DiscordUser) (model.User, error) {
+	user, err := h.store.GetUserByDiscordID(ctx, discordUser.ID, true)
+	if err != nil {
+		slog.InfoContext(ctx, "user not found, creating new account", "discord_id", discordUser.ID)
+		// Seed optional display_name from Discord global_name; never fail signup on normalize errors.
+		var displayNamePtr *string
+		rawGlobalName := ""
+		if discordUser.GlobalName != nil {
+			rawGlobalName = *discordUser.GlobalName
+		}
+		if normalized, normErr := textinput.NormalizeOptional(rawGlobalName, userDisplayNameMaxRunes); normErr == nil && normalized != "" {
+			displayNamePtr = &normalized
+		}
+		user, err = h.store.CreateNewUser(ctx, discordUser, displayNamePtr)
+		if err != nil {
+			return model.User{}, err
+		}
+		slog.InfoContext(ctx, "new user created", "user_id", user.ID, "discord_id", discordUser.ID)
+		return user, nil
+	}
+
+	if user.DiscordName != &discordUser.Username || user.ImageUrl != &discordUser.Avatar {
+		slog.InfoContext(ctx, "updating user profile from Discord", "user_id", user.ID)
+		updated, updateErr := h.store.UpdateUserFromLogin(ctx, user.ID, discordUser)
+		if updateErr != nil {
+			slog.ErrorContext(ctx, "failed to update user from Discord login", "user_id", user.ID, "error", updateErr)
+			return user, nil
+		}
+		return updated, nil
+	}
+	return user, nil
+}
+
+// issueOneTimeCode persists a fresh OTC bound to userID and returns the plaintext code.
+func (h *Handler) issueOneTimeCode(ctx context.Context, userID uuid.UUID) (string, error) {
+	otcBytes := make([]byte, 16)
+	_, _ = rand.Read(otcBytes)
+	otc := hex.EncodeToString(otcBytes)
+	if err := h.store.CreateOneTimeCode(ctx, otc, userID); err != nil {
+		return "", err
+	}
+	return otc, nil
+}
+
+// POST /auth/test_login — test-only session mint used by Playwright. Never registered in
+// GIN_MODE=release; still requires the shared-secret header even when the route exists.
+func (h *Handler) TestLoginHandler(c *gin.Context) {
+	if h.testAuthBypassToken == "" || h.ginMode == gin.ReleaseMode {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	got := c.GetHeader(testAuthBypassHeader)
+	if got == "" || got != h.testAuthBypassToken {
+		slog.WarnContext(c.Request.Context(), "test login rejected: missing or invalid bypass token")
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	var body struct {
+		DiscordID  string  `json:"discord_id"`
+		Username   string  `json:"username"`
+		GlobalName *string `json:"global_name"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "test login request bind failed", "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Improper json or json value types",
+		})
+		return
+	}
+	if strings.TrimSpace(body.DiscordID) == "" || strings.TrimSpace(body.Username) == "" {
+		slog.WarnContext(c.Request.Context(), "test login request missing discord_id or username")
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "discord_id and username are required",
+		})
+		return
+	}
+
+	discordUser := model.DiscordUser{
+		ID:         body.DiscordID,
+		Username:   body.Username,
+		GlobalName: body.GlobalName,
+	}
+	user, err := h.upsertUserFromDiscordProfile(c.Request.Context(), discordUser)
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "test login failed to upsert user", "discord_id", body.DiscordID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not locate the user account and could not create a new one",
+		})
+		return
+	}
+
+	otc, err := h.issueOneTimeCode(c.Request.Context(), user.ID)
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "test login failed to store one-time code", "user_id", user.ID, "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Could not store code to complete auth",
+		})
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "test login issued one-time code", "user_id", user.ID, "new_user", user.NewUser)
+	c.JSON(http.StatusOK, gin.H{
+		"otc":      otc,
+		"new_user": user.NewUser,
+	})
 }

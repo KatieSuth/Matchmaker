@@ -1,153 +1,28 @@
 "use client";
 
 // Editable profile: region, pronouns, and per-game accounts (user games). Used as /my_account.
-import { useState, useEffect, useMemo, useSyncExternalStore, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Image from 'next/image';
+import Image from "next/image";
 import { useForm, useWatch, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { REGIONS, DISPLAY_NAME_MAX_RUNES, discordAvatarUrl, type Region } from "@/app/_lib/constants";
-import { User, Game, GameRank, UserGame } from "@/app/_types/types";
 import { useAuth } from "@/app/_context/AuthContext";
 import { Select } from "@/app/_components/Select";
 import { SectionDivider } from "@/app/_components/SectionDivider";
-import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
-import { UserGameEditor } from "@/app/_components/forms/UserGameEditor";
 import { Field } from "@/app/_components/Field";
 import { ToggleRow } from "@/app/_components/ToggleRow";
 import { inputCls } from "@/app/_lib/styles";
-import { optionalFreeTextSchema, codePointLength } from "@/app/_lib/textInput";
-import { consumePostLoginRedirect, peekPostLoginRedirect } from "@/app/_lib/postLoginRedirect";
-import { extractApiError, fetchGameRanks, fetchGames } from "@/app/_services/games";
+import { codePointLength } from "@/app/_lib/textInput";
+import { peekPostLoginRedirect, consumePostLoginRedirect } from "@/app/_lib/postLoginRedirect";
+import { useCancelableFetch } from "@/app/_hooks/useCancelableFetch";
+import { extractApiError, fetchGames } from "@/app/_services/games";
 import { fetchCurrentUser, fetchCurrentUserGames, updateCurrentUserPreferences, upsertCurrentUserGame, deleteCurrentUserGame } from "@/app/_services/users";
-
-// ---------------------------------------------------------------------------
-// Zod schema
-// ---------------------------------------------------------------------------
-
-const userGameSchema = z.object({
-  game_id: z.string().uuid("Please select a game"),
-  in_game_name: z.string().min(1, "In-game name is required"),
-  current_rank: z.string().min(1, "Current rank is required"),
-  peak_rank: z.string().min(1, "Peak rank is required"),
-  show_rank: z.boolean(),
-  api_permission: z.boolean(),
-});
-
-const preferencesSchema = z.object({
-  display_name: optionalFreeTextSchema(DISPLAY_NAME_MAX_RUNES),
-  pronouns: z.string().nullable().optional(),
-  show_pronouns: z.boolean(),
-  region: z.enum(REGIONS).nullable().optional(),
-  games: z.array(userGameSchema),
-});
-
-type PreferencesFormValues = z.infer<typeof preferencesSchema>;
-
-// ---------------------------------------------------------------------------
-// GameCard — fetches its own ranks when a game is selected
-// ---------------------------------------------------------------------------
-
-interface GameCardProps {
-  index: number;
-  allGames: Game[];
-  control: ReturnType<typeof useForm<PreferencesFormValues>>["control"];
-  setValue: ReturnType<typeof useForm<PreferencesFormValues>>["setValue"];
-  errors: ReturnType<typeof useForm<PreferencesFormValues>>["formState"]["errors"];
-  takenGameIds: string[];
-  /** Game IDs already saved to the server for this user (dropdown locked for those rows). */
-  persistedGameIds: Set<string>;
-  onRemove: () => void;
-}
-
-function GameCard({
-  index,
-  allGames,
-  control,
-  setValue,
-  errors,
-  takenGameIds,
-  persistedGameIds,
-  onRemove,
-}: GameCardProps) {
-  const [ranks, setRanks] = useState<GameRank[]>([]);
-  const [ranksLoading, setRanksLoading] = useState(false);
-  
-  const watchedGameId = useWatch({ control, name: `games.${index}.game_id` });
-  const watchedValue = useWatch({ control, name: `games.${index}` });
-
-  useEffect(() => {
-    let ignore = false;
-    const ac = new AbortController();
-
-    const startSync = async() => {
-      if (!watchedGameId) {
-        setRanks(() => []);
-        return;
-      }
-
-      setRanksLoading(true);
-      try {
-        const data = await fetchGameRanks(watchedGameId, ac.signal);
-        if (!ignore) setRanks(data);
-      } catch (err) {
-        if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
-          return;
-        }
-        if (!ignore) setRanks([]);
-      } finally {
-        if (!ignore) setRanksLoading(false);
-      }
-    }
-    
-    startSync();
-
-    return () => {
-      ignore = true;
-      ac.abort();
-    }
-  }, [watchedGameId]);
-
-  const gameErrors = errors.games?.[index];
-  const lockGameSelect =
-    Boolean(watchedGameId) && persistedGameIds.has(watchedGameId);
-
-  return (
-    <UserGameEditor
-      lockGameSelect={lockGameSelect}
-      value={{
-        game_id: watchedValue?.game_id ?? "",
-        in_game_name: watchedValue?.in_game_name ?? "",
-        current_rank: watchedValue?.current_rank ?? "",
-        peak_rank: watchedValue?.peak_rank ?? "",
-        show_rank: watchedValue?.show_rank ?? false,
-      }}
-      allGames={allGames}
-      takenGameIds={takenGameIds}
-      ranks={ranks}
-      ranksLoading={ranksLoading}
-      errors={{
-        game_id: gameErrors?.game_id?.message,
-        in_game_name: gameErrors?.in_game_name?.message,
-        current_rank: gameErrors?.current_rank?.message,
-        peak_rank: gameErrors?.peak_rank?.message,
-      }}
-      onChange={(next) => {
-        setValue(`games.${index}.game_id`, next.game_id, { shouldDirty: true, shouldValidate: true });
-        setValue(`games.${index}.in_game_name`, next.in_game_name, { shouldDirty: true, shouldValidate: true });
-        setValue(`games.${index}.current_rank`, next.current_rank, { shouldDirty: true, shouldValidate: true });
-        setValue(`games.${index}.peak_rank`, next.peak_rank, { shouldDirty: true, shouldValidate: true });
-        setValue(`games.${index}.show_rank`, next.show_rank, { shouldDirty: true, shouldValidate: true });
-      }}
-      onRemove={onRemove}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main form
-// ---------------------------------------------------------------------------
+import { Game, UserGame } from "@/app/_types/types";
+import { preferencesSchema, PreferencesFormValues } from "./userPreferencesForm/schema";
+import { GameCard } from "./userPreferencesForm/GameCard";
+import { LeaveProfileSetupSheet } from "./userPreferencesForm/LeaveProfileSetupSheet";
+import { useLeaveConfirmGuard } from "./userPreferencesForm/useLeaveConfirmGuard";
 
 export default function UserPreferencesForm() {
   const { user, setUser, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -159,14 +34,13 @@ export default function UserPreferencesForm() {
   const [persistedGameIds, setPersistedGameIds] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  /** Non-null while the leave-confirm sheet is open; value is the blocked in-app href. */
-  const [leaveHref, setLeaveHref] = useState<string | null>(null);
   // sessionStorage is client-only; server snapshot is false to avoid hydration mismatch
   const hasPendingEventRedirect = useSyncExternalStore(
     () => () => {},
     () => peekPostLoginRedirect() !== null,
     () => false,
   );
+  const { leaveHref, closeLeaveSheet, confirmLeave } = useLeaveConfirmGuard(user?.new_user, hasPendingEventRedirect);
 
   const {
     register,
@@ -191,78 +65,38 @@ export default function UserPreferencesForm() {
   /** Only hydrate from the server once per user; setUser after save must not reset the field array. */
   const hydratedUserIdRef = useRef<string | null>(null);
 
-  const takenGameIds = useMemo(() => 
-    watchedGames?.map((g: any) => g.game_id).filter(Boolean) ?? [], 
-  [watchedGames]);
-
-  const closeLeaveSheet = useCallback(() => setLeaveHref(null), []);
-
-  const confirmLeave = useCallback(() => {
-    if (!leaveHref) return;
-    const href = leaveHref;
-    setLeaveHref(null);
-    consumePostLoginRedirect();
-    router.push(href);
-  }, [leaveHref, router]);
-
-  // Warn before abandoning a pending event deep-link via in-app navigation
+  // Auto-reset the "success" status back to idle after a few seconds (mirrors the event-group
+  // page's toast auto-dismiss effect). Keying off `status` — rather than setting an untracked
+  // `setTimeout` inline in `onSubmit` — means the cleanup function automatically cancels a
+  // pending reset if the component unmounts or the status changes again before it fires.
   useEffect(() => {
-    if (!user?.new_user || !hasPendingEventRedirect) return;
+    if (status !== "success") return;
+    const timer = window.setTimeout(() => setStatus("idle"), 3500);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
-    const onClick = (e: MouseEvent) => {
-      if (e.defaultPrevented || e.button !== 0) return;
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-
-      const target = e.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest("a[href]");
-      if (!(anchor instanceof HTMLAnchorElement)) return;
-
-      const hrefAttr = anchor.getAttribute("href");
-      if (!hrefAttr || hrefAttr.startsWith("#")) return;
-
-      let url: URL;
-      try {
-        url = new URL(hrefAttr, window.location.origin);
-      } catch {
-        return;
-      }
-      if (url.origin !== window.location.origin) return;
-      if (url.pathname === "/my_account") return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      setLeaveHref(url.pathname + url.search);
-    };
-
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, [user?.new_user, hasPendingEventRedirect]);
+  const takenGameIds = useMemo(
+    () => watchedGames?.map((g) => g.game_id).filter(Boolean) ?? [],
+    [watchedGames]
+  );
 
   // Fetch game list and user's games in parallel once user is ready
-  useEffect(() => {
-    if (authLoading || !isAuthenticated || !user?.id) return;
-    const ac = new AbortController();
-    const { signal } = ac;
-    Promise.all([fetchGames(signal), fetchCurrentUserGames(signal)])
-      .then(([games, ug]) => {
-        setAllGames(games);
-        setUserGames(ug);
-        setPersistedGameIds(new Set(ug.map((g) => g.game_id)));
-      })
-      .catch((err) => {
-        if ((err as { code?: string; name?: string })?.code === "ERR_CANCELED" || (err as { name?: string })?.name === "CanceledError") {
-          return;
-        }
-        console.error(err);
-        setAllGames([]);
-        setUserGames([]);
-        setPersistedGameIds(new Set());
-      });
-    return () => {
-      ac.abort();
-    };
-  }, [authLoading, isAuthenticated, user?.id]);
+  useCancelableFetch({
+    fetcher: (signal) => Promise.all([fetchGames(signal), fetchCurrentUserGames(signal)]),
+    enabled: !authLoading && isAuthenticated && Boolean(user?.id),
+    onSuccess: ([games, ug]) => {
+      setAllGames(games);
+      setUserGames(ug);
+      setPersistedGameIds(new Set(ug.map((g) => g.game_id)));
+    },
+    onError: (err) => {
+      console.error(err);
+      setAllGames([]);
+      setUserGames([]);
+      setPersistedGameIds(new Set());
+    },
+    deps: [authLoading, isAuthenticated, user?.id],
+  });
 
   // Populate form once both datasets are ready
   useEffect(() => {
@@ -323,7 +157,6 @@ export default function UserPreferencesForm() {
         }
       }
       setStatus("success");
-      setTimeout(() => setStatus("idle"), 3500);
     } catch (err) {
       setErrorMsg(extractApiError(err));
       setStatus("error");
@@ -341,33 +174,11 @@ export default function UserPreferencesForm() {
     });
 
   const leaveSheet = (
-    <ResponsiveSheet
+    <LeaveProfileSetupSheet
       isOpen={leaveHref !== null}
       onClose={closeLeaveSheet}
-      title="Leave profile setup?"
-    >
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-[var(--color-text-soft)]">
-          You haven&apos;t finished setting up your profile yet. If you leave now, you won&apos;t be taken to the event you came here for.
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={confirmLeave}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 transition-colors"
-          >
-            Leave
-          </button>
-          <button
-            type="button"
-            onClick={closeLeaveSheet}
-            className="px-3 py-2 rounded-lg text-sm font-medium border border-[var(--color-accent-blue)]/30 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 transition-colors"
-          >
-            Stay
-          </button>
-        </div>
-      </div>
-    </ResponsiveSheet>
+      onConfirmLeave={confirmLeave}
+    />
   );
 
   if (authLoading || !user || allGames === null || userGames === null) {
@@ -468,11 +279,13 @@ export default function UserPreferencesForm() {
 
             <Field
               label="Pronouns"
+              htmlFor="preferences-pronouns"
               error={errors.pronouns?.message}
               hint="Shown on your public profile when display is enabled."
             >
               <input
                 {...register("pronouns")}
+                id="preferences-pronouns"
                 placeholder="e.g. they/them"
                 className={inputCls}
               />
@@ -495,12 +308,13 @@ export default function UserPreferencesForm() {
               )}
             />
 
-            <Field label="Region" error={errors.region?.message}>
+            <Field label="Region" htmlFor="preferences-region" error={errors.region?.message}>
               <Controller
                 control={control}
                 name="region"
                 render={({ field }) => (
                   <Select
+                    inputId="preferences-region"
                     value={field.value ?? ""}
                     onChange={(v) => field.onChange(v || null)}
                     placeholder="— No preference —"
