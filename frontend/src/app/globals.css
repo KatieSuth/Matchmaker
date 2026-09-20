@@ -106,6 +106,24 @@
   }
 }
 
+/*
+ * NumberStepper: hide native type=number spinners. Tailwind arbitrary
+ * appearance utilities lose to inputCls's `appearance-none`, so this is a
+ * dedicated utility with enough specificity to actually suppress them.
+ */
+@utility hide-number-spinners {
+  appearance: textfield !important;
+  -moz-appearance: textfield !important;
+
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    margin: 0;
+    display: none;
+  }
+}
+
 /* ─── Utilities ──────────────────────────────────────────── */
 
 /* Page backgrounds */

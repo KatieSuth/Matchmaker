@@ -7,6 +7,12 @@ export interface EventRegistrationDraft {
   can_lobby_host: boolean;
 }
 
+/** Fresh per-event settings when the user is newly registering (or newly selecting a game). */
+export const DEFAULT_EVENT_REGISTRATION_DRAFT: EventRegistrationDraft = {
+  can_substitute: true,
+  can_lobby_host: true,
+};
+
 export interface RegistrationDraft {
   selected_event_ids: string[];
   per_event: Record<string, EventRegistrationDraft>;

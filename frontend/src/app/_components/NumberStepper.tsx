@@ -45,8 +45,8 @@ export function NumberStepper({ label, value, min, onChange, hint, disabled = fa
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(Math.max(min, Number(event.target.value) || min))}
-          // Hide native number spinners; the +/- buttons are the only stepper controls.
-          className={`${inputCls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-center`}
+          // hide-number-spinners lives in globals.css so it wins over inputCls's appearance-none.
+          className={`${inputCls} hide-number-spinners text-center`}
         />
         <button
           type="button"

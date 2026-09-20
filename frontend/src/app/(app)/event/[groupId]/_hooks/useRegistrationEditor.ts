@@ -11,7 +11,7 @@ import {
   DiscordGuildRestrictionDetails,
 } from "@/app/_services/games";
 import { EventGroupDetail, EventRegistration, GameRank, User } from "@/app/_types/types";
-import { EventRegistrationDraft, RegistrationDraft } from "../_types";
+import { DEFAULT_EVENT_REGISTRATION_DRAFT, EventRegistrationDraft, RegistrationDraft } from "../_types";
 
 function emptyUserGameDraft(gameId: string): UserGameEditorValue {
   return {
@@ -142,10 +142,7 @@ export function useRegistrationEditor({
       if (selectedEventIds.length === 0) {
         for (const event of group.events) {
           selectedEventIds.push(event.id);
-          perEvent[event.id] = {
-            can_substitute: true,
-            can_lobby_host: false,
-          };
+          perEvent[event.id] = { ...DEFAULT_EVENT_REGISTRATION_DRAFT };
         }
       }
 
@@ -260,10 +257,7 @@ export function useRegistrationEditor({
       await upsertMyGroupRegistrations(group.id, {
         duo_request: registrationDraft.duo_request,
         events: selectedValidEventIds.map((eventId) => {
-          const eventDraft = registrationDraft.per_event[eventId] ?? {
-            can_substitute: true,
-            can_lobby_host: false,
-          };
+          const eventDraft = registrationDraft.per_event[eventId] ?? DEFAULT_EVENT_REGISTRATION_DRAFT;
           return {
             event_id: eventId,
             can_substitute: eventDraft.can_substitute,
