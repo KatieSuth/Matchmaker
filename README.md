@@ -301,7 +301,7 @@ make push-multi IMAGE=youruser/matchmaker VERSION=v1.0.0
 
 ### Matchmaking test data
 
-Seeds ~54 event groups with scenario-specific users (controlled counts, ranks, subs, and duo pairings) to exercise matchmaking manually. Each group is left open for you to review registrations and click **Lock In & Create Teams**. Users are owned by each scenario — not shared — so ranks stay stable across manual re-testing.
+Seeds ~58 event groups with scenario-specific users (controlled counts, ranks, subs, and duo pairings) to exercise matchmaking manually. Each group is left open for you to review registrations and click **Lock In & Create Teams**. Users are owned by each scenario — not shared — so ranks stay stable across manual re-testing.
 
 **Prerequisites:** migrations applied; your host account must already exist in the database (log in via the app once).
 
@@ -309,7 +309,7 @@ Seeds ~54 event groups with scenario-specific users (controlled counts, ranks, s
 make seed-matchmaking-all HOST=YourDiscordName
 ```
 
-Replace `YourDiscordName` with your `users.discord_name` value. The script prints a table of `event_group.id` values with a short description of what each group is meant to test (insufficient players, single lobby, single lobby with overflow subs/unplaced, two lobbies with subs, fairness warnings, balanced vs ranked modes, etc.).
+Replace `YourDiscordName` with your `users.discord_name` value. Each group's `name` in the app (and the seed table) describes the use case, prefixed with `balanced:` or `ranked:` so the two copies stay distinct (insufficient players, overflow subs, fairness warnings, etc.). Re-running the seed updates names on existing scenario groups without recreating them.
 
 Optional flags via direct CLI (not exposed in Makefile):
 
@@ -318,7 +318,7 @@ cd backend && go run ./cmd/scripts/matchmaking all --host=YourDiscordName
 cd backend && go run ./cmd/scripts/matchmaking all --host=YourDiscordName --json
 ```
 
-Re-running is idempotent: existing scenario groups are skipped. To re-seed from scratch:
+Re-running is idempotent: existing scenario groups are skipped (their names are still refreshed). To re-seed from scratch:
 
 ```bash
 make seed-matchmaking-cleanup
