@@ -39,3 +39,50 @@ func TestPickLobbyHost_FallsBackToFirstMember(t *testing.T) {
 	require.NotNil(t, host)
 	assert.Equal(t, first, *host)
 }
+
+func TestPickLobbyHost_IgnoresSubVolunteer(t *testing.T) {
+	teamVolunteer := uuid.New()
+	teamFallback := uuid.New()
+	subVolunteer := uuid.New()
+	now := time.Now()
+	lobby := matchmaking.LobbyPlan{
+		Roster: []matchmaking.Player{
+			{UserID: teamFallback, CanLobbyHost: false, CreatedAt: now},
+			{UserID: teamVolunteer, CanLobbyHost: true, CreatedAt: now.Add(time.Minute)},
+		},
+		Subs: []matchmaking.Player{
+			{UserID: subVolunteer, CanLobbyHost: true, CreatedAt: now.Add(-time.Hour)},
+		},
+	}
+	host := matchmaking.PickLobbyHost(lobby)
+	require.NotNil(t, host)
+	assert.Equal(t, teamVolunteer, *host)
+}
+
+func TestPickLobbyHost_FallsBackToTeamPlayerWhenOnlySubVolunteered(t *testing.T) {
+	firstTeam := uuid.New()
+	secondTeam := uuid.New()
+	subVolunteer := uuid.New()
+	now := time.Now()
+	lobby := matchmaking.LobbyPlan{
+		Roster: []matchmaking.Player{
+			{UserID: firstTeam, CanLobbyHost: false, CreatedAt: now},
+			{UserID: secondTeam, CanLobbyHost: false, CreatedAt: now.Add(time.Minute)},
+		},
+		Subs: []matchmaking.Player{
+			{UserID: subVolunteer, CanLobbyHost: true, CreatedAt: now.Add(-time.Hour)},
+		},
+	}
+	host := matchmaking.PickLobbyHost(lobby)
+	require.NotNil(t, host)
+	assert.Equal(t, firstTeam, *host)
+}
+
+func TestPickLobbyHost_EmptyRosterReturnsNil(t *testing.T) {
+	lobby := matchmaking.LobbyPlan{
+		Subs: []matchmaking.Player{
+			{UserID: uuid.New(), CanLobbyHost: true, CreatedAt: time.Now()},
+		},
+	}
+	assert.Nil(t, matchmaking.PickLobbyHost(lobby))
+}

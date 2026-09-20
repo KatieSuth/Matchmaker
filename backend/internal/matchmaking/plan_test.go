@@ -75,6 +75,58 @@ func TestPlanEvent_RankedMode(t *testing.T) {
 	assert.NotNil(t, plan.Lobbies[0].HostID)
 }
 
+func TestPlanEvent_LobbyHostIsAlwaysATeamPlayer(t *testing.T) {
+	now := time.Now()
+	subVolunteer := uuid.New()
+	players := []matchmaking.Player{
+		{
+			UserID:        subVolunteer,
+			AvgRank:       1,
+			CanSubstitute: true,
+			CanLobbyHost:  true,
+			CreatedAt:     now,
+		},
+	}
+	for i := 0; i < 4; i++ {
+		players = append(players, matchmaking.Player{
+			UserID:        uuid.New(),
+			AvgRank:       float64(10 + i),
+			CanSubstitute: false,
+			CanLobbyHost:  false,
+			CreatedAt:     now.Add(time.Duration(i+1) * time.Minute),
+		})
+	}
+
+	plan, err := matchmaking.PlanEvent(players, matchmaking.Config{
+		EventID:   uuid.New(),
+		TeamSize:  2,
+		SubMin:    0,
+		SortLogic: "balanced",
+		TierCount: 25,
+		GameLabel: "Game 1 (2v2)",
+		Slots:     4,
+	}, matchmaking.Settings{
+		FairnessOutlierGap:         6,
+		FairnessTeamSeparation:     3,
+		FairnessReferenceTierCount: 25,
+	})
+	require.NoError(t, err)
+	require.Len(t, plan.Lobbies, 1)
+	require.NotNil(t, plan.Lobbies[0].HostID)
+	assert.NotEqual(t, subVolunteer, *plan.Lobbies[0].HostID)
+
+	onRoster := false
+	for _, p := range plan.Lobbies[0].Roster {
+		if p.UserID == *plan.Lobbies[0].HostID {
+			onRoster = true
+			break
+		}
+	}
+	assert.True(t, onRoster, "lobby host must be a team player")
+	require.Len(t, plan.Lobbies[0].Subs, 1)
+	assert.Equal(t, subVolunteer, plan.Lobbies[0].Subs[0].UserID)
+}
+
 func TestPlanEvent_MultiLobbyWithMandatorySubs(t *testing.T) {
 	now := time.Now()
 	players := make([]matchmaking.Player, 0, 11)

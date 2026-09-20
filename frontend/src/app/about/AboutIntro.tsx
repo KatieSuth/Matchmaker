@@ -73,9 +73,9 @@ export default function AboutIntro() {
         </p>
         <p className={bodyText}>
           Each lobby needs a lobby host to create the custom game and invite the players assigned
-          to each team. Matchmaker gives preference to volunteers, but if no one in your lobby
-          volunteered, you may be assigned anyway. If you cannot take that role, ask the event
-          creator to choose someone else.
+          to each team. Matchmaker gives preference to volunteers on a team, but if no one on a
+          team volunteered, a team player may be assigned anyway. Substitutes are never chosen.
+          If you cannot take that role, ask the event creator to choose someone else.
         </p>
         <p className={bodyText}>
           You can return to the event page and change your registration while registration

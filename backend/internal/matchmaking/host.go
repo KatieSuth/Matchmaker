@@ -2,18 +2,15 @@ package matchmaking
 
 import "github.com/google/uuid"
 
-// PickLobbyHost selects the lobby host: first willing volunteer by registration order,
-// otherwise the first assigned lobby member by registration order.
+// PickLobbyHost selects the lobby host from team players only: first willing volunteer
+// by registration order, otherwise the earliest team player by registration order.
+// Substitutes are never chosen — the host must be on a team so they can play in the custom.
 func PickLobbyHost(lobby LobbyPlan) *uuid.UUID {
-	var all []Player
-	all = append(all, lobby.Roster...)
-	all = append(all, lobby.Subs...)
-
 	var earliestVolunteer *Player
 	var earliestMember *Player
 
-	for i := range all {
-		p := all[i]
+	for i := range lobby.Roster {
+		p := lobby.Roster[i]
 		if earliestMember == nil || p.CreatedAt.Before(earliestMember.CreatedAt) {
 			cp := p
 			earliestMember = &cp
