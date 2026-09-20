@@ -41,3 +41,4 @@ infra/terraform/*.auto.tfvars.json
 
 # Local
 deploy.sh
+caddy-root.crt

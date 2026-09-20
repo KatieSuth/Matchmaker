@@ -71,8 +71,9 @@ export default function AboutFaq() {
             lobby stays.
           </li>
           <li>
-            One player per lobby is assigned as lobby host (whoever volunteered first, or the
-            earliest sign-up if no one volunteered).
+            One player per lobby is assigned as lobby host from the players on a team (whoever
+            volunteered first, or the earliest team sign-up if no one on a team volunteered).
+            Substitutes are never chosen as lobby host.
           </li>
           <li>
             <strong>Duo requests</strong>. If two players list each other&apos;s Discord username as

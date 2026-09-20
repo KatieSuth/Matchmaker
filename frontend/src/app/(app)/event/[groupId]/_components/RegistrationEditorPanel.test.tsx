@@ -135,7 +135,25 @@ describe("RegistrationEditorForm", () => {
     const updater = setRegistrationDraft.mock.calls[0][0];
     const result = updater(baseDraft());
     expect(result.selected_event_ids).toEqual(["event-1"]);
-    expect(result.per_event["event-1"]).toEqual({ can_substitute: true, can_lobby_host: false });
+    expect(result.per_event["event-1"]).toEqual({ can_substitute: true, can_lobby_host: true });
+  });
+
+  it("shows Can lobby host on for a selected event using new-registration defaults", () => {
+    const events = [buildEventGroupEvent({ id: "event-1" })];
+    const group = buildEventGroupDetail({ events });
+    render(
+      <RegistrationEditorForm
+        {...baseProps({
+          group,
+          registrationDraft: baseDraft({
+            selected_event_ids: ["event-1"],
+            per_event: { "event-1": { can_substitute: true, can_lobby_host: true } },
+          }),
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("switch", { name: "Can lobby host" })).toBeChecked();
   });
 
   it("disables the per-event Can substitute / Can lobby host toggles until the event is selected", () => {

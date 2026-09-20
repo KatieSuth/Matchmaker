@@ -10,7 +10,7 @@ import { UserGameEditor, UserGameEditorValue } from "@/app/_components/forms/Use
 import { inputCls } from "@/app/_lib/styles";
 import { EventGroupDetail, GameRank } from "@/app/_types/types";
 import { formatDateTime } from "../_lib/formatters";
-import { RegistrationDraft } from "../_types";
+import { DEFAULT_EVENT_REGISTRATION_DRAFT, RegistrationDraft } from "../_types";
 
 export function RegistrationToggleButton({
   group,
@@ -119,10 +119,7 @@ export function RegistrationEditorForm({
         <p className="text-sm text-[var(--color-text-soft)]">Choose games to register for</p>
         {group.events.map((event, index) => {
           const checked = registrationDraft.selected_event_ids.includes(event.id);
-          const settings = registrationDraft.per_event[event.id] ?? {
-            can_substitute: true,
-            can_lobby_host: false,
-          };
+          const settings = registrationDraft.per_event[event.id] ?? DEFAULT_EVENT_REGISTRATION_DRAFT;
           return (
             <div key={event.id} className="flex flex-col gap-3">
               <div className="flex items-start gap-3 select-none">
@@ -140,10 +137,7 @@ export function RegistrationEditorForm({
                           selected_event_ids: nextIds,
                           per_event: {
                             ...prev.per_event,
-                            [event.id]: prev.per_event[event.id] ?? {
-                              can_substitute: true,
-                              can_lobby_host: false,
-                            },
+                            [event.id]: prev.per_event[event.id] ?? DEFAULT_EVENT_REGISTRATION_DRAFT,
                           },
                         };
                       }
@@ -170,7 +164,7 @@ export function RegistrationEditorForm({
                       per_event: {
                         ...prev.per_event,
                         [event.id]: {
-                          ...(prev.per_event[event.id] ?? { can_substitute: true, can_lobby_host: false }),
+                          ...(prev.per_event[event.id] ?? DEFAULT_EVENT_REGISTRATION_DRAFT),
                           can_substitute: val,
                         },
                       },
@@ -188,7 +182,7 @@ export function RegistrationEditorForm({
                       per_event: {
                         ...prev.per_event,
                         [event.id]: {
-                          ...(prev.per_event[event.id] ?? { can_substitute: true, can_lobby_host: false }),
+                          ...(prev.per_event[event.id] ?? DEFAULT_EVENT_REGISTRATION_DRAFT),
                           can_lobby_host: val,
                         },
                       },

@@ -859,11 +859,18 @@ func TestSwapPlayersForEvent_SwapRosterWhileSubRemains(t *testing.T) {
 
 	require.NoError(t, s.SwapPlayersForEvent(ctx, eventID, host.ID, team1Players[0].UserID, team2Players[0].UserID, defaultMatchmakingSettings()))
 
+	teamPlayerIDs := make(map[uuid.UUID]struct{}, len(team1Players)+len(team2Players))
+	for _, p := range append(team1Players, team2Players...) {
+		teamPlayerIDs[p.UserID] = struct{}{}
+	}
+
 	var lobbyHost uuid.UUID
 	var fairnessWarning bool
 	err = tx.QueryRow(ctx, `SELECT host, fairness_warning FROM lobbies WHERE id = $1`, lobbyID).Scan(&lobbyHost, &fairnessWarning)
 	require.NoError(t, err)
-	assert.Equal(t, subVolunteer.ID, lobbyHost)
+	_, onTeam := teamPlayerIDs[lobbyHost]
+	assert.True(t, onTeam, "lobby host must be a team player, got %s", lobbyHost)
+	assert.NotEqual(t, subVolunteer.ID, lobbyHost)
 
 	var subCount int
 	err = tx.QueryRow(ctx, `SELECT count(*) FROM players WHERE lobby_id = $1 AND team_number IS NULL`, lobbyID).Scan(&subCount)
@@ -871,7 +878,7 @@ func TestSwapPlayersForEvent_SwapRosterWhileSubRemains(t *testing.T) {
 	assert.Equal(t, 1, subCount)
 }
 
-func TestRecomputeLobbyAfterSwapForTest_IncludesSubsAndVolunteerHost(t *testing.T) {
+func TestRecomputeLobbyAfterSwapForTest_PicksTeamPlayerOverSubVolunteer(t *testing.T) {
 	s, tx := createEventTestStoreTx(t)
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
@@ -883,6 +890,7 @@ func TestRecomputeLobbyAfterSwapForTest_IncludesSubsAndVolunteerHost(t *testing.
 	lobbyID := insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
 	team1 := teamNumberPtr(1)
 	team2 := teamNumberPtr(2)
+	teamPlayerIDs := make(map[uuid.UUID]struct{}, 4)
 	for i := 0; i < 4; i++ {
 		u := createTestUser(t, ctx, s)
 		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
@@ -891,6 +899,7 @@ func TestRecomputeLobbyAfterSwapForTest_IncludesSubsAndVolunteerHost(t *testing.
 			tn = team2
 		}
 		insertPlayerForLobby(t, ctx, tx, lobbyID, u.ID, tn)
+		teamPlayerIDs[u.ID] = struct{}{}
 	}
 
 	subVolunteer := createTestUser(t, ctx, s)
@@ -903,7 +912,9 @@ func TestRecomputeLobbyAfterSwapForTest_IncludesSubsAndVolunteerHost(t *testing.
 	var fairnessWarning bool
 	err = tx.QueryRow(ctx, `SELECT host, fairness_warning FROM lobbies WHERE id = $1`, lobbyID).Scan(&lobbyHost, &fairnessWarning)
 	require.NoError(t, err)
-	assert.Equal(t, subVolunteer.ID, lobbyHost)
+	_, onTeam := teamPlayerIDs[lobbyHost]
+	assert.True(t, onTeam, "lobby host must be a team player, got %s", lobbyHost)
+	assert.NotEqual(t, subVolunteer.ID, lobbyHost)
 	_ = fairnessWarning
 }
 

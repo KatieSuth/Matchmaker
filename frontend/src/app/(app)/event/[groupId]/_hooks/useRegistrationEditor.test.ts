@@ -70,7 +70,7 @@ describe("useRegistrationEditor", () => {
 
       expect(result.current.registrationEditorOpen).toBe(true);
       expect(result.current.registrationDraft.selected_event_ids).toEqual(["event-1", "event-2"]);
-      expect(result.current.registrationDraft.per_event["event-1"]).toEqual({ can_substitute: true, can_lobby_host: false });
+      expect(result.current.registrationDraft.per_event["event-1"]).toEqual({ can_substitute: true, can_lobby_host: true });
     });
 
     it("pre-fills only the events the user is already registered for, using their saved preferences", async () => {
@@ -400,7 +400,7 @@ describe("useRegistrationEditor", () => {
       expect(gameProfileBody).toEqual({ in_game_name: "IGN", current_rank: "gold", peak_rank: "plat", show_rank: true });
       expect(registrationsBody).toEqual({
         duo_request: "buddy#0001",
-        events: [{ event_id: "event-1", can_substitute: true, can_lobby_host: false }],
+        events: [{ event_id: "event-1", can_substitute: true, can_lobby_host: true }],
       });
       expect(result.current.registrationEditorOpen).toBe(false);
       expect(options.loadGroup).toHaveBeenCalledTimes(1);

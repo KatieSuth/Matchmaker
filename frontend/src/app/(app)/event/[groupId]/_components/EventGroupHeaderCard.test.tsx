@@ -63,10 +63,15 @@ describe("EventGroupHeaderCard", () => {
     expect(screen.getByRole("button", { name: "Create teams" })).toBeInTheDocument();
   });
 
-  it("shows 'Delete teams' for a host once registration is closed and teams exist", () => {
-    const group = buildEventGroupDetail({ registration_open: false });
+  it("keeps host action labels on one line when the group name is long", () => {
+    const group = buildEventGroupDetail({
+      name: "balanced: 5v5+3v3, 30p ladder, sub_min=3",
+      registration_open: false,
+    });
     render(<EventGroupHeaderCard {...baseProps({ group, isHost: true, hasAnyLobbies: true })} />);
-    expect(screen.getByRole("button", { name: "Delete teams" })).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Copy Discord Pings" })).toHaveClass("h-9", "whitespace-nowrap");
+    expect(screen.getByRole("button", { name: "Delete teams" })).toHaveClass("h-9", "whitespace-nowrap");
   });
 
   it("disables the lock-in/team button while working", () => {

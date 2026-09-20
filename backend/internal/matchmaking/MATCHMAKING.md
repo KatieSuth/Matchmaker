@@ -293,10 +293,10 @@ Remaining sub-eligible players not on a team are placed in lobby sub pools (`tea
 
 ### Lobby host (`PickLobbyHost`)
 
-Per lobby, among roster + subs:
+Per lobby, among **team (roster) players only** — substitutes are never selected:
 
 1. First `can_lobby_host = true` by earliest `CreatedAt`.
-2. Otherwise first assigned player by earliest `CreatedAt`.
+2. Otherwise first team player by earliest `CreatedAt`.
 
 ---
 

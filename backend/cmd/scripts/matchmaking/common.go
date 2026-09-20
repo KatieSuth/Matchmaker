@@ -15,8 +15,11 @@ const (
 	gameKeyValorant = "valorant"
 	gameKeyLoL      = "lol"
 
-	modeName5v5        = "5v5"
+	modeName5v5         = "5v5"
 	modeName3v3Skirmish = "3v3 Skirmish"
+
+	// Matches event_groups.name CHECK (char_length(name) <= 50) and the API rune cap.
+	eventGroupNameMaxRunes = 50
 )
 
 var (
@@ -201,13 +204,24 @@ func groupExists(seed *common.SeedContext, groupID uuid.UUID) bool {
 	return exists
 }
 
-func insertEventGroup(seed *common.SeedContext, groupID, ownerID uuid.UUID, subMin int32, region, sortLogic string) {
+// insertEventGroup creates a matchmaking scenario group whose name identifies the use case in the UI.
+func insertEventGroup(seed *common.SeedContext, groupID, ownerID uuid.UUID, subMin int32, region, sortLogic, name string) {
 	_, err := seed.Pool.Exec(seed.Ctx, `
-		INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, created_at, updated_at)
-		VALUES ($1, $2, $3, true, $4, $5, NOW(), NOW())
-	`, groupID, ownerID, subMin, region, sortLogic)
+		INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, created_at, updated_at)
+		VALUES ($1, $2, $3, true, $4, $5, $6, NOW(), NOW())
+	`, groupID, ownerID, subMin, region, sortLogic, name)
 	if err != nil {
 		common.Fatal("failed creating event group", "group_id", groupID, "error", err)
+	}
+}
+
+// updateEventGroupName sets the use-case name on an already-seeded scenario group (re-seed without cleanup).
+func updateEventGroupName(seed *common.SeedContext, groupID uuid.UUID, name string) {
+	_, err := seed.Pool.Exec(seed.Ctx, `
+		UPDATE event_groups SET name = $2, updated_at = NOW() WHERE id = $1
+	`, groupID, name)
+	if err != nil {
+		common.Fatal("failed updating event group name", "group_id", groupID, "error", err)
 	}
 }
 

@@ -67,4 +67,9 @@ describe("NumberStepper", () => {
     const { container } = render(<NumberStepper label="Sub minimum" value={2} min={0} onChange={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it("applies hide-number-spinners so native type=number arrows stay suppressed", () => {
+    render(<NumberStepper label="Sub minimum" value={2} min={0} onChange={vi.fn()} />);
+    expect(screen.getByRole("spinbutton")).toHaveClass("hide-number-spinners");
+  });
 });
