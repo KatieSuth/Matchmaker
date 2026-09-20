@@ -49,14 +49,15 @@ export function EventGroupHeaderCard({
             First event: {firstEventStart ? formatDateTime(firstEventStart) : "Not scheduled"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* shrink-0 + nowrap: a long wrapping title must not squeeze these into a taller stacked label. */}
+        <div className="flex shrink-0 flex-nowrap items-center gap-2">
           {isHost && hasAnyLobbies && (
             <div className="relative">
               <button
                 type="button"
                 onClick={onCopyDiscordPings}
                 className={[
-                  "rounded-lg border px-3 py-2 text-sm font-medium",
+                  "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border px-3 text-sm font-medium",
                   pingStatus === "success"
                     ? "border-emerald-500/35 bg-white/[0.03] text-emerald-400"
                     : pingStatus === "error"
@@ -75,7 +76,7 @@ export function EventGroupHeaderCard({
               disabled={working}
               onClick={onLockInClick}
               className={[
-                "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 !group.registration_open && hasAnyLobbies
                   ? "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20"
