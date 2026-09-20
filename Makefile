@@ -153,9 +153,12 @@ health:
 # Export Caddy's local root CA for browser trust (see README Firefox steps)
 export-ca:
 	docker exec $(CADDY) cat /data/caddy/pki/authorities/local/root.crt > caddy-root.crt
-	@echo "Wrote caddy-root.crt — import into Firefox (Authorities tab) if not already trusted"
+	@echo "Wrote caddy-root.crt"
+	@echo "Firefox: Authorities tab only. If you already have a \"Caddy Local Authority\","
+	@echo "delete it first, then import this file and trust it for websites."
 
-# Recover from expired/stuck Caddy TLS certs (stale lock or deleted cert files)
+# Recover from expired/stuck Caddy TLS certs (stale lock or deleted cert files).
+# Does not update Firefox's trust store — SEC_ERROR_BAD_SIGNATURE means a stale CA.
 fix-certs:
 	-docker exec $(CADDY) rm -f /data/caddy/locks/issue_cert_$(DOMAIN).lock
 	docker restart $(CADDY)

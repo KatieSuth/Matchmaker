@@ -125,12 +125,23 @@ sudo update-ca-certificates
 Caddy stores dev TLS certificates in a Docker volume. If the stack was stopped for a while, the site certificate can expire. Caddy may then keep serving the expired cert while renewal gets stuck on a stale lock file.
 
 ```bash
-make fix-certs    # clears stale lock, restarts Caddy, re-issues cert
-make tls-check    # prints cert dates and verify status
-make export-ca    # re-export root CA if needed (usually unchanged)
+make fix-certs    # clears stale lock, restarts Caddy, re-issues the *site* cert
+make tls-check    # prints cert dates and verifies the chain against Caddy's CA
+make export-ca    # write the current root CA to caddy-root.crt
 ```
 
-If Firefox still warns after `make fix-certs`, confirm `caddy-root.crt` is imported under **Authorities** (not **Your Certificates**) and restart Firefox.
+`make fix-certs` only refreshes the short-lived site certificate. It does **not** change Firefox's trust store.
+
+**`SEC_ERROR_BAD_SIGNATURE`** means Firefox is verifying the site cert against a *different* Caddy CA that happens to use the same name (`Caddy Local Authority`). That happens after the `caddy_data` volume is recreated, after running the e2e stack (it has its own CA), or after importing an older `caddy-root.crt`. Re-importing on top of the old authority is not enough — NSS keeps the previous key and the signature check fails.
+
+1. Settings -> Privacy & Security -> Connection and software security "Advanced settings" -> Certificates -> Manage certificates → **Authorities**
+2. Delete **every** certificate named `Caddy Local Authority` (there may be more than one)
+3. Also check the **Servers** tab and delete any `matchmaker.localhost` exception
+4. `make export-ca`
+5. Authorities → Import `caddy-root.crt` → check **Trust this CA to identify websites**
+6. Restart Firefox (fully quit, don't just close the tab)
+
+Confirm the imported fingerprint matches `make export-ca` / `make tls-check` (`Caddy root SHA256`). Import under **Authorities**, not **Your Certificates**.
 
 ---
 
