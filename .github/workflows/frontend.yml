@@ -22,7 +22,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # Resolves engines.node (^24) to the latest matching release.
+          # Resolves engines.node (^26) to the latest matching release.
           node-version-file: frontend/package.json
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
@@ -89,7 +89,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # Same Node line as the app; e2e/package.json's engines (>=24) is a floor, not a version.
+          # Same Node line as the app; e2e/package.json's engines (>=26) is a floor, not a version.
           node-version-file: frontend/package.json
           cache: 'npm'
           cache-dependency-path: e2e/package-lock.json
