@@ -41,7 +41,7 @@ It's now available live at https://matchmaker.games and currently supports Valor
 | Layer         | Technology                           |
 |---------------|--------------------------------------|
 | Frontend      | Next.js 16, TypeScript, Node 24      |
-| Backend       | Go 1.25, Gin, CORS middleware, sqlc  |
+| Backend       | Go 1.27, Gin, CORS middleware, sqlc  |
 | Container     | Docker, Docker Compose v2            |
 | Dev DX        | `air` (Go), `next dev` (Node)        |
 | Database      | Postgres, pgx (v5), Goose            |
