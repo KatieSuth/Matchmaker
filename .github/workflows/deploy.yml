@@ -90,13 +90,13 @@ jobs:
           : "${GCP_SERVICE_ACCOUNT:?GCP_SERVICE_ACCOUNT is empty}"
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # Existing image tags are reused (immutable AR), so re-running an old tag is a rollback.
       - name: Push images, back up DB, migrate, and roll Cloud Run
