@@ -1,6 +1,6 @@
 module github.com/KatieSuth/MatchmakerAPI
 
-go 1.25.0
+go 1.25.14
 
 require (
 	github.com/getsentry/sentry-go v0.48.0

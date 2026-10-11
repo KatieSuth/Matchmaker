@@ -1,7 +1,7 @@
 "use client";
 
 // Shared cancel-safe "fetch on mount / dependency change" effect, matching the abort-in-flight-reads
-// pattern required for effect-driven GETs (see frontend.mdc). Consolidates a shape that was
+// pattern required for effect-driven GETs. Consolidates a shape that was
 // previously hand-rolled in EventForm, UserPreferencesForm, and my_events.
 import { useEffect } from "react";
 import { isCanceledError } from "@/app/_lib/http";

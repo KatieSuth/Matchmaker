@@ -1,0 +1,136 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  # Redeploy / roll back an existing release: Run workflow → "Use workflow from" → Tags → x.x.x.
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  # Catches honest mistakes (wrong ref, tag off main). Not a security boundary: the tag's
+  # own copy of this file runs, so the tag ruleset + environment rules + WIF condition
+  # are what actually restrict who can deploy (see infra/README.md).
+  guard:
+    name: Verify tag is on main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require an x.x.x tag ref
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Deploy must run from an x.x.x tag (got ${GITHUB_REF_TYPE} ${GITHUB_REF_NAME})"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tagged commit is on origin/main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on origin/main"
+            exit 1
+          fi
+
+  backend:
+    name: Backend CI
+    needs: guard
+    permissions:
+      contents: read
+    uses: ./.github/workflows/backend.yml
+
+  frontend:
+    name: Frontend CI
+    needs: guard
+    permissions:
+      contents: read
+    uses: ./.github/workflows/frontend.yml
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      DOMAIN: ${{ vars.DOMAIN }}
+      FEEDBACK_URL: ${{ vars.FEEDBACK_URL }}
+      GCP_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require GitHub environment variables
+        env:
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          : "${GCP_PROJECT:?GCP_PROJECT is empty}"
+          : "${GCP_REGION:?GCP_REGION is empty}"
+          : "${DOMAIN:?DOMAIN is empty}"
+          : "${FEEDBACK_URL:?FEEDBACK_URL is empty}"
+          : "${GCP_WORKLOAD_IDENTITY_PROVIDER:?GCP_WORKLOAD_IDENTITY_PROVIDER is empty}"
+          : "${GCP_SERVICE_ACCOUNT:?GCP_SERVICE_ACCOUNT is empty}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+
+      # Existing image tags are reused (immutable AR), so re-running an old tag is a rollback.
+      - name: Push images, back up DB, migrate, and roll Cloud Run
+        run: make gcp-deploy
+
+      # Prove the new revision took 100% of traffic; /health alone would also pass on the old one.
+      - name: Verify new revisions are serving
+        run: |
+          verify() {
+            local svc="$1" image_suffix="$2"
+            json=$(gcloud run services describe "$svc" --project="$GCP_PROJECT" --region="$GCP_REGION" --format=json)
+            if ! echo "$json" | jq -e --arg suffix "$image_suffix" '
+                (.spec.template.spec.containers[0].image | endswith($suffix))
+                and .status.latestReadyRevisionName == .status.latestCreatedRevisionName
+                and ([.status.traffic[] | select(.latestRevision == true) | .percent] | add) == 100
+              ' >/dev/null; then
+              echo "${svc} is not serving ${image_suffix} on its latest revision"
+              echo "$json" | jq '{image: .spec.template.spec.containers[0].image, status: {latestReadyRevisionName: .status.latestReadyRevisionName, latestCreatedRevisionName: .status.latestCreatedRevisionName, traffic: .status.traffic}}'
+              exit 1
+            fi
+            echo "${svc} serving ${image_suffix}"
+          }
+          verify matchmaker-api "/api:${GCP_TAG}"
+          verify matchmaker-frontend "/frontend:${GCP_TAG}"
+
+      - name: Smoke check public health endpoints
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://${DOMAIN}/api/health" >/dev/null \
+              && curl -fsS "https://${DOMAIN}/health" >/dev/null; then
+              echo "Health checks passed"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health checks did not pass after deploy"
+          exit 1

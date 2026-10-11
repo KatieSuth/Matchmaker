@@ -68,15 +68,15 @@ sequenceDiagram
 | Database   | Cloud SQL Postgres 18 Enterprise (`db-f1-micro`), zonal, 10 GB SSD, no HA, private IP only |
 | Networking | VPC + subnet + Private Service Access; API uses **Direct VPC egress** (`PRIVATE_RANGES_ONLY`) |
 | Edge       | Cloudflare Free Worker + proxied apex DNS                                                     |
-| Images     | Artifact Registry; build/push **manually** (`make gcp-push` / `gcp-deploy`)                   |
+| Images     | Artifact Registry (immutable tags); GitHub Actions on `x.x.x` tags                            |
 | Secrets    | Secret Manager → Cloud Run env; values supplied in `terraform.tfvars`                         |
 | State      | GCS bucket (operator-created); Terraform remote backend                                       |
 | Alerts     | Billing budgets $15 / $30 / $50 (email); uptime check on `/api/health` → email                |
 
 **Not used / deferred:** GKE, GCE+Compose for prod, Serverless VPC Access connector, Cloud SQL public IP,
-GCP Global HTTPS LB / Cloud Armor, GitHub Actions deploy / Workload Identity Federation,
-billing auto-kill switch, HA SQL, staging project, Cloudflare paid rate limiting.
-Reconsider those when you need multi-env CI deploy, stronger edge WAF, or SQL HA/RPO.
+GCP Global HTTPS LB / Cloud Armor, billing auto-kill switch, HA SQL, staging project,
+Cloudflare paid rate limiting.
+Reconsider those when you need stronger edge WAF or SQL HA/RPO.
 
 ---
 
@@ -90,6 +90,7 @@ Reconsider those when you need multi-env CI deploy, stronger edge WAF, or SQL HA
 - Discord developer application
 - Local tools (`gcloud`, Terraform, Docker, `make`)
 - GCS Terraform state bucket + IAM for your user
+- GitHub Environment `production` (variables + tag deployment rule) and a release-tag ruleset (after WIF apply)
 
 **Terraform provisions inside those accounts** using IDs and secrets you put in
 `terraform.tfvars` / `backend.hcl`. It does not sign up for SaaS or create billing accounts.
@@ -99,7 +100,7 @@ Reconsider those when you need multi-env CI deploy, stronger edge WAF, or SQL HA
 | Component | Owner | How to change |
 |-----------|-------|----------------|
 | VPC, SQL, Run shape, budgets, uptime, CF Worker/DNS route | Terraform          | Edit `.tf` / tfvars → `make infra-plan` → `make infra-apply` |
-| Container image digests                                   | Manual / Make      | `make gcp-deploy` (TF `ignore_changes` on image)             |
+| Container image digests                                   | GHA / Make         | `x.x.x` tag or `make gcp-deploy` (TF `ignore_changes` on image) |
 | App code / OpenAPI                                        | App repo           | PR + rebuild images                                          |
 | Discord app settings                                      | Discord console    | Manual (redirect URI)                                        |
 | Sentry projects                                           | Sentry console     | Manual; DSNs in tfvars                                       |
@@ -144,11 +145,13 @@ Names use prefix `matchmaker` (`local.name_prefix`). Region defaults to `us-cent
 | Cloud Run frontend   | `matchmaker-frontend`                                                       |
 | Runtime SA API       | `matchmaker-api@{project}.iam.gserviceaccount.com`                          |
 | Runtime SA frontend  | `matchmaker-frontend@{project}.iam.gserviceaccount.com`                     |
+| Deploy SA (GHA)      | `matchmaker-github-deploy@{project}.iam.gserviceaccount.com` (WIF; no JSON key) |
+| WIF pool / provider  | `github-actions` / `github-oidc`                                            |
 | Worker               | `matchmaker-edge`                                                           |
 | Worker route         | `{domain}/*`                                                                |
 | Secrets              | `matchmaker-db-admin-password`, `matchmaker-db-app-password`, `matchmaker-db-migrator-password`, `matchmaker-database-url`, `matchmaker-database-url-migrate`, `matchmaker-database-url-admin`, jwt/cookie/origin/discord, optional Sentry |
 
-**Terraform outputs** (contract after apply): `artifact_registry_url`, `cloud_run_api_uri`, `cloud_run_frontend_uri`, `cloud_run_api_name`, `cloud_run_frontend_name`, `cloud_sql_connection_name`, `cloud_sql_private_ip` (sensitive), `vpc_network`.
+**Terraform outputs** (contract after apply): `artifact_registry_url`, `cloud_run_api_uri`, `cloud_run_frontend_uri`, `cloud_run_api_name`, `cloud_run_frontend_name`, `cloud_sql_connection_name`, `cloud_sql_private_ip` (sensitive), `vpc_network`, `github_workload_identity_provider`, `github_deploy_service_account`.
 
 Do **not** use `cloud_run_*_uri` (`*.run.app`) as the app’s public base URL in clients,
 Discord redirects, or user-facing config — use `https://{domain}` only. Those origin URLs
@@ -171,6 +174,7 @@ Root module under [`terraform/`](terraform/) (single prod environment; no Terrag
 | `networking.tf`                             | VPC, subnet, PSA                                    |
 | `artifact_registry.tf`                      | Docker repo                                         |
 | `iam.tf`                                    | Runtime SAs + `run.invoker` for `allUsers`          |
+| `github.tf`                                 | WIF pool, deploy SA, per-resource Run IAM           |
 | `secrets.tf`                                | Secret Manager from tfvars                          |
 | `cloud_sql.tf`                              | Private Postgres                                    |
 | `cloud_run.tf`                              | API + frontend                                      |
@@ -443,18 +447,27 @@ Correlate with `request_id` on API `request completed` lines (`method`, `path`, 
 
 ## Image deploy model
 
-1. Terraform creates services (possibly placeholder image).
-2. Build **linux/amd64**, push to AR, update Cloud Run digests (`make gcp-deploy`).
+1. Terraform creates services (possibly placeholder image) and the GitHub Actions WIF identity.
+2. Build **linux/amd64**, push to AR, run migrate, update Cloud Run digests (`make gcp-deploy` or the Deploy workflow).
 3. Re-`apply` is safe for infra; images ignored by Terraform.
 
-No GHA deploy / WIF in this phase. App test CI unchanged.
+Production app rolls happen when an `x.x.x` tag (e.g. `1.2.3`) is pushed on a `main` commit. Deploy calls the Backend and Frontend workflows (`workflow_call`) against the tagged commit, so the commit that ships is the one that was tested. AR tags are immutable; re-running an existing tag reuses its images (rollback).
 
 ---
 
 ## Shipping a code change
 
-1. Merge app changes as usual.
-2. From repo root (set `GCP_PROJECT`, `DOMAIN` for public hostname):
+1. Merge app changes to `main`. Migrations must be backward-compatible with the previous release (expand/contract), because rollback does not reverse them.
+2. Tag the commit and push (no `v` prefix):
+
+```bash
+git tag 1.2.3
+git push origin 1.2.3
+```
+
+The [Deploy workflow](../.github/workflows/deploy.yml) verifies the tag is on `main`, runs Backend + Frontend CI on it, then runs `make gcp-deploy` (push → SQL backup → migrate → roll) via Workload Identity Federation and checks the new revisions hold 100% of traffic. To roll back, re-run Deploy from an older tag (see [README](README.md#redeploy-or-roll-back)).
+
+Local equivalent (same Make target; still needs `gcloud` ADC):
 
 ```bash
 make gcp-deploy GCP_PROJECT=your-project DOMAIN=matchmaker.games
@@ -480,7 +493,7 @@ curl -sS https://matchmaker.games/health
 
 | Change                                   | Steps                                                                    |
 |------------------------------------------|--------------------------------------------------------------------------|
-| App bugfix / feature                     | `make gcp-deploy`                                                        |
+| App bugfix / feature                     | Tag `x.x.x` on `main` (or `make gcp-deploy`)                             |
 | Scale / CPU / memory / max instances     | tfvars or `cloud_run.tf` → plan/apply                                    |
 | Rotate origin-verify / JWT / DB password | Update tfvars → plan/apply → confirm Run/Worker; re-login if JWT/cookies |
 | Worker logic                             | Edit `cloudflare/worker.js` → plan/apply                                 |
@@ -504,6 +517,7 @@ curl -sS https://matchmaker.games/health
 | `permission denied` on SQL             | Wrong DSN role; forgot `gcp-db-bootstrap` or `db_roles_bootstrapped` flip            |
 | Migrate job fails                      | Job image still placeholder; Direct VPC / SQL; bad migrator `DATABASE_URL`          |
 | “Still on hello” / probe fail          | Placeholder image — push real images                                                 |
+| GHA deploy WIF denied                  | Not an `x.x.x` tag; not `environment: production`; repo ID mismatch; WIF not applied |
 
 ---
 
@@ -556,6 +570,7 @@ zone/account, Discord app, Sentry org, any DNS records not in state.
 | Path                                                                                               | Role                                          |
 |----------------------------------------------------------------------------------------------------|-----------------------------------------------|
 | [README.md](README.md)                                                                             | From-zero runbook                             |
+| [../.github/workflows/deploy.yml](../.github/workflows/deploy.yml)                                 | Tag-triggered Cloud Run deploy                |
 | [cloudflare/worker.js](cloudflare/worker.js)                                                       | Edge Worker source                            |
 | [terraform/](terraform/)                                                                           | IaC root module                               |
 | [../frontend/src/proxy.ts](../frontend/src/proxy.ts)                                               | Frontend origin-verify + route guard          |

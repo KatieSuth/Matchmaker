@@ -1,10 +1,10 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-ARG GO_VERSION=1.25
+# Base images are pinned by digest for reproducible, tamper-evident builds; Dependabot bumps them.
 ARG APP_PORT=8080
 
 # ── Stage 1: builder ───────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

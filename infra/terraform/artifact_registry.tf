@@ -5,5 +5,10 @@ resource "google_artifact_registry_repository" "docker" {
   format        = "DOCKER"
   labels        = local.labels
 
+  # A pushed x.x.x tag always means the same image; re-runs reuse it instead of overwriting.
+  docker_config {
+    immutable_tags = true
+  }
+
   depends_on = [google_project_service.services]
 }

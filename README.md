@@ -214,8 +214,10 @@ Frontend and API settings live in the **root** [`.env.example`](.env.example) (C
 
 ### Production (GCP)
 
-- **How to deploy:** [infra/README.md](infra/README.md) (accounts, Terraform, images, teardown). You create GCP / Cloudflare / Sentry / Discord accounts manually.
+- **How to deploy:** [infra/README.md](infra/README.md) (accounts, Terraform, images, teardown, GitHub Actions tags). You create GCP / Cloudflare / Sentry / Discord accounts manually.
 - **What / why:** [infra/INFRASTRUCTURE.md](infra/INFRASTRUCTURE.md) (architecture, Terraform layout, Worker, origin-verify, cost decisions).
+
+App rolls: merge to `main`, then `git tag 1.2.3 && git push origin 1.2.3` (Deploy re-runs CI on the tag before shipping). See the GitHub Actions deploy section in the runbook.
 
 ---
 
@@ -272,6 +274,7 @@ make infra-apply        # terraform apply
 make infra-destroy      # terraform destroy
 make gcp-push GCP_PROJECT=... DOMAIN=matchmaker.games   # build/push images to Artifact Registry
 make gcp-deploy GCP_PROJECT=... DOMAIN=matchmaker.games  # push + update Cloud Run
+# Production app rolls: git tag 1.2.3 && git push origin 1.2.3  (see infra/README.md)
 ```
 
 Seed commands are for local development data only and are not part of production build, deploy, or runtime flows.

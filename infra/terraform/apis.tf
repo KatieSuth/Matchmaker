@@ -10,6 +10,8 @@ resource "google_project_service" "services" {
     "logging.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "sts.googleapis.com",
     "billingbudgets.googleapis.com",
   ])
 

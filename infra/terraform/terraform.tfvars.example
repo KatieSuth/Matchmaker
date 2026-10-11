@@ -40,3 +40,9 @@ origin_verify_secret    = "replace-with-strong-secret"            # openssl rand
 # Optional — leave empty to disable Sentry on that service
 sentry_dsn_api      = ""
 sentry_dsn_frontend = ""
+
+# GitHub Actions WIF (tag deploys). Override if the GitHub repo is not this default.
+# IDs come from `curl -s https://api.github.com/repos/OWNER/NAME` (id, owner.id).
+# github_repository          = "KatieSuth/Matchmaker"
+# github_repository_id       = "1194795354"
+# github_repository_owner_id = "12041578"

@@ -48,3 +48,13 @@ output "cloud_sql_private_ip" {
 output "vpc_network" {
   value = google_compute_network.main.name
 }
+
+output "github_workload_identity_provider" {
+  description = "GitHub Actions vars.GCP_WORKLOAD_IDENTITY_PROVIDER (full resource name)"
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "github_deploy_service_account" {
+  description = "GitHub Actions vars.GCP_SERVICE_ACCOUNT (deploy SA email)"
+  value       = google_service_account.github_deploy.email
+}

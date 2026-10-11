@@ -6,7 +6,7 @@
         seed-users seed-events seed-registrations seed-all \
         seed-matchmaking-all seed-matchmaking-cleanup gen-keys \
         infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy \
-        gcp-push gcp-migrate gcp-db-bootstrap gcp-deploy
+        gcp-push gcp-db-backup gcp-migrate gcp-roll gcp-db-bootstrap gcp-deploy
 
 ## ── Configuration ─────────────────────────────────────────────
 # IMAGE is the base repository (registry/namespace/name); each service appends
@@ -18,11 +18,12 @@ PROJECT ?= matchmaker
 DOMAIN  ?= matchmaker.localhost
 FEEDBACK_URL ?= https://github.com/KatieSuth/Matchmaker/issues
 
-# GCP (manual image deploy — see infra/README.md)
+# GCP image deploy — GHA on x.x.x tags, or this Make target (see infra/README.md)
 GCP_PROJECT ?=
 GCP_REGION  ?= us-central1
 GCP_TAG     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo latest)
 AR_REPO     ?= matchmaker-docker
+SQL_INSTANCE ?= matchmaker-pg
 
 # Exported so Docker Compose picks them up during interpolation.
 # Do not export COMPOSE_PROJECT_NAME globally: `make e2e` cds into e2e/, and
@@ -249,19 +250,36 @@ infra-destroy:
 
 # Build/push linux/amd64 images to Artifact Registry. Requires GCP_PROJECT.
 # DOMAIN should be your public domain (e.g. matchmaker.games) for NEXT_PUBLIC_* bake.
+# AR tags are immutable, so an image whose tag already exists is reused rather than
+# rebuilt (lets a re-run or rollback of an existing tag skip straight to the roll).
 gcp-push:
 	@test -n "$(GCP_PROJECT)" || (echo "Set GCP_PROJECT=..." && exit 1)
 	gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --quiet
 	$(eval AR := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/$(AR_REPO))
-	docker build --platform linux/amd64 -t $(AR)/api:$(GCP_TAG) -f backend/Dockerfile backend
-	docker push $(AR)/api:$(GCP_TAG)
-	docker build --platform linux/amd64 -t $(AR)/frontend:$(GCP_TAG) -f frontend/Dockerfile frontend \
-		--build-arg NEXT_PUBLIC_API_URL=https://$(DOMAIN)/api \
-		--build-arg NEXT_PUBLIC_FRONTEND_DOMAIN=$(DOMAIN) \
-		--build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800 \
-		--build-arg NEXT_PUBLIC_FEEDBACK_URL=$(FEEDBACK_URL)
-	docker push $(AR)/frontend:$(GCP_TAG)
-	@echo "Pushed $(AR)/api:$(GCP_TAG) and $(AR)/frontend:$(GCP_TAG)"
+	@if gcloud artifacts docker images describe $(AR)/api:$(GCP_TAG) >/dev/null 2>&1; then \
+		echo "$(AR)/api:$(GCP_TAG) already exists; skipping build"; \
+	else \
+		docker build --platform linux/amd64 -t $(AR)/api:$(GCP_TAG) -f backend/Dockerfile backend && \
+		docker push $(AR)/api:$(GCP_TAG); \
+	fi
+	@if gcloud artifacts docker images describe $(AR)/frontend:$(GCP_TAG) >/dev/null 2>&1; then \
+		echo "$(AR)/frontend:$(GCP_TAG) already exists; skipping build"; \
+	else \
+		docker build --platform linux/amd64 -t $(AR)/frontend:$(GCP_TAG) -f frontend/Dockerfile frontend \
+			--build-arg NEXT_PUBLIC_API_URL=https://$(DOMAIN)/api \
+			--build-arg NEXT_PUBLIC_FRONTEND_DOMAIN=$(DOMAIN) \
+			--build-arg NEXT_PUBLIC_COOKIE_AUTH_EXPIRE_LIMIT=604800 \
+			--build-arg NEXT_PUBLIC_FEEDBACK_URL=$(FEEDBACK_URL) && \
+		docker push $(AR)/frontend:$(GCP_TAG); \
+	fi
+
+# On-demand Cloud SQL backup taken before migrating, so a bad migration can be
+# restored with `gcloud sql backups restore`. On-demand backups are not pruned by
+# the retention policy — delete old ones periodically.
+gcp-db-backup:
+	@test -n "$(GCP_PROJECT)" || (echo "Set GCP_PROJECT=..." && exit 1)
+	gcloud sql backups create --instance=$(SQL_INSTANCE) --project=$(GCP_PROJECT) \
+		--description="pre-deploy $(GCP_TAG)"
 
 # One-shot least-privilege role bootstrap (postgres admin). Run after Apply A,
 # before setting db_roles_bootstrapped=true. Not part of every gcp-deploy.
@@ -285,14 +303,12 @@ gcp-migrate:
 	gcloud run jobs execute matchmaker-migrate \
 		--project=$(GCP_PROJECT) --region=$(GCP_REGION) --wait
 
-# Push images, migrate DB with the new API image, then roll Cloud Run services.
-gcp-deploy: gcp-push
+# Point Cloud Run API/frontend services at GCP_TAG (images must already be pushed).
+gcp-roll:
 	@test -n "$(GCP_PROJECT)" || (echo "Set GCP_PROJECT=..." && exit 1)
 	$(eval AR := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/$(AR_REPO))
-	gcloud run jobs update matchmaker-migrate \
-		--project=$(GCP_PROJECT) --region=$(GCP_REGION) \
-		--image=$(AR)/api:$(GCP_TAG)
-	gcloud run jobs execute matchmaker-migrate \
-		--project=$(GCP_PROJECT) --region=$(GCP_REGION) --wait
 	gcloud run services update matchmaker-api --project=$(GCP_PROJECT) --region=$(GCP_REGION) --image=$(AR)/api:$(GCP_TAG)
 	gcloud run services update matchmaker-frontend --project=$(GCP_PROJECT) --region=$(GCP_REGION) --image=$(AR)/frontend:$(GCP_TAG)
+
+# Push images, back up the DB, migrate with the new API image, then roll services.
+gcp-deploy: gcp-push gcp-db-backup gcp-migrate gcp-roll

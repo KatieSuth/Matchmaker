@@ -21,7 +21,7 @@ Typical idle cost is roughly **$10–15/month**, dominated by Cloud SQL.
 | Compute  | Cloud Run (API + frontend), scale-to-zero, max 2 instances        |
 | Database | Cloud SQL Postgres (`db-f1-micro`), **private IP only**           |
 | Edge     | Cloudflare Worker: `/api/*` → API (strip prefix), `/*` → frontend |
-| Images   | Artifact Registry; build/push **manually**                        |
+| Images   | Artifact Registry; GitHub Actions on `x.x.x` tags (or `make gcp-deploy`) |
 | Secrets  | Secret Manager → Cloud Run                                        |
 | Alerts   | Billing budgets ($15 / $30 / $50 email) + uptime on `/api/health` |
 
@@ -316,6 +316,8 @@ gcloud run services update matchmaker-frontend \
 
 Or use `make gcp-push` / `make gcp-deploy` after exporting `GCP_PROJECT`, `GCP_REGION`. Deploy order is push → migrate Job → update services (API does **not** auto-migrate in production).
 
+After WIF is applied and the GitHub `production` environment and tag ruleset are set up, later app rolls should use an `x.x.x` tag on `main` instead of running this by hand. See **GitHub Actions deploy** below.
+
 ### Checks
 
 1. Cloudflare SSL/TLS preferably **Full (strict)** once origins serve HTTPS (`*.run.app` does).
@@ -331,15 +333,88 @@ curl -sS https://matchmaker.games/health
 
 ---
 
+## GitHub Actions deploy
+
+App deploys run from [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) when you push a tag like `1.0.0` (three numeric segments, no `v` prefix) on a `main` commit. The workflow re-runs the Backend and Frontend workflows on the tagged commit, then runs `make gcp-deploy` (push → on-demand SQL backup → migrate → roll) and verifies the new revisions hold 100% of traffic. Auth is Workload Identity Federation — **do not** upload a GCP JSON key to GitHub.
+
+### 1. Apply the WIF resources
+
+`github.tf` creates the pool, OIDC provider, and `matchmaker-github-deploy` SA. After merging that Terraform:
+
+```bash
+make infra-plan
+make infra-apply   # only after reviewing the plan
+```
+
+Copy these outputs:
+
+```bash
+cd infra/terraform && terraform output github_workload_identity_provider
+cd infra/terraform && terraform output github_deploy_service_account
+```
+
+If the GitHub repo is not `KatieSuth/Matchmaker`, set `github_repository`, `github_repository_id`, and `github_repository_owner_id` in `terraform.tfvars` (IDs from `curl -s https://api.github.com/repos/OWNER/NAME` → `id`, `owner.id`). WIF trusts the numeric IDs, so a renamed or re-created repo does not inherit access.
+
+### 2. GitHub Environment `production`
+
+In the GitHub repo: **Settings → Environments → New environment** named `production`. Add **variables** (not secrets):
+
+| Variable | Value |
+|----------|--------|
+| `GCP_PROJECT` | GCP project ID |
+| `GCP_REGION` | e.g. `us-central1` |
+| `DOMAIN` | public hostname, e.g. `matchmaker.games` |
+| `FEEDBACK_URL` | frontend feedback link baked into the image |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `github_workload_identity_provider` output |
+| `GCP_SERVICE_ACCOUNT` | `github_deploy_service_account` output |
+
+On the same environment, under **Deployment branches and tags**, choose **Selected branches and tags** and add a **tag** rule `*.*.*`. The WIF provider also requires `environment == production`, so only jobs gated by these rules can get GCP credentials. Adding **required reviewers** is recommended if a tag should not ship unattended.
+
+### 3. Protect release tags (required)
+
+The deploy workflow that runs is the copy in the tagged commit, so anyone who can create a tag can change what it does. Restrict tag creation:
+
+**Settings → Rules → Rulesets → New ruleset → New tag ruleset**
+
+- Enforcement: **Active**
+- Target tags: include pattern `*.*.*`
+- Rules: **Restrict creations**, **Restrict updates**, **Restrict deletions**
+- Bypass list: repository admins (whoever is allowed to ship)
+
+### 4. Ship an app change
+
+```bash
+git tag 1.2.3
+git push origin 1.2.3
+```
+
+Local `make gcp-deploy` still works with your user ADC if you need to roll without a tag.
+
+### Redeploy or roll back
+
+**Actions → Deploy → Run workflow → Use workflow from → Tags → `1.2.0`.** Artifact Registry tags are immutable, so `gcp-push` reuses the existing `1.2.0` images instead of rebuilding them, and the services roll back to them. Migrations are **not** reversed: goose Up against an older image does nothing to a newer schema.
+
+That is why migrations must be **expand/contract** (backward-compatible with the previous release): add columns/tables first, ship code that uses them, and drop old ones in a later release. If a migration itself is bad, restore the pre-deploy backup that `make gcp-db-backup` took:
+
+```bash
+gcloud sql backups list --instance=matchmaker-pg --project=YOUR_PROJECT   # find "pre-deploy 1.2.3"
+gcloud sql backups restore BACKUP_ID --restore-instance=matchmaker-pg --project=YOUR_PROJECT
+```
+
+Restoring overwrites all data written since the backup. On-demand backups are not pruned by the 7-backup retention policy, so delete old ones occasionally (`gcloud sql backups delete`).
+
+---
+
 ## Phase 3 — Day-2 and teardown
 
 - **Infra change:** edit Terraform → `make infra-plan` → `make infra-apply`.
-- **App only:** rebuild/push images → migrate (`make gcp-migrate` or via `make gcp-deploy`) → `gcloud run services update` (TF will not revert digests).
+- **App only:** push an `x.x.x` tag on `main` (Deploy workflow) or run `make gcp-deploy` locally (TF will not revert digests).
 - **Teardown:**
   1. Export DB if needed (Cloud SQL export / dump via private path or temporary access).
   2. Set `deletion_protection = false` on the SQL instance (or in console) and apply.
   3. `make infra-destroy` (confirm).
   4. Delete the state bucket last.
+  5. GCP soft-deletes the WIF pool ID (`github-actions`) and the custom role (`matchmakerDeploySqlBackup`) for ~30 days; re-applying within that window fails until you undelete them or change the IDs.
   5. Confirm billing in the GCP console; optionally clean Cloudflare / Discord / Sentry.
 
 ---
@@ -354,10 +429,14 @@ curl -sS https://matchmaker.games/health
 | `make infra-plan`       | `terraform plan`                                        |
 | `make infra-apply`      | `terraform apply`                                       |
 | `make infra-destroy`    | `terraform destroy` (confirm)                           |
-| `make gcp-push`         | Build/push amd64 images to Artifact Registry            |
+| `make gcp-push`         | Build/push amd64 images to Artifact Registry (skips tags that already exist) |
+| `make gcp-db-backup`    | On-demand Cloud SQL backup labelled `pre-deploy $(GCP_TAG)` |
 | `make gcp-migrate`      | Update migrate Job image + execute goose Up             |
+| `make gcp-roll`         | Point Cloud Run API/frontend services at `GCP_TAG`      |
 | `make gcp-db-bootstrap` | Update bootstrap Job + create least-privilege DB roles |
-| `make gcp-deploy`       | Push → migrate → update Cloud Run API/frontend services |
+| `make gcp-deploy`       | Push → backup → migrate → roll                          |
+
+Tag `x.x.x` on `main` (e.g. `1.2.3`) to run the same `make gcp-deploy` path from GitHub Actions.
 
 ---
 
@@ -373,6 +452,8 @@ curl -sS https://matchmaker.games/health
 | Discord login fails                              | Wrong `FRONTEND_URL` / redirect URI / cookie domain                                                                             |
 | `permission denied` for relation / schema        | Forgot `gcp-db-bootstrap` or `db_roles_bootstrapped=true` apply; wrong DATABASE_URL role                                        |
 | `invalid timezone` on `/users/me/events`         | API image missing tzdata — fixed by embedding `time/tzdata`; redeploy API                                                       |
+| Deploy workflow: WIF / impersonation denied      | Pool not applied; wrong `GCP_WORKLOAD_IDENTITY_PROVIDER` / SA; not run from an `x.x.x` tag; job missing `environment: production`; repo ID mismatch |
+| Deploy workflow: missing GitHub variables        | Create Environment `production` and set the six vars from terraform output + project/domain                                    |
 
 ---
 
