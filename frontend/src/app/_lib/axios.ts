@@ -31,6 +31,7 @@ api.interceptors.response.use(
             } catch {
                 // Refresh failed — clear token and redirect to login
                 setAccessToken(null);
+                // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- outside React (no router); full reload also drops in-memory auth state
                 window.location.href = "/";
             }
         }

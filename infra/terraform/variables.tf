@@ -225,3 +225,36 @@ variable "labels" {
     managed_by = "terraform"
   }
 }
+
+variable "github_repository" {
+  description = "GitHub owner/name allowed to impersonate the deploy SA via WIF"
+  type        = string
+  default     = "KatieSuth/Matchmaker"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be in owner/name form."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Numeric GitHub repository ID (GET /repos/{owner}/{name} → id); WIF trusts this, not the name"
+  type        = string
+  default     = "1194795354"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be numeric."
+  }
+}
+
+variable "github_repository_owner_id" {
+  description = "Numeric GitHub owner ID (GET /repos/{owner}/{name} → owner.id)"
+  type        = string
+  default     = "12041578"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must be numeric."
+  }
+}

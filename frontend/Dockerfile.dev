@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-ARG NODE_VERSION=24
+# Same digest-pinned base image as the production Dockerfile; Dependabot bumps both.
 ARG APP_PORT=3000
 
-FROM node:${NODE_VERSION}-alpine
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a
 
 ARG APP_PORT
 ARG NEXT_PUBLIC_API_URL

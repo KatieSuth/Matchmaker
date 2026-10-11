@@ -1,11 +1,11 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-ARG GO_VERSION=1.25
+# Same digest-pinned base image as the production Dockerfile; Dependabot bumps both.
 ARG APP_PORT=8080
 
 FROM cosmtrek/air:latest AS air
 
-FROM golang:${GO_VERSION}-alpine
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
 
 ARG APP_PORT
 

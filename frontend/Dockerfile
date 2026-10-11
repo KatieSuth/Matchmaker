@@ -1,19 +1,19 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-ARG NODE_VERSION=24
+# Base images are pinned by digest for reproducible, tamper-evident builds; Dependabot bumps them.
 ARG APP_PORT=3000
 ARG NODE_UID=1001
 ARG NODE_GID=1001
 
 # ── Stage 1: deps ──────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
 # ── Stage 2: builder ───────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -30,7 +30,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: runner ────────────────────────────────────────────
-FROM node:${NODE_VERSION}-alpine AS runner
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS runner
 WORKDIR /app
 
 ARG APP_PORT

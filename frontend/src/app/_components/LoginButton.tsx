@@ -17,6 +17,7 @@ export default function DiscordLoginButton() {
     // Same-origin /api is proxied by Caddy, not a Next.js route. Force a document
     // navigation so the App Router cannot treat this click as a client-side transition.
     e.preventDefault();
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- API route behind the proxy, not a Next.js page
     window.location.assign(loginHref);
   };
 

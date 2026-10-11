@@ -1,0 +1,73 @@
+# Frontend & Authentication Standards
+
+> Applies to: `frontend/**` (Next.js app). Backend auth rules live in `backend.md`.
+
+# React/Next.js Standards
+- Use React Server Components (RSC) by default. Only use 'use client' for interactivity.
+- Use functional components with explicit `interface Props`.
+- **Styling:** Use Tailwind CSS utility classes exclusively.
+- **Components:** Check `@/app/_components/` before creating custom elements.
+- Validate changes using `npm run lint`
+
+## API Client
+
+### Two fetch utilities — use the right one
+- **`@/app/_lib/axios.ts`** — the default for authenticated routes. Use this for any request that may need a JWT or the refresh cookie.
+- **`@/app/_lib/api.ts`** — minimal unauthenticated fetch helper (no cookies, no auth headers). Use only for simple or pre-login requests.
+- Never call `fetch` directly against backend URLs in components or hooks.
+
+### Services layer
+- API calls MUST be defined as named async functions in the appropriate `@/app/_services/*.ts` file and imported from there into components/hooks.
+- Bypass the services layer only when there is a clear reason (e.g. a one-off call tightly coupled to a single component with no reuse potential) — document why with a comment if you do.
+- For mutation error UX, extract backend error messages through a shared helper (for example an `extractApiError` utility) instead of ad-hoc parsing in each component.
+
+### Abort in-flight reads (`useEffect` + Strict Mode)
+- **Why:** In development, React 18 Strict Mode runs `useEffect` → cleanup → `useEffect` again. Any async load started in an effect without cancellation can produce **duplicate XHRs**. The same pattern also avoids races when the user navigates away or deps change before the response arrives.
+- **Scope:** Applies only to effects that load data. Effects that just add DOM listeners, timers, or sync refs/form state don't need an `AbortController`.
+- **Preferred:** For simple "load on mount / when deps change" fetches, use `useCancelableFetch` from `@/app/_hooks/useCancelableFetch`, which implements the pattern below. Hand-roll it only for multi-step or chained fetches.
+- **Required pattern for hand-rolled effect-driven GETs** (authenticated pages, lists, detail prefetch in `useEffect`):
+  1. Create `const ac = new AbortController()` inside the effect (after auth gates).
+  2. Pass `ac.signal` into the service function that performs `api.get` (or add an optional `signal?: AbortSignal` parameter to that service and forward `{ signal }` to axios).
+  3. `return () => { ac.abort(); };` from the effect.
+  4. In `.catch` / error handling for that load, **ignore** cancellation: treat axios `code === "ERR_CANCELED"` or `name === "CanceledError"` as a no-op (do not show an error toast or wipe successful data).
+- **When to skip:** One-shot mutations triggered directly by user events (button `onClick`) usually do not need an `AbortController` unless the component can unmount while the request is in flight and you must avoid applying stale results—in that case, use the same pattern or a mounted ref guard.
+- **Prefer libraries for heavy server state:** For complex caching/deduping, consider TanStack Query or SWR instead of hand-rolling every effect.
+
+### Types
+- All shared API types live in `@/app/_types/types.ts`. Do not redefine backend types inline in components or services.
+
+### Import aliases
+- Use the `@/app/*` alias for all imports within the frontend — never use parent-relative imports (e.g. `../../_lib/axios`) for anything reachable via the alias.
+- Same-folder imports (e.g. `./schema`, `./LobbyHostAssignmentBanner`) are fine.
+
+## Client-Side Auth Gating
+- **Premature Request Prevention:** In any client component within authenticated routes (e.g., `(app)/*`), you MUST gate `useEffect` and other data-fetching hooks using the `AuthContext`.
+- **Implementation Pattern:**
+    1. Import `useAuth` from `@/app/_context/AuthContext`.
+    2. Extract `user`, `isAuthenticated`, and `isLoading` (aliased as `authLoading`).
+    3. The first lines of any `useEffect` or `useSWR`/`useQuery` trigger MUST check:
+       `if (authLoading || !isAuthenticated) return;`
+
+## UI/UX Feedback
+- **Loading States:** While `authLoading` is true, return a consistent loading skeleton or spinner to prevent layout shift.
+- **Unauthenticated Redirects:** If `!authLoading && !isAuthenticated`, ensure the user is being handled by the `frontend/src/proxy.ts` or a manual redirect to `/`.
+- **Authenticated Redirects:** If `!authLoading && isAuthenticated`, ensure the user is being handled by `frontend/src/proxy.ts` or a manual redirect to the app's authenticated landing route.
+- **Auth Boundary Split:** Proxy/middleware cookies can be used for lightweight route gating and UX, but backend token/session validation remains the source of truth for data access.
+
+## Pagination
+- Paginated endpoints return `{ <entity_key>: [...], has_more: boolean, next_cursor: string }`.
+- `cursor` is passed as a query param — never in the request body.
+- To fetch the next page, pass the previous response's `next_cursor` as the `cursor` param on the next request. Stop when `has_more` is false.
+- `next_cursor` is an opaque string — never parse, construct, or inspect its contents on the frontend; treat it as a pass-through value only.
+
+## Environment & Documentation
+- **Prefixing:** Ensure Next.js client-side variables are correctly prefixed with NEXT_PUBLIC_ if they need to be accessed in the browser.
+
+
+## Frontend Testing
+- **Tooling:** Vitest (jsdom) + React Testing Library + `@testing-library/user-event`, with MSW mocking the backend. Run with `npm test` (`npm run test:coverage` for coverage). Playwright E2E lives separately in the top-level `e2e/` directory.
+- **Location:** Co-locate tests next to the code under test as `<Name>.test.tsx` / `<name>.test.ts`.
+- **API mocking:** Mock backend calls through MSW handlers in `src/test/msw/handlers/` (one file per domain, e.g. `events.ts`) rather than mocking axios or `@/app/_services/*` directly. Shared setup lives in `src/test/setup.ts`.
+- **Mandatory Coverage:** New frontend code, and edited frontend code whose behavior changes (components, hooks, services, utilities, `proxy.ts`), MUST include new or updated tests. Pure refactors, renames, and styling-only tweaks don't require new tests.
+- **Exceptions:** Skip tests only when there's a good reason, such as behavior that can't realistically be exercised in tests (e.g. the real Discord OAuth login). When skipping, say so and why.
+
