@@ -262,6 +262,7 @@ make seed-all           # Dev-only: run all seed scripts in required order
 
 make seed-matchmaking-all HOST=YourDiscordName  # Dev-only: seed matchmaking test event groups (see below)
 make seed-matchmaking-cleanup                   # Dev-only: remove all matchmaking test data created by the script
+make bench-matchmaking                          # Benchmark matchmaking p95 latency (see below)
 
 make gen-keys           # Generate new JWT, Cookie Hash, and Cookie Encrypt keys
 
@@ -327,6 +328,26 @@ Re-running is idempotent: existing scenario groups are skipped (their names are 
 make seed-matchmaking-cleanup
 make seed-matchmaking-all HOST=YourDiscordName
 ```
+
+### Matchmaking benchmark
+
+Measures `PlanEvent` latency (p50/p95/p99/max) for a Valorant 5v5 at 10, 50, and 100 players under both `balanced` and `ranked` sort logic. Runs in-process: no database or HTTP, so it isolates the algorithm. Ranks are drawn from an approximate Valorant ladder distribution; pools are generated from a fixed seed, so the same flags always plan the same inputs (latency still varies with machine load). The output also reports average lobbies and the share of lobbies flagged with a fairness warning.
+
+```bash
+make bench-matchmaking
+make bench-matchmaking ARGS="-sizes=10,50,100,200 -iterations=5000 -seed=42 -json"
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `-sizes` | `10,50,100` | Player counts to benchmark |
+| `-iterations` | `1000` | Timed runs per size and sort logic |
+| `-warmup` | `100` | Untimed runs before measuring |
+| `-seed` | `1` | RNG seed for player pools |
+| `-sub-min` | `2` | Event group `sub_min` |
+| `-sub-rate` | `0.3` | Fraction of players with `can_substitute` |
+| `-duo-rate` | `0.2` | Fraction of players in a mutual duo request |
+| `-json` | `false` | Emit JSON instead of a table |
 
 ---
 

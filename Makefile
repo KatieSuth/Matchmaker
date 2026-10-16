@@ -4,7 +4,7 @@
         health export-ca fix-certs tls-check test test-coverage test-docker \
         e2e e2e-up e2e-down \
         seed-users seed-events seed-registrations seed-all \
-        seed-matchmaking-all seed-matchmaking-cleanup gen-keys \
+        seed-matchmaking-all seed-matchmaking-cleanup bench-matchmaking gen-keys \
         infra-init infra-fmt infra-validate infra-plan infra-apply infra-destroy \
         gcp-push gcp-db-backup gcp-migrate gcp-roll gcp-db-bootstrap gcp-deploy
 
@@ -223,6 +223,10 @@ seed-matchmaking-all:
 # Remove all matchmaking test data created by seed-matchmaking-all
 seed-matchmaking-cleanup:
 	cd backend && go run ./cmd/scripts/matchmaking cleanup
+
+# Benchmark PlanEvent p50/p95/p99 for Valorant 5v5 (balanced + ranked); pass extra flags via ARGS
+bench-matchmaking:
+	cd backend && go run ./cmd/scripts/matchbench $(ARGS)
 
 # Generate new secure keys
 gen-keys:
