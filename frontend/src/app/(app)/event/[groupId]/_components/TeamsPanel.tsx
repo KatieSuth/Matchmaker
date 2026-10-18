@@ -28,6 +28,7 @@ export function TeamsPanel({
   onMoveToUnplaced,
   onMoveToSubs,
   onMakeLobbyHost,
+  onToggleAbsent,
   onJoinLobby,
   showJoinLobby,
 }: {
@@ -45,6 +46,7 @@ export function TeamsPanel({
   onMoveToUnplaced?: (placement: PlayerPlacement) => void;
   onMoveToSubs?: (placement: PlayerPlacement) => void;
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
+  onToggleAbsent?: (placement: PlayerPlacement, absent: boolean) => void;
   onJoinLobby: (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => void;
   showJoinLobby: boolean;
 }) {
@@ -53,6 +55,7 @@ export function TeamsPanel({
     return null;
   }
 
+  const absentUserIds = new Set(event.absent_user_ids ?? []);
   const substituteEntries = lobbies.flatMap((lobby, lobbyIndex) =>
     lobby.subs.map((player) => ({ lobby, lobbyIndex, player })),
   );
@@ -123,6 +126,8 @@ export function TeamsPanel({
                     onMoveToUnplaced={onMoveToUnplaced}
                     onMoveToSubs={onMoveToSubs}
                     onMakeLobbyHost={onMakeLobbyHost}
+                    isAbsent={absentUserIds.has(player.user_id)}
+                    onToggleAbsent={onToggleAbsent}
                   />
                 ))}
               </div>
@@ -158,6 +163,7 @@ export function TeamsPanel({
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
               showDuoRequest
+              isAbsent={absentUserIds.has(player.user_id)}
               placement={{
                 eventId: event.id,
                 userId: player.user_id,
@@ -196,6 +202,7 @@ export function TeamsPanel({
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
               showDuoRequest
+              isAbsent={absentUserIds.has(registration.user_id)}
               placement={{
                 eventId: event.id,
                 userId: registration.user_id,

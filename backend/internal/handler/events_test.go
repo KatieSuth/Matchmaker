@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -1247,6 +1249,121 @@ func TestSetLobbyHostHandler_Success(t *testing.T) {
 	}, nil, "")
 	h.SetLobbyHostHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+// newAbsenceContext builds a POST /registrations/:eventId/absence request context for the handler.
+func newAbsenceContext(t *testing.T, eventID, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/absence")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, w
+}
+
+func TestSetPlayerAbsenceHandler_StoreErrors(t *testing.T) {
+	body := `{"user_id":"` + uuid.NewString() + `","absent":true}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		level  slog.Level
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden, slog.LevelWarn},
+		{"not on team", &store.AbsenceValidationError{Message: "Only players on a team can be marked absent"}, http.StatusBadRequest, slog.LevelWarn},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest, slog.LevelWarn},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound, slog.LevelWarn},
+		{"other", errors.New("fail"), http.StatusInternalServerError, slog.LevelError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureSlog(t)
+			c, w := newAbsenceContext(t, uuid.NewString(), body)
+			h := newTestHandler(t, &store.MockStore{
+				SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error { return tc.err },
+			}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+			assert.True(t, logs.hasLevel(tc.level))
+			assert.False(t, logs.hasLevel(slog.LevelInfo))
+		})
+	}
+}
+
+func TestSetPlayerAbsenceHandler_ValidationMessage(t *testing.T) {
+	c, w := newAbsenceContext(t, uuid.NewString(), `{"user_id":"`+uuid.NewString()+`","absent":true}`)
+	h := newTestHandler(t, &store.MockStore{
+		SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error {
+			return &store.AbsenceValidationError{Message: "Only players on a team can be marked absent"}
+		},
+	}, nil, "")
+	h.SetPlayerAbsenceHandler(c)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"status":"error","message":"Only players on a team can be marked absent"}`, w.Body.String())
+}
+
+func TestSetPlayerAbsenceHandler_NonHostForbidden(t *testing.T) {
+	// MockStore has no EventGroupIDByEventIDFn, so this would panic if a Discord lock lookup ran first.
+	c, w := newAbsenceContext(t, uuid.NewString(), `{"user_id":"`+uuid.NewString()+`","absent":true}`)
+	h := newTestHandler(t, &store.MockStore{
+		SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error { return store.ErrForbidden },
+	}, nil, "")
+	h.SetPlayerAbsenceHandler(c)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.JSONEq(t, `{"status":"error","message":"Only the host can mark attendance"}`, w.Body.String())
+}
+
+func TestSetPlayerAbsenceHandler_Validation(t *testing.T) {
+	validUser := uuid.NewString()
+	cases := []struct {
+		name    string
+		eventID string
+		body    string
+	}{
+		{"invalid event id", "nope", `{"user_id":"` + validUser + `","absent":true}`},
+		{"bad json", uuid.NewString(), `not-json`},
+		{"wrong absent type", uuid.NewString(), `{"user_id":"` + validUser + `","absent":"yes"}`},
+		{"missing absent", uuid.NewString(), `{"user_id":"` + validUser + `"}`},
+		{"invalid user_id", uuid.NewString(), `{"user_id":"bad","absent":true}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureSlog(t)
+			c, w := newAbsenceContext(t, tc.eventID, tc.body)
+			h := newTestHandler(t, &store.MockStore{}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.True(t, logs.hasLevel(slog.LevelWarn))
+		})
+	}
+}
+
+func TestSetPlayerAbsenceHandler_Success(t *testing.T) {
+	for _, absent := range []bool{true, false} {
+		t.Run(fmt.Sprintf("absent=%v", absent), func(t *testing.T) {
+			logs := captureSlog(t)
+			eventID := uuid.New()
+			targetUser := uuid.New()
+			body := fmt.Sprintf(`{"user_id":"%s","absent":%v}`, targetUser, absent)
+			c, _ := newAbsenceContext(t, eventID.String(), body)
+
+			var gotEvent, gotTarget uuid.UUID
+			var gotAbsent bool
+			h := newTestHandler(t, &store.MockStore{
+				SetPlayerAbsenceForEventFn: func(_ context.Context, e, _, u uuid.UUID, a bool) error {
+					gotEvent, gotTarget, gotAbsent = e, u, a
+					return nil
+				},
+			}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+			assert.Equal(t, eventID, gotEvent)
+			assert.Equal(t, targetUser, gotTarget)
+			assert.Equal(t, absent, gotAbsent)
+			assert.True(t, logs.hasLevel(slog.LevelInfo))
+		})
+	}
 }
 
 func TestSwapPlayersHandler_Success(t *testing.T) {

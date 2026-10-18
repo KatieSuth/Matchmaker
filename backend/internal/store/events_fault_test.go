@@ -133,6 +133,16 @@ func TestGetEventGroupDetail_DatabaseErrors(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "load lobbies for event")
 	})
+
+	t.Run("no-show lookup fails", func(t *testing.T) {
+		// Lobby inserted by the previous subtest: summary, registrations, lobbies, players, then no-shows.
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 5, injectedErr: injectedErr}
+		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
+
+		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "list no-shows for event")
+	})
 }
 
 func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {

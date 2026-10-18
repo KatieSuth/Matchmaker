@@ -27,6 +27,7 @@ var BuildGroupRegistrationCountsForTest = func(s *PostgresStore, ctx context.Con
 	return s.buildGroupRegistrationCounts(ctx, groupID)
 }
 var MapRegistrationsToPlayersForTest = mapRegistrationsToPlayers
+var VisibleAbsentUserIDsForTest = visibleAbsentUserIDs
 
 var ResolveAvgRankIDForTest = func(s *PostgresStore, ctx context.Context, gameID uuid.UUID, currentOrder, peakOrder int32) (uuid.UUID, int32, error) {
 	return s.resolveAvgRankID(ctx, gameID, currentOrder, peakOrder)

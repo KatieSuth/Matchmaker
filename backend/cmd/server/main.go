@@ -460,6 +460,7 @@ func main() {
 			registrations.POST("/:eventId/sub-to-unplaced", h.MoveSubToUnplacedHandler)
 			registrations.POST("/:eventId/unplaced-to-subs", h.MoveUnplacedToSubsHandler)
 			registrations.POST("/:eventId/lobby-host", h.SetLobbyHostHandler)
+			registrations.POST("/:eventId/absence", h.SetPlayerAbsenceHandler)
 			registrations.DELETE("/:eventId/:userId", h.DeleteRegistrationHandler)
 			registrations.DELETE("/:eventId/me", h.DeleteRegistrationHandler)
 		}

@@ -1215,6 +1215,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /registrations/{eventId}/absence:
+    post:
+      tags: [registrations]
+      summary: Mark a team player absent or present
+      operationId: setPlayerAbsenceForEvent
+      description: >
+        Host-only. With absent=true, records a no-show for a player currently on a team in this
+        locked-in game (re-marking keeps the original marked_absent_at). With absent=false, removes
+        the mark; this is idempotent and does not require the player to still be on a team.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          description: UUID of the game (event row)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, absent]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                absent:
+                  type: boolean
+      responses:
+        "204":
+          description: Attendance updated successfully
+        "400":
+          description: Invalid request, no teams exist, or player is not on a team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid JWT
+        "403":
+          description: Only the event host can mark attendance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update attendance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /lobbies/{lobbyId}/join-code:
     patch:
       tags: [lobbies]
@@ -2125,7 +2186,7 @@ components:
 
     EventGroupEvent:
       type: object
-      required: [id, start_time, game_mode_id, game_mode_name, team_size, registered_count, lobbies_count, player_registered, registrations, lobbies, unplaced]
+      required: [id, start_time, game_mode_id, game_mode_name, team_size, registered_count, lobbies_count, player_registered, registrations, lobbies, unplaced, absent_user_ids]
       properties:
         id:
           type: string
@@ -2162,6 +2223,15 @@ components:
           description: Registered players not assigned to a team or sub pool. Populated for the event host only; empty for other viewers.
           items:
             $ref: "#/components/schemas/EventRegistration"
+        absent_user_ids:
+          type: array
+          description: >
+            User IDs the host marked absent (no-show) for this game. The event host sees every mark;
+            any other viewer sees only their own ID if they were marked, otherwise an empty array.
+            Marks persist across swaps, team deletion, and registration deletion.
+          items:
+            type: string
+            format: uuid
 
     LobbyPlayer:
       type: object

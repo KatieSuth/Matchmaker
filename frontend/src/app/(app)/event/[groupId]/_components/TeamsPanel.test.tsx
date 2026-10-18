@@ -136,6 +136,41 @@ describe("TeamsPanel", () => {
     );
   });
 
+  it("labels absent players on teams and in the substitute pool", () => {
+    const teamPlayer = buildLobbyPlayer({ user_id: "team-absent", display_name: "Gone" });
+    const presentPlayer = buildLobbyPlayer({ user_id: "team-present", display_name: "Here" });
+    const swappedSub = buildLobbyPlayer({ user_id: "sub-absent", display_name: "Swapped" });
+    const lobby = buildEventLobby({
+      teams: [buildEventTeam({ players: [teamPlayer, presentPlayer] })],
+      subs: [swappedSub],
+    });
+    const event = buildEventGroupEvent({ lobbies: [lobby], absent_user_ids: ["team-absent", "sub-absent"] });
+    render(<TeamsPanel {...baseProps({ event })} />);
+
+    expect(screen.getAllByText("Absent")).toHaveLength(2);
+  });
+
+  it("passes the attendance toggle to team players only for the host view", async () => {
+    const onToggleAbsent = vi.fn();
+    const player = buildLobbyPlayer({ user_id: "user-1" });
+    const sub = buildLobbyPlayer({ user_id: "sub-1" });
+    const lobby = buildEventLobby({ teams: [buildEventTeam({ players: [player] })], subs: [sub] });
+    const event = buildEventGroupEvent({ lobbies: [lobby], absent_user_ids: ["user-1"] });
+    const user = userEvent.setup();
+    render(<TeamsPanel {...baseProps({ event, isHostView: true, onToggleAbsent })} />);
+
+    const [teamMenu, subMenu] = screen.getAllByRole("button", { name: "Registration actions" });
+    await user.click(subMenu);
+    expect(screen.queryByText(/Mark (Absent|Present)/)).not.toBeInTheDocument();
+
+    await user.click(teamMenu);
+    await user.click(screen.getByText("Mark Present"));
+    expect(onToggleAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: event.id, userId: "user-1", teamNumber: 1 }),
+      false,
+    );
+  });
+
   it("has no accessibility violations for a guest viewer", async () => {
     const player = buildLobbyPlayer({ display_name: "Alice" });
     const sub = buildLobbyPlayer({ display_name: "Subby" });

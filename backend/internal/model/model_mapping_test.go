@@ -664,6 +664,8 @@ func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testin
 	assert.Equal(t, 0, result.LobbiesCount)
 	assert.True(t, result.PlayerRegistered)
 	assert.Equal(t, regs, result.Registrations)
+	assert.NotNil(t, result.AbsentUserIDs)
+	assert.Empty(t, result.AbsentUserIDs)
 }
 
 func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *testing.T) {

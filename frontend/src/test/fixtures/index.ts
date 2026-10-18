@@ -176,6 +176,7 @@ export function buildEventGroupEvent(overrides: Partial<EventGroupEvent> = {}): 
     registrations: [buildEventRegistration()],
     lobbies: [],
     unplaced: [],
+    absent_user_ids: [],
     ...overrides,
   };
 }

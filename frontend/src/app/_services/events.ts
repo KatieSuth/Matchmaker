@@ -87,6 +87,11 @@ export async function setLobbyHost(eventId: string, userId: string): Promise<voi
   await api.post(`/registrations/${eventId}/lobby-host`, { user_id: userId });
 }
 
+/** Host-only. Marks a team player absent (no-show) for this game, or clears the mark. */
+export async function setPlayerAbsence(eventId: string, userId: string, absent: boolean): Promise<void> {
+  await api.post(`/registrations/${eventId}/absence`, { user_id: userId, absent });
+}
+
 /** Host-only. Removes a substitute from their lobby sub pool. */
 export async function moveSubToUnplaced(eventId: string, userId: string): Promise<void> {
   await api.post(`/registrations/${eventId}/sub-to-unplaced`, { user_id: userId });

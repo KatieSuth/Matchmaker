@@ -1,7 +1,8 @@
 "use client";
 
 // Registration card shown in the registration list and in each roster/subs/unplaced section of
-// TeamsPanel. Owns the per-player ellipsis menu (show details, swap, move, make host, delete).
+// TeamsPanel. Owns the per-player ellipsis menu (show details, swap, move, make host, attendance,
+// delete) and the red "Absent" label for players the host marked as a no-show.
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { EMPTY_VALUE } from "@/app/_lib/constants";
 import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
@@ -28,6 +29,8 @@ export function PlayerCard({
   onMakeLobbyHost,
   lobbyHostId,
   showDuoRequest = false,
+  isAbsent = false,
+  onToggleAbsent,
 }: {
   registration: EventRegistration;
   gameNumber: number;
@@ -47,6 +50,8 @@ export function PlayerCard({
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
   lobbyHostId?: string | null;
   showDuoRequest?: boolean;
+  isAbsent?: boolean;
+  onToggleAbsent?: (placement: PlayerPlacement, absent: boolean) => void;
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
   const canDelete =
@@ -100,6 +105,13 @@ export function PlayerCard({
       onSelect: () => onMakeLobbyHost(placement),
     });
   }
+  // Attendance is tracked for team players only; subs/unplaced keep any earlier mark but can't toggle it.
+  if (isHostView && isTeamAssignedPlacement(placement) && onToggleAbsent) {
+    menuOptions.push({
+      label: isAbsent ? "Mark Present" : "Mark Absent",
+      onSelect: () => onToggleAbsent(placement, !isAbsent),
+    });
+  }
   if (canDelete) {
     menuOptions.push({
       label: `Delete for Game ${gameNumber}`,
@@ -129,6 +141,9 @@ export function PlayerCard({
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
             {registration.pronouns || EMPTY_VALUE}
           </p>
+          {isAbsent && (
+            <p className="text-[11px] font-medium text-red-400 mt-1">Absent</p>
+          )}
           {regionMismatch && (
             <p className="text-[11px] text-amber-300 mt-1">
               Region: {currentUserRegion}

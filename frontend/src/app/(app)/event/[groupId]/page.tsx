@@ -353,6 +353,7 @@ export default function EventGroupPage() {
                       onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
                       onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
                       onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                      onToggleAbsent={isHost ? hostActions.handleToggleAbsent : undefined}
                       onJoinLobby={joinLobby.openJoinLobbySheet}
                       showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
                     />
@@ -420,6 +421,7 @@ export default function EventGroupPage() {
                 onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
                 onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
                 onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                onToggleAbsent={isHost ? hostActions.handleToggleAbsent : undefined}
                 onJoinLobby={joinLobby.openJoinLobbySheet}
                 showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
               />

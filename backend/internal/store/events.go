@@ -250,7 +250,8 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 }
 
 // GetEventGroupDetail loads a group header plus each scheduled game and, per game,
-// the registration list the viewer may see (full detail for the host, limited otherwise).
+// the registration list the viewer may see (full detail for the host, limited otherwise)
+// and the no-show marks visible to the viewer.
 func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
 	groupRow, err := s.q.GetEventGroupDetailById(ctx, groupID)
 	if err != nil {
@@ -290,6 +291,12 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 			eventOut.Lobbies = lobbies
 			eventOut.Unplaced = unplaced
 		}
+		// Loaded regardless of lock state: marks persist after teams are deleted.
+		absentIDs, err := s.q.ListNoShowUserIdsForEvent(ctx, summary.ID)
+		if err != nil {
+			return model.EventGroupDetail{}, fmt.Errorf("list no-shows for event %s: %w", summary.ID.String(), err)
+		}
+		eventOut.AbsentUserIDs = visibleAbsentUserIDs(absentIDs, viewerID, viewerIsHost)
 		events = append(events, eventOut)
 	}
 

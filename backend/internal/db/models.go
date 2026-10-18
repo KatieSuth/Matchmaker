@@ -95,6 +95,14 @@ type Lobby struct {
 	JoinCode              *string
 }
 
+type NoShow struct {
+	UserID         uuid.UUID
+	EventID        uuid.UUID
+	HostID         uuid.UUID
+	MarkedAbsentAt time.Time
+	CreatedAt      time.Time
+}
+
 type OneTimeCode struct {
 	Code    string
 	UserID  uuid.UUID
@@ -154,9 +162,4 @@ type UserGame struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	AvgRank       *uuid.UUID
-}
-
-type UserNoshow struct {
-	UserID  uuid.UUID
-	EventID uuid.UUID
 }

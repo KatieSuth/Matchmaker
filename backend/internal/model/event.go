@@ -92,6 +92,7 @@ type EventGroupEvent struct {
 	Registrations    []EventRegistration `json:"registrations"`
 	Lobbies          []EventLobby        `json:"lobbies"`
 	Unplaced         []EventRegistration `json:"unplaced"`
+	AbsentUserIDs    []uuid.UUID         `json:"absent_user_ids"`
 }
 
 // EventGroupDetail is the full host/participant view for a group: header plus each game.
@@ -186,6 +187,7 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 		Registrations:    registrations,
 		Lobbies:          []EventLobby{},
 		Unplaced:         []EventRegistration{},
+		AbsentUserIDs:    []uuid.UUID{},
 	}
 }
 

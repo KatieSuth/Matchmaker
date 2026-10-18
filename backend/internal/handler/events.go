@@ -75,6 +75,12 @@ type setLobbyHostRequest struct {
 	UserID string `json:"user_id"`
 }
 
+// Absent is a pointer so a missing field is rejected instead of defaulting to "present".
+type setPlayerAbsenceRequest struct {
+	UserID string `json:"user_id"`
+	Absent *bool  `json:"absent"`
+}
+
 type updateLobbyJoinCodeRequest struct {
 	JoinCode *string `json:"join_code"`
 }
@@ -884,6 +890,72 @@ func (h *Handler) SetLobbyHostHandler(c *gin.Context) {
 		return
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+// POST /registrations/:eventId/absence
+// Host-only. Marks a team player absent (no-show) for this game, or clears the mark.
+func (h *Handler) SetPlayerAbsenceHandler(c *gin.Context) {
+	userUUID, ok := userIDFromContext(c)
+	if !ok {
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid eventId in SetPlayerAbsenceHandler", "user_id", userUUID, "event_id", c.Param("eventId"), "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "eventId must be a valid UUID"})
+		return
+	}
+
+	var body setPlayerAbsenceRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid request body in SetPlayerAbsenceHandler", "user_id", userUUID, "event_id", eventID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Improper json or json value types"})
+		return
+	}
+	if body.Absent == nil {
+		slog.WarnContext(c.Request.Context(), "missing absent in SetPlayerAbsenceHandler", "user_id", userUUID, "event_id", eventID)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "absent is required"})
+		return
+	}
+
+	targetUserID, err := uuid.Parse(body.UserID)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "invalid user_id in SetPlayerAbsenceHandler", "user_id", userUUID, "event_id", eventID, "target_user_id", body.UserID, "error", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "user_id must be a valid UUID"})
+		return
+	}
+
+	// No Discord lock check: only the owner may change attendance, and the owner always passes that lock.
+	err = h.store.SetPlayerAbsenceForEvent(c.Request.Context(), eventID, userUUID, targetUserID, *body.Absent)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrForbidden):
+			slog.WarnContext(c.Request.Context(), "forbidden set player absence attempt", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "message": "Only the host can mark attendance"})
+		case errors.Is(err, store.ErrInvalidAbsenceChange):
+			msg := err.Error()
+			var absenceErr *store.AbsenceValidationError
+			if errors.As(err, &absenceErr) {
+				msg = absenceErr.Message
+			}
+			slog.WarnContext(c.Request.Context(), "set player absence validation failed", "user_id", userUUID, "event_id", eventID, "target_user_id", targetUserID, "error", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
+		case errors.Is(err, store.ErrTeamsNotCreated):
+			slog.WarnContext(c.Request.Context(), "set player absence requested but no teams exist", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "No teams exist for this game"})
+		case errors.Is(err, store.ErrEventNotFound), errors.Is(err, pgx.ErrNoRows):
+			slog.WarnContext(c.Request.Context(), "event not found for set player absence", "user_id", userUUID, "event_id", eventID)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"status": "error", "message": "Event not found"})
+		default:
+			slog.ErrorContext(c.Request.Context(), "failed to set player absence", "event_id", eventID, "target_user_id", targetUserID, "error", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to update attendance"})
+		}
+		return
+	}
+
+	slog.InfoContext(c.Request.Context(), "player absence updated", "user_id", userUUID, "event_id", eventID, "target_user_id", targetUserID, "absent", *body.Absent)
 	c.Status(http.StatusNoContent)
 }
 

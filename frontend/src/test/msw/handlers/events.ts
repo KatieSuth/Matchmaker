@@ -14,6 +14,7 @@ export const eventsHandlers = [
   http.delete(`${TEST_API_URL}/events/:groupId`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${TEST_API_URL}/registrations/:eventId/player-swap`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${TEST_API_URL}/registrations/:eventId/lobby-host`, () => new HttpResponse(null, { status: 204 })),
+  http.post(`${TEST_API_URL}/registrations/:eventId/absence`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${TEST_API_URL}/registrations/:eventId/sub-to-unplaced`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${TEST_API_URL}/registrations/:eventId/unplaced-to-subs`, () => new HttpResponse(null, { status: 204 })),
   http.patch(`${TEST_API_URL}/lobbies/:lobbyId/join-code`, () => new HttpResponse(null, { status: 204 })),

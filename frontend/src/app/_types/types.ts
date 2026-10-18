@@ -120,6 +120,8 @@ export interface EventGroupEvent {
   registrations: EventRegistration[];
   lobbies: EventLobby[];
   unplaced: EventRegistration[];
+  /** No-show marks: every mark for the host; only the viewer's own ID (if marked) for anyone else. */
+  absent_user_ids: string[];
 }
 
 export type EventSortLogic = "balanced" | "ranked";

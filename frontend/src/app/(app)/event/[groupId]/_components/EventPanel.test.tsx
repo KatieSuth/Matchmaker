@@ -19,6 +19,18 @@ function baseProps(overrides: Partial<Parameters<typeof EventPanel>[0]> = {}) {
 }
 
 describe("EventPanel", () => {
+  it("labels registrations that kept an absent mark after teams were deleted", () => {
+    const event = buildEventGroupEvent({
+      registrations: [
+        buildEventRegistration({ user_id: "absent-1", display_name: "Gone" }),
+        buildEventRegistration({ user_id: "present-1", display_name: "Here" }),
+      ],
+      absent_user_ids: ["absent-1"],
+    });
+    render(<EventPanel {...baseProps({ event })} />);
+    expect(screen.getAllByText("Absent")).toHaveLength(1);
+  });
+
   it("shows an empty-state message when there are no registrations", () => {
     const event = buildEventGroupEvent({ registrations: [] });
     render(<EventPanel {...baseProps({ event })} />);
