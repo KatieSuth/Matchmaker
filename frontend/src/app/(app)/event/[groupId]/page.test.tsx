@@ -193,6 +193,43 @@ describe("EventGroupPage", () => {
     expect(screen.queryByRole("button", { name: "Copy Discord Pings" })).not.toBeInTheDocument();
   });
 
+  it("shows the no-show warning to the host only", async () => {
+    // Even if a payload carried counts to a guest, the page must not render them.
+    const payload = groupPayload({ excessive_no_shows: { [GUEST.id]: 3 } });
+    stubGroup(payload);
+    const { unmount } = renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+    expect(await screen.findByRole("button", { name: "No-show 3 times at your events in the last 6 months" })).toBeInTheDocument();
+    unmount();
+
+    stubGroup(payload);
+    renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+    expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /No-show/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the viewer's own no-show banner below the games strip", async () => {
+    stubGroup(
+      groupPayload({
+        deprioritize_noshows: true,
+        max_noshows: 2,
+        viewer_no_show_dates: ["2026-09-04T19:00:00Z", "2026-09-11T19:00:00Z"],
+      }),
+    );
+    renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+
+    const banner = await screen.findByRole("region", { name: "No-show warning" });
+    const strip = screen.getByText("Games in this group");
+    expect(strip.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no no-show banner when the viewer has no recent no-shows", async () => {
+    stubGroup(groupPayload());
+    renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+
+    expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /No-show (notice|warning)/ })).not.toBeInTheDocument();
+  });
+
   it("hides unplaced players from a non-host after lock-in", async () => {
     const player = buildLobbyPlayer({ display_name: "Alice" });
     const unplaced = buildEventRegistration({ display_name: "Loose Player" });
@@ -434,7 +471,7 @@ describe("EventGroupPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Register Now" }));
     expect(await screen.findByRole("heading", { name: "Register" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cancel Registration" }));
+    await user.click(screen.getByRole("button", { name: "Cancel Change to Registration" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Register" })).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Register Now" }));
@@ -514,5 +551,21 @@ describe("EventGroupPage", () => {
     expect(await screen.findByRole("dialog", { name: /Delete All Registrations From / })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: /Delete All Registrations From / })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["yellow notice", 3, "No-show notice"],
+    ["red warning", 2, "No-show warning"],
+  ])("has no accessibility violations with the %s", async (_label, maxNoShows, regionName) => {
+    stubGroup(
+      groupPayload({
+        deprioritize_noshows: true,
+        max_noshows: maxNoShows,
+        viewer_no_show_dates: ["2026-09-04T19:00:00Z", "2026-09-11T19:00:00Z"],
+      }),
+    );
+    const { container } = renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+    expect(await screen.findByRole("region", { name: regionName })).toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

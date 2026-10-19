@@ -393,6 +393,7 @@ func cloneLobbies(lobbies []LobbyPlan) []LobbyPlan {
 			Subs:            append([]Player(nil), lobby.Subs...),
 			HostID:          lobby.HostID,
 			FairnessWarning: lobby.FairnessWarning,
+			FairnessChecks:  lobby.FairnessChecks,
 		}
 	}
 	return out

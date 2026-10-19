@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/google/uuid"
@@ -27,13 +28,23 @@ func (e *AbsenceValidationError) Unwrap() error {
 }
 
 // SetPlayerAbsenceForEvent marks (absent=true) or clears (absent=false) a no-show for one locked-in game.
-// Only the event-group owner may change attendance. Marking requires the player to be on a team;
-// clearing is idempotent and skips the placement check so a mark can still be removed after a swap
-// moved the player off a team.
+// Only the event-group owner may change attendance. Marking requires the game to have started and the
+// player to be on a team; clearing is idempotent and skips both checks so a mark can still be removed
+// after a swap moved the player off a team.
 func (s *PostgresStore) SetPlayerAbsenceForEvent(
 	ctx context.Context,
 	eventID, ownerID, userID uuid.UUID,
 	absent bool,
+) error {
+	return s.setPlayerAbsenceForEventAt(ctx, eventID, ownerID, userID, absent, time.Now())
+}
+
+// setPlayerAbsenceForEventAt is SetPlayerAbsenceForEvent with an injectable clock for tests.
+func (s *PostgresStore) setPlayerAbsenceForEventAt(
+	ctx context.Context,
+	eventID, ownerID, userID uuid.UUID,
+	absent bool,
+	now time.Time,
 ) error {
 	meta, err := s.q.GetEventGroupMetaByEventId(ctx, eventID)
 	if err != nil {
@@ -59,6 +70,11 @@ func (s *PostgresStore) SetPlayerAbsenceForEvent(
 			return fmt.Errorf("delete no-show: %w", err)
 		}
 		return nil
+	}
+
+	// A no-show can only happen once the game is under way.
+	if meta.StartTime.After(now) {
+		return &AbsenceValidationError{Message: "Players can be marked absent once the game has started"}
 	}
 
 	placements, err := s.q.GetPlayerPlacementsForEvent(ctx, &eventID)

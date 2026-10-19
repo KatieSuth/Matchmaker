@@ -19,6 +19,8 @@ type RegSpec struct {
 	CanSub     bool
 	CanHost    bool
 	DuoPartner *int
+	// NoShows is how many past games at this host the player is marked absent for (see seedNoShowHistory).
+	NoShows int
 }
 
 type EventSpec struct {
@@ -35,6 +37,11 @@ type Scenario struct {
 	Name        string // short use-case label stored on event_groups.name (UI)
 	Description string
 	Events      []EventSpec
+	// NoShowThreshold turns on no-show deprioritization (event_groups.max_noshows); 0 leaves it off.
+	NoShowThreshold int32
+	// ViewerNoShows > 0 flips the roles: a seeded user hosts the group and the --host user is
+	// registered as a player with this many past no-shows at that seeded host.
+	ViewerNoShows int
 }
 
 type SeedResult struct {
@@ -67,6 +74,41 @@ func scenarioGroupName(sortLogic, useCase string) string {
 }
 
 const sharedMultiEventUsers = 10
+
+// noShowScenarioThreshold is the absence limit used by every no-show deprioritization scenario.
+const noShowScenarioThreshold = 3
+
+// flatRankRegs builds count registrations at one rank, so only no-show counts and
+// registration order decide who plays.
+func flatRankRegs(count, rankOrder int) []RegSpec {
+	return spreadRankRegs(count, rankOrder, func(slot int) RegSpec {
+		return RegSpec{RankOrder: rankOrder}
+	})
+}
+
+// withNoShows sets per-slot no-show counts for deprioritization scenarios.
+func withNoShows(regs []RegSpec, noShows map[int]int) []RegSpec {
+	out := make([]RegSpec, len(regs))
+	copy(out, regs)
+	for i := range out {
+		if n, ok := noShows[out[i].Slot]; ok {
+			out[i].NoShows = n
+		}
+	}
+	return out
+}
+
+// noShowFairnessRegs is a 12-player 5v5 pool where the held-out slot 0 (rank 15, 4 no-shows)
+// must play for the lobby to be fair. The 17 (slot 3) and 24 (slot 10) have no one within the
+// outlier gap. With slot 0, both can sit out (top 15 vs 10). Without them, the 11 clean players
+// fill 10 seats, so the 17 or the 24 must play, and no arrangement passes the outlier check.
+// Both algorithms seat slot 0: balanced via fairness repair, ranked by swapping them in for the 17.
+func noShowFairnessRegs() []RegSpec {
+	return withNoShows(regsFromSlotRanks(
+		[2]int{0, 15}, [2]int{1, 10}, [2]int{2, 10}, [2]int{3, 17}, [2]int{4, 8}, [2]int{5, 4},
+		[2]int{6, 6}, [2]int{7, 1}, [2]int{8, 8}, [2]int{9, 8}, [2]int{10, 24}, [2]int{11, 9},
+	), map[int]int{0: 4})
+}
 
 func spreadRankRegs(count, rankStart int, opts func(slot int) RegSpec) []RegSpec {
 	out := make([]RegSpec, count)
@@ -380,13 +422,15 @@ func scenarioTemplates(g *systemGames) []Scenario {
 			))),
 		build("duos_lobby_blocked", gameKeyValorant, "EMEA",
 			"20p, high/low duo stays split",
-			"20 players, 2 lobbies — high/low split duo should stay apart to preserve balance",
+			"20 players, 2 lobbies — a Radiant-level 24 requests the only rank-2 player; uniting them would skew a lobby, so they stay apart",
+			// The 2 is the only player at that rank, so the duo pass cannot swap in an equal-rank
+			// stand-in for free the way it could if several players shared the partner's rank.
 			0, valEvent(linkDuoPairsBySlot(regsFromSlotRanks(
-				[2]int{0, 24}, [2]int{1, 6}, [2]int{2, 23}, [2]int{3, 6}, [2]int{4, 22}, [2]int{5, 6},
-				[2]int{6, 21}, [2]int{7, 6}, [2]int{8, 20}, [2]int{9, 6},
-				[2]int{10, 22}, [2]int{11, 4}, [2]int{12, 21}, [2]int{13, 4}, [2]int{14, 20}, [2]int{15, 4},
-				[2]int{16, 19}, [2]int{17, 4}, [2]int{18, 18}, [2]int{19, 4},
-			), [2]int{0, 10}))),
+				[2]int{0, 24}, [2]int{1, 2}, [2]int{2, 21}, [2]int{3, 9}, [2]int{4, 16}, [2]int{5, 10},
+				[2]int{6, 17}, [2]int{7, 4}, [2]int{8, 20}, [2]int{9, 10},
+				[2]int{10, 18}, [2]int{11, 8}, [2]int{12, 23}, [2]int{13, 4}, [2]int{14, 19}, [2]int{15, 5},
+				[2]int{16, 22}, [2]int{17, 3}, [2]int{18, 24}, [2]int{19, 9},
+			), [2]int{0, 1}))),
 		build("duos_three_lobbies", gameKeyValorant, "APAC",
 			"30p, 3 close-rank duos",
 			"30 players, 3 lobbies — 3 mutual duos with close ranks each",
@@ -512,7 +556,50 @@ func scenarioTemplates(g *systemGames) []Scenario {
 			3, valEvents(sharedLadderEvents(modeName5v5, modeName3v3Skirmish)...)),
 	}
 
+	templates = append(templates, noShowScenarios(valEvent)...)
 	return templates
+}
+
+// noShowScenarios cover no-show deprioritization at lock-in (threshold noShowScenarioThreshold).
+func noShowScenarios(valEvent func([]RegSpec) []EventSpec) []Scenario {
+	withThreshold := func(sc Scenario) Scenario {
+		sc.NoShowThreshold = noShowScenarioThreshold
+		return sc
+	}
+	return []Scenario{
+		withThreshold(Scenario{
+			Key: "noshow_excluded", GameKey: gameKeyValorant, Region: "AMER",
+			Name:        "12p, 2 no-shows sit out",
+			Description: "12 equal-rank players, limit 3 — slots 0 (3 no-shows) and 1 (5) sit out; the 10 others fill the lobby",
+			Events:      valEvent(withNoShows(flatRankRegs(12, 10), map[int]int{0: 3, 1: 5})),
+		}),
+		withThreshold(Scenario{
+			Key: "noshow_add_back", GameKey: gameKeyValorant, Region: "EMEA",
+			Name:        "11p, fewer no-shows added back",
+			Description: "11 equal-rank players, limit 3 — slot 0 (4 no-shows) and slot 1 (3) are held out; 9 is short of 10, so slot 1 (fewer) is added back",
+			Events:      valEvent(withNoShows(flatRankRegs(11, 10), map[int]int{0: 4, 1: 3})),
+		}),
+		withThreshold(Scenario{
+			Key: "noshow_fairness", GameKey: gameKeyValorant, Region: "APAC",
+			Name:        "12p, no-show needed for fairness",
+			Description: "12 players, limit 3 — no fair lobby exists without held-out slot 0, so both algorithms seat them and the lobby ends fair",
+			Events:      valEvent(noShowFairnessRegs()),
+		}),
+		withThreshold(Scenario{
+			Key: "noshow_viewer", GameKey: gameKeyValorant, Region: "AMER",
+			Name:          "you're a player with 3 no-shows",
+			Description:   "A seeded user hosts; you are registered with 3 no-shows at their games in the last 6 months (limit 3), so you see the red no-show warning",
+			Events:        valEvent(flatRankRegs(9, 10)),
+			ViewerNoShows: noShowScenarioThreshold,
+		}),
+		withThreshold(Scenario{
+			Key: "noshow_viewer_under", GameKey: gameKeyValorant, Region: "EMEA",
+			Name:          "you're a player with 2 no-shows",
+			Description:   "A seeded user hosts; you are registered with 2 no-shows at their games in the last 6 months (limit 3), so you see the yellow no-show notice",
+			Events:        valEvent(flatRankRegs(9, 10)),
+			ViewerNoShows: noShowScenarioThreshold - 1,
+		}),
+	}
 }
 
 func allScenarios(g *systemGames) []Scenario {
@@ -586,7 +673,12 @@ func seedScenario(seed *common.SeedContext, hostID uuid.UUID, g *systemGames, sc
 		return result
 	}
 
-	insertEventGroup(seed, groupID, hostID, sc.SubMin, sc.Region, sc.SortLogic, name)
+	// Viewer scenarios hand the group to a seeded host so the --host user can play in it.
+	ownerID := hostID
+	if sc.ViewerNoShows > 0 {
+		ownerID = createScenarioHost(seed, sc, &game)
+	}
+	insertEventGroup(seed, groupID, ownerID, sc.SubMin, sc.Region, sc.SortLogic, name, sc.NoShowThreshold, true)
 
 	start := firstEventStart(groupIndex)
 	nextStart := start
@@ -598,8 +690,12 @@ func seedScenario(seed *common.SeedContext, hostID uuid.UUID, g *systemGames, sc
 		if len(ev.Registrations) > 0 {
 			registerEventPlayers(seed, sc, eventID, &game, ev.Registrations)
 		}
+		if sc.ViewerNoShows > 0 {
+			registerUser(seed, sc, eventID, hostID)
+		}
 		nextStart = nextStart.Add(time.Duration(mode.Duration) * time.Minute)
 	}
+	seedNoShowHistory(seed, ownerID, hostID, &game, sc)
 
 	slog.Info("seeded matchmaking scenario",
 		"key", sc.Key, "sort_logic", sc.SortLogic, "game", sc.GameKey, "group_id", groupID)

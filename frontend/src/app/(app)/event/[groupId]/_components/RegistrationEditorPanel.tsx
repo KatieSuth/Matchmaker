@@ -34,9 +34,9 @@ export function RegistrationToggleButton({
           type="button"
           onClick={onClose}
           disabled={working}
-          className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 disabled:opacity-40"
+          className="rounded-lg border border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20 disabled:opacity-40"
         >
-          Cancel Registration
+          Cancel Change to Registration
         </button>
       ) : (
         <span

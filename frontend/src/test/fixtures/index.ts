@@ -157,6 +157,8 @@ export function buildEventLobby(overrides: Partial<EventLobby> = {}): EventLobby
     join_code: null,
     fairness_warning: false,
     fairness_warning_at_lock: false,
+    fairness_outlier: false,
+    fairness_team_separation: false,
     teams: [buildEventTeam()],
     subs: [],
     ...overrides,
@@ -207,10 +209,14 @@ export function buildEventGroupDetail(overrides: Partial<EventGroupDetail> = {})
     registration_open: true,
     region: "AMER",
     sort_logic: "balanced",
+    deprioritize_noshows: false,
+    max_noshows: 0,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     events: [buildEventGroupEvent()],
     discord_guilds: [],
+    excessive_no_shows: {},
+    viewer_no_show_dates: [],
     ...overrides,
   };
 }

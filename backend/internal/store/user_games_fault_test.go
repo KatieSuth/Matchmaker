@@ -39,45 +39,46 @@ func TestUpsertGameForUser_DatabaseErrors(t *testing.T) {
 	payload := validUserGamePayload(t, s, games[0].ID)
 
 	cases := []struct {
-		name               string
-		failOnQueryRowCall int
-		wantContains       string
-		setup              func()
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
+		setup        func()
 	}{
 		{
-			name:               "game lookup fails",
-			failOnQueryRowCall: 1,
-			wantContains:       "looking up game by ID",
+			name:         "game lookup fails",
+			failOn:       "GetGameById",
+			wantContains: "looking up game by ID",
 		},
 		{
-			name:               "current rank lookup fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "looking up current rank by ID",
+			name:         "current rank lookup fails",
+			failOn:       "GetRankById",
+			wantContains: "looking up current rank by ID",
 		},
 		{
-			name:               "peak rank lookup fails",
-			failOnQueryRowCall: 3,
-			wantContains:       "looking up peak rank by ID",
+			name:   "peak rank lookup fails",
+			failOn: "GetRankById", failOnNth: 2,
+			wantContains: "looking up peak rank by ID",
 		},
 		{
-			name:               "avg rank lookup fails",
-			failOnQueryRowCall: 4,
-			wantContains:       "lookup avg rank for game",
+			name:         "avg rank lookup fails",
+			failOn:       "GetRankByGameAndOrder",
+			wantContains: "lookup avg rank for game",
 		},
 		{
-			name:               "user game lookup fails",
-			failOnQueryRowCall: 5,
-			wantContains:       "looking up user game",
+			name:         "user game lookup fails",
+			failOn:       "GetGameForUserByIds",
+			wantContains: "looking up user game",
 		},
 		{
-			name:               "create user game fails",
-			failOnQueryRowCall: 6,
-			wantContains:       "creating game for user",
+			name:         "create user game fails",
+			failOn:       "CreateGameForUser",
+			wantContains: "creating game for user",
 		},
 		{
-			name:               "update user game fails",
-			failOnQueryRowCall: 6,
-			wantContains:       "updated game for user",
+			name:         "update user game fails",
+			failOn:       "UpdateGameForUser",
+			wantContains: "updated game for user",
 			setup: func() {
 				_, err := s.UpsertGameForUser(ctx, user.ID, payload)
 				require.NoError(t, err)
@@ -91,9 +92,10 @@ func TestUpsertGameForUser_DatabaseErrors(t *testing.T) {
 				tc.setup()
 			}
 			faulty := &faultInjectTx{
-				DBTX:               tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				injectedErr:        injectedErr,
+				DBTX:        tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 

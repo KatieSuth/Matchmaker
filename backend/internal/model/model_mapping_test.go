@@ -674,23 +674,25 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	gmid := uuid.New()
 	gid := uuid.New()
 	row := db.GetEventGroupDetailByIdRow{
-		ID:               uuid.New(),
-		OwnerID:          oid,
-		OwnerName:        "owner",
-		OwnerDisplayName: "Owner Display",
-		OwnerPronouns:    "they/them",
-		GameModeID:       gmid,
-		GameModeName:     "Mode",
-		GameID:           gid,
-		GameName:         "Valorant",
-		TeamSize:         5,
-		SubMin:           1,
-		RegistrationOpen: false,
-		Region:           "AMER",
-		SortLogic:        "ranked",
-		Name:             nil,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		ID:                  uuid.New(),
+		OwnerID:             oid,
+		OwnerName:           "owner",
+		OwnerDisplayName:    "Owner Display",
+		OwnerPronouns:       "they/them",
+		GameModeID:          gmid,
+		GameModeName:        "Mode",
+		GameID:              gid,
+		GameName:            "Valorant",
+		TeamSize:            5,
+		SubMin:              1,
+		RegistrationOpen:    false,
+		Region:              "AMER",
+		SortLogic:           "ranked",
+		DeprioritizeNoshows: true,
+		MaxNoshows:          3,
+		Name:                nil,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	events := []model.EventGroupEvent{{ID: uuid.New()}}
 	result := model.MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row, events)
@@ -710,6 +712,12 @@ func TestMapDbGetEventGroupDetailByIdRowToEventGroupDetail_MapsAllFields(t *test
 	assert.False(t, result.RegistrationOpen)
 	assert.Equal(t, "AMER", result.Region)
 	assert.Equal(t, "ranked", result.SortLogic)
+	assert.True(t, result.DeprioritizeNoshows)
+	assert.Equal(t, 3, result.MaxNoshows)
+	assert.NotNil(t, result.ExcessiveNoShows)
+	assert.Empty(t, result.ExcessiveNoShows)
+	assert.NotNil(t, result.ViewerNoShowDates)
+	assert.Empty(t, result.ViewerNoShowDates)
 	assert.Equal(t, now, result.CreatedAt)
 	assert.Equal(t, now, result.UpdatedAt)
 	assert.Equal(t, events, result.Events)
@@ -731,8 +739,11 @@ func TestMapDbGetLobbiesForEventRowToEventLobby(t *testing.T) {
 		JoinCode:              &joinCode,
 		FairnessWarning:       true,
 		FairnessWarningAtLock: true,
+		FairnessOutlier:       true,
 	}
 	result := model.MapDbGetLobbiesForEventRowToEventLobby(row)
+	assert.True(t, result.FairnessOutlier)
+	assert.False(t, result.FairnessTeamSeparation)
 	assert.Equal(t, row.ID, result.ID)
 	assert.Equal(t, &hostID, result.HostID)
 	assert.Equal(t, &joinCode, result.JoinCode)

@@ -32,6 +32,18 @@ func runCleanup(seed *common.SeedContext) {
 		}
 	}
 
+	// No-show history groups are not scenarios themselves; their events (and marks) cascade.
+	for _, sc := range scenarios {
+		if maxScenarioNoShows(sc) == 0 {
+			continue
+		}
+		tag, err := seed.Pool.Exec(seed.Ctx, `DELETE FROM event_groups WHERE id = $1`, noShowHistoryGroupID(sc))
+		if err != nil {
+			common.Fatal("failed deleting no-show history group", "scenario", sc.Key, "error", err)
+		}
+		summary.GroupsDeleted += int(tag.RowsAffected())
+	}
+
 	tag, err := seed.Pool.Exec(seed.Ctx, `
 		DELETE FROM users
 		WHERE discord_id LIKE 'mm_%'

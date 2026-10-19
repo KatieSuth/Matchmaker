@@ -932,3 +932,126 @@ func TestRecomputeLobbyAfterSwapForTest_InvalidGameMode(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "get game mode")
 }
+
+func TestSwapPlayersForEvent_RecordsWhichFairnessCheckFailed(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+
+	var ids []uuid.UUID
+	for i := 0; i < 4; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
+		ids = append(ids, u.ID)
+	}
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
+	lobbyID := firstLobbyID(t, ctx, tx, eventID)
+
+	// Raise one player to the top rank after lock-in: a lone outlier and lopsided teams.
+	_, err = tx.Exec(ctx, `
+		UPDATE user_games SET avg_rank = (SELECT id FROM game_ranks WHERE game_id = $2 ORDER BY "order" DESC LIMIT 1)
+		WHERE user_id = $1 AND game_id = $2`, ids[0], games[0].ID)
+	require.NoError(t, err)
+
+	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
+	require.NoError(t, err)
+	team1 := findLobbyTeamPlayers(detail, eventID, 1)
+	team2 := findLobbyTeamPlayers(detail, eventID, 2)
+	require.NoError(t, s.SwapPlayersForEvent(ctx, eventID, host.ID, team1[0].UserID, team2[0].UserID, defaultMatchmakingSettings()))
+
+	var warning, outlier, teamSep bool
+	require.NoError(t, tx.QueryRow(ctx,
+		`SELECT fairness_warning, fairness_outlier, fairness_team_separation FROM lobbies WHERE id = $1`, lobbyID,
+	).Scan(&warning, &outlier, &teamSep))
+	assert.True(t, warning)
+	assert.True(t, outlier)
+	assert.True(t, teamSep)
+
+	// Back to equal ranks: the next roster change clears both reasons.
+	_, err = tx.Exec(ctx, `
+		UPDATE user_games SET avg_rank = (SELECT id FROM game_ranks WHERE game_id = $2 ORDER BY "order" ASC LIMIT 1)
+		WHERE user_id = $1 AND game_id = $2`, ids[0], games[0].ID)
+	require.NoError(t, err)
+	require.NoError(t, s.SwapPlayersForEvent(ctx, eventID, host.ID, team1[0].UserID, team2[0].UserID, defaultMatchmakingSettings()))
+	require.NoError(t, tx.QueryRow(ctx,
+		`SELECT fairness_warning, fairness_outlier, fairness_team_separation FROM lobbies WHERE id = $1`, lobbyID,
+	).Scan(&warning, &outlier, &teamSep))
+	assert.False(t, warning)
+	assert.False(t, outlier)
+	assert.False(t, teamSep)
+}
+
+func TestSwapPlayersForEvent_LockInWordingTracksReasons(t *testing.T) {
+	s, tx := createEventTestStoreTx(t)
+	ctx := context.Background()
+	host := createTestUser(t, ctx, s)
+	games, err := s.GetSystemGames(ctx)
+	require.NoError(t, err)
+	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+
+	var ids []uuid.UUID
+	for i := 0; i < 4; i++ {
+		u := createTestUser(t, ctx, s)
+		registerPlayerForEventWithProfile(t, ctx, tx, s, eventID, u.ID, games[0].ID, false, false)
+		ids = append(ids, u.ID)
+	}
+	_, err = s.CreateTeamsForGroup(ctx, groupID, host.ID, defaultMatchmakingSettings())
+	require.NoError(t, err)
+	lobbyID := firstLobbyID(t, ctx, tx, eventID)
+
+	setRank := func(order string) {
+		t.Helper()
+		_, err := tx.Exec(ctx, `
+			UPDATE user_games SET avg_rank = (SELECT id FROM game_ranks WHERE game_id = $2 ORDER BY "order" `+order+` LIMIT 1)
+			WHERE user_id = $1 AND game_id = $2`, ids[0], games[0].ID)
+		require.NoError(t, err)
+	}
+	// setLockState stands in for a lock-in result with the given reasons.
+	setLockState := func(outlier, teamSep bool) {
+		t.Helper()
+		_, err := tx.Exec(ctx, `
+			UPDATE lobbies SET fairness_warning = TRUE, fairness_warning_at_lock = TRUE,
+			    fairness_outlier = $2, fairness_team_separation = $3
+			WHERE id = $1`, lobbyID, outlier, teamSep)
+		require.NoError(t, err)
+	}
+	swap := func() {
+		t.Helper()
+		detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
+		require.NoError(t, err)
+		team1 := findLobbyTeamPlayers(detail, eventID, 1)
+		team2 := findLobbyTeamPlayers(detail, eventID, 2)
+		require.NoError(t, s.SwapPlayersForEvent(ctx, eventID, host.ID, team1[0].UserID, team2[0].UserID, defaultMatchmakingSettings()))
+	}
+	atLock := func() bool {
+		t.Helper()
+		var v bool
+		require.NoError(t, tx.QueryRow(ctx, `SELECT fairness_warning_at_lock FROM lobbies WHERE id = $1`, lobbyID).Scan(&v))
+		return v
+	}
+
+	// A lone top-rank player fails both checks whichever team they are on.
+	setRank("DESC")
+
+	setLockState(true, true)
+	swap()
+	assert.True(t, atLock(), "same reasons as lock-in keep the lock-in wording")
+
+	setLockState(true, false)
+	swap()
+	assert.False(t, atLock(), "a different reason switches to the manual-change wording")
+
+	setLockState(true, true)
+	setRank("ASC")
+	swap()
+	assert.False(t, atLock(), "a now-fair lobby drops the lock-in flag")
+	setRank("DESC")
+	swap()
+	assert.False(t, atLock(), "unfair again after an edit is a manual-change warning")
+}

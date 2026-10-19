@@ -27,6 +27,9 @@ type createEventRequest struct {
 	SortLogic        string   `json:"sort_logic"`
 	Name             string   `json:"name"`
 	DiscordGuildIDs  []string `json:"discord_guild_ids"`
+	// MaxNoshows is a pointer so a missing threshold is rejected while deprioritization is on.
+	DeprioritizeNoshows bool   `json:"deprioritize_noshows"`
+	MaxNoshows          *int32 `json:"max_noshows"`
 }
 
 type patchGroupEventItem struct {
@@ -43,6 +46,23 @@ type updateEventGroupSettingsRequest struct {
 	Name             string                `json:"name"`
 	Events           []patchGroupEventItem `json:"events"`
 	DiscordGuildIDs  []string              `json:"discord_guild_ids"`
+	// Nil DeprioritizeNoshows keeps the stored setting so older clients cannot silently turn it off.
+	DeprioritizeNoshows *bool  `json:"deprioritize_noshows"`
+	MaxNoshows          *int32 `json:"max_noshows"`
+}
+
+const invalidNoShowThresholdMessage = "Absence limit must be a whole number greater than 0"
+
+// noShowPolicyFromRequest builds the store policy from request fields. The threshold is only
+// validated while deprioritization is on; ok is false when it is on and the threshold is missing or < 1.
+func noShowPolicyFromRequest(enabled bool, threshold *int32) (store.NoShowPolicy, bool) {
+	if !enabled {
+		return store.NoShowPolicy{}, true
+	}
+	if threshold == nil || *threshold < 1 {
+		return store.NoShowPolicy{}, false
+	}
+	return store.NoShowPolicy{Enabled: true, Threshold: *threshold}, true
 }
 
 type updateRegistrationStatusRequest struct {
@@ -100,6 +120,7 @@ type createTeamsResponse struct {
 
 // POST /events
 // Creates a group. discord_guild_ids locks it to those Discord servers (host must belong to each).
+// deprioritize_noshows + max_noshows turn on no-show deprioritization for team creation.
 func (h *Handler) CreateEventHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
 	if !ok {
@@ -212,6 +233,16 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		return
 	}
 
+	noShowPolicy, ok := noShowPolicyFromRequest(body.DeprioritizeNoshows, body.MaxNoshows)
+	if !ok {
+		slog.WarnContext(c.Request.Context(), "invalid max_noshows in CreateEventHandler", "user_id", userUUID, "max_noshows", body.MaxNoshows)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": invalidNoShowThresholdMessage,
+		})
+		return
+	}
+
 	discordGuilds, err := h.snapshotDiscordGuilds(c.Request.Context(), userUUID, body.DiscordGuildIDs)
 	if err != nil {
 		if errors.Is(err, errDiscordGuildNotMember) {
@@ -238,6 +269,7 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 		startTime,
 		body.GamesToRun,
 		discordGuilds,
+		noShowPolicy,
 	)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidSortLogic) {
@@ -245,6 +277,14 @@ func (h *Handler) CreateEventHandler(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"status":  "error",
 				"message": "sort_logic must be 'balanced' or 'ranked'",
+			})
+			return
+		}
+		if errors.Is(err, store.ErrInvalidNoShowThreshold) {
+			slog.WarnContext(c.Request.Context(), "invalid no-show threshold from store in CreateEventHandler", "user_id", userUUID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": invalidNoShowThresholdMessage,
 			})
 			return
 		}
@@ -333,6 +373,8 @@ func (h *Handler) GetEventGroupAccessHandler(c *gin.Context) {
 }
 
 // PATCH /events/:groupId
+// Host-only. Updates group settings, per-game schedule, Discord lock, and (when
+// deprioritize_noshows is sent) no-show deprioritization.
 func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 	userUUID, ok := userIDFromContext(c)
 	if !ok {
@@ -426,6 +468,17 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
+	var noShowPolicy *store.NoShowPolicy
+	if body.DeprioritizeNoshows != nil {
+		policy, ok := noShowPolicyFromRequest(*body.DeprioritizeNoshows, body.MaxNoshows)
+		if !ok {
+			slog.WarnContext(c.Request.Context(), "invalid max_noshows in UpdateEventGroupSettingsHandler", "user_id", userUUID, "group_id", groupID, "max_noshows", body.MaxNoshows)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": invalidNoShowThresholdMessage})
+			return
+		}
+		noShowPolicy = &policy
+	}
+
 	discordGuilds, err := h.snapshotDiscordGuilds(c.Request.Context(), userUUID, body.DiscordGuildIDs)
 	if err != nil {
 		if errors.Is(err, errDiscordGuildNotMember) {
@@ -440,7 +493,7 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		return
 	}
 
-	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, name, eventUpdates, discordGuilds)
+	err = h.store.UpdateEventGroupSettings(c.Request.Context(), groupID, userUUID, body.Region, body.SubMin, sortLogicInput, *body.RegistrationOpen, name, eventUpdates, discordGuilds, noShowPolicy)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrForbidden):
@@ -452,6 +505,9 @@ func (h *Handler) UpdateEventGroupSettingsHandler(c *gin.Context) {
 		case errors.Is(err, store.ErrInvalidSubMin):
 			slog.WarnContext(c.Request.Context(), "invalid event group settings payload", "user_id", userUUID, "group_id", groupID, "region", body.Region, "sub_min", body.SubMin)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "region is required and sub_min must be >= 0"})
+		case errors.Is(err, store.ErrInvalidNoShowThreshold):
+			slog.WarnContext(c.Request.Context(), "invalid no-show threshold for event group settings update", "user_id", userUUID, "group_id", groupID)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": invalidNoShowThresholdMessage})
 		case errors.Is(err, store.ErrOpenRegistrationTeams):
 			slog.WarnContext(c.Request.Context(), "registration open blocked due to existing teams in settings update", "user_id", userUUID, "group_id", groupID)
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Delete teams before opening registration"})

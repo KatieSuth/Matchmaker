@@ -2,6 +2,7 @@ package matchmaking
 
 // PlanEvent runs the full matchmaking pipeline for one game: capacity check, mode strategy,
 // sub handling, team split, balanced fairness repair, host pick, and per-lobby fairness evaluation.
+// Lobby count is always sized from every registrant, so no-show deprioritization never reduces it.
 func PlanEvent(players []Player, cfg Config, settings Settings) (GamePlan, error) {
 	subCount := 0
 	for _, p := range players {
@@ -32,14 +33,20 @@ func PlanEvent(players []Player, cfg Config, settings Settings) (GamePlan, error
 }
 
 // buildGamePlan runs the pipeline for one lobby count. PlanEvent may call it
-// again at n−1 when a reserved-can-sub extra lobby is still unfair.
+// again at n−1 when a reserved-can-sub extra lobby is still unfair. Deprioritized
+// no-shows are left out of the lobby fill and sub-capacity replacements but stay in
+// the pool for fairness repair (as a last resort) and for sub assignment.
 func buildGamePlan(players []Player, cfg Config, settings Settings) GamePlan {
 	lobbyCount := cfg.LobbyCount
+	// Repeat no-shows sit out the fill; add-back depends on n, so this reruns when n drops.
+	players = markDeprioritized(players, cfg)
+	fillPool := eligiblePlayers(players)
+
 	var lobbies []LobbyPlan
 	if cfg.SortLogic == "ranked" {
-		lobbies = AssignRanked(players, lobbyCount, cfg.Slots)
+		lobbies = AssignRanked(fillPool, lobbyCount, cfg.Slots)
 	} else {
-		lobbies = AssignBalanced(players, cfg)
+		lobbies = AssignBalanced(fillPool, cfg)
 	}
 	lobbies, subCapacityAdjusted := ApplySubCapacityRosterConstraint(lobbies, players, cfg)
 	lobbies = ApplyDuoLobbyGrouping(lobbies)
@@ -54,10 +61,16 @@ func buildGamePlan(players []Player, cfg Config, settings Settings) GamePlan {
 		lobbies[i].Roster = append(team1, team2...)
 	}
 
-	// Balanced only: unplaced leftovers can repair an unfair split
-	// (lopsided teams or a rank outlier) that fill + sub-capacity never reconsidered.
-	if cfg.SortLogic != "ranked" {
+	// Unplaced leftovers can repair an unfair split (lopsided teams or a rank outlier) that
+	// fill + sub-capacity never reconsidered. Ranked keeps its packed band and only takes a
+	// single swap that makes the lobby fully fair.
+	if cfg.SortLogic == "ranked" {
+		lobbies = repairUnfairRankedLobbies(lobbies, players, cfg, settings)
+	} else {
+		// Closest-average teams face each other; re-checked after repair, which can move averages.
+		lobbies = pairTeamsAcrossLobbies(lobbies, settings, cfg.TierCount)
 		lobbies = repairUnfairWindowPairs(lobbies, players, cfg, settings)
+		lobbies = pairTeamsAcrossLobbies(lobbies, settings, cfg.TierCount)
 	}
 
 	lobbies = AssignMandatorySubs(lobbies, players, lobbyCount, cfg.SubMin)
@@ -65,7 +78,8 @@ func buildGamePlan(players []Player, cfg Config, settings Settings) GamePlan {
 
 	for i := range lobbies {
 		lobbies[i].HostID = PickLobbyHost(lobbies[i])
-		lobbies[i].FairnessWarning = IsLobbyUnfair(lobbies[i], settings, cfg.TierCount)
+		lobbies[i].FairnessChecks = EvaluateLobbyFairness(lobbies[i], settings, cfg.TierCount)
+		lobbies[i].FairnessWarning = lobbies[i].FairnessChecks.Unfair()
 	}
 
 	// Host warning is for leftover imbalance from the sub_min swap, not the swap itself.

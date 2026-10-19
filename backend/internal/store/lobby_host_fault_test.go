@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -15,36 +16,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// faultInjectTx wraps a DBTX and fails one named sqlc query (the "-- name: X" header sqlc puts on
+// every generated query), so fault tests survive queries being added or reordered.
 type faultInjectTx struct {
 	db.DBTX
-	queryRowCalls      int
-	failOnQueryRowCall int
-	queryCalls         int
-	failOnQueryCall    int
-	execCalls          int
-	failOnExecCall     int
-	injectedErr        error
+	// failOn is the sqlc query name to fail, e.g. "CountLobbiesForEvent"; empty never fails.
+	failOn string
+	// failOnNth picks which call of failOn fails (0 or 1 = the first).
+	failOnNth   int
+	injectedErr error
+	calls       map[string]int
+	totalCalls  int
+}
+
+var sqlcQueryName = regexp.MustCompile(`-- name: (\w+)`)
+
+// shouldFail counts the call and reports whether it is the configured failure.
+func (f *faultInjectTx) shouldFail(sql string) bool {
+	f.totalCalls++
+	name := ""
+	if m := sqlcQueryName.FindStringSubmatch(sql); m != nil {
+		name = m[1]
+	}
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[name]++
+	nth := f.failOnNth
+	if nth < 1 {
+		nth = 1
+	}
+	return f.failOn != "" && name == f.failOn && f.calls[name] == nth
 }
 
 func (f *faultInjectTx) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	f.queryRowCalls++
-	if f.queryRowCalls == f.failOnQueryRowCall {
+	if f.shouldFail(sql) {
 		return faultRow{err: f.injectedErr}
 	}
 	return f.DBTX.QueryRow(ctx, sql, args...)
 }
 
 func (f *faultInjectTx) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	f.queryCalls++
-	if f.queryCalls == f.failOnQueryCall {
+	if f.shouldFail(sql) {
 		return nil, f.injectedErr
 	}
 	return f.DBTX.Query(ctx, sql, args...)
 }
 
 func (f *faultInjectTx) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
-	f.execCalls++
-	if f.execCalls == f.failOnExecCall {
+	if f.shouldFail(sql) {
 		return pgconn.CommandTag{}, f.injectedErr
 	}
 	return f.DBTX.Exec(ctx, sql, args...)
@@ -102,36 +122,35 @@ func TestSetLobbyHostForEvent_DatabaseErrors(t *testing.T) {
 	injectedErr := errors.New("injected database failure")
 
 	cases := []struct {
-		name               string
-		failOnQueryRowCall int
-		failOnQueryCall    int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
 		{
-			name:               "count lobbies fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "count lobbies for event",
+			name:         "count lobbies fails",
+			failOn:       "CountLobbiesForEvent",
+			wantContains: "count lobbies for event",
 		},
 		{
-			name:               "registration lookup fails",
-			failOnQueryRowCall: 3,
-			wantContains:       "injected database failure",
+			name:         "registration lookup fails",
+			failOn:       "GetRegistrationByEventAndUser",
+			wantContains: "injected database failure",
 		},
 		{
-			name:            "player placements fails",
-			failOnQueryCall: 1,
-			wantContains:    "get player placements",
+			name:         "player placements fails",
+			failOn:       "GetPlayerPlacementsForEvent",
+			wantContains: "get player placements",
 		},
 		{
-			name:            "lobbies lookup fails",
-			failOnQueryCall: 2,
-			wantContains:    "get lobbies for event",
+			name:         "lobbies lookup fails",
+			failOn:       "GetLobbiesForEvent",
+			wantContains: "get lobbies for event",
 		},
 		{
-			name:           "update lobby host fails",
-			failOnExecCall: 1,
-			wantContains:   "update lobby host",
+			name:         "update lobby host fails",
+			failOn:       "UpdateLobbyHost",
+			wantContains: "update lobby host",
 		},
 	}
 
@@ -139,11 +158,10 @@ func TestSetLobbyHostForEvent_DatabaseErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupLobbyHostFixture(t)
 			faulty := &faultInjectTx{
-				DBTX:               fixture.tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        fixture.tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			s := store.NewPostgresStoreFromDBTXForTest(faulty)
 

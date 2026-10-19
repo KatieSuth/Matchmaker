@@ -51,19 +51,19 @@ describe("RegistrationToggleButton", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("shows 'Cancel Registration' and calls onClose when the editor is open", async () => {
+  it("shows 'Cancel Change to Registration' and calls onClose when the editor is open", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
     render(<RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, onClose })} />);
 
-    await user.click(screen.getByRole("button", { name: "Cancel Registration" }));
+    await user.click(screen.getByRole("button", { name: "Cancel Change to Registration" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("disables Cancel Registration while working", () => {
+  it("disables Cancel Change to Registration while working", () => {
     render(<RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, working: true })} />);
-    expect(screen.getByRole("button", { name: "Cancel Registration" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel Change to Registration" })).toBeDisabled();
   });
 
   it("has no accessibility violations", async () => {

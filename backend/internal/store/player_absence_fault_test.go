@@ -13,29 +13,27 @@ func TestSetPlayerAbsenceForEvent_DatabaseErrors(t *testing.T) {
 	injectedErr := errors.New("injected database failure")
 
 	cases := []struct {
-		name               string
-		absent             bool
-		failOnQueryRowCall int
-		failOnQueryCall    int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		absent       bool
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
-		{name: "event meta fails", absent: true, failOnQueryRowCall: 1, wantContains: "get event group meta"},
-		{name: "count lobbies fails", absent: true, failOnQueryRowCall: 2, wantContains: "count lobbies for event"},
-		{name: "player placements fails", absent: true, failOnQueryCall: 1, wantContains: "get player placements"},
-		{name: "upsert fails", absent: true, failOnExecCall: 1, wantContains: "upsert no-show"},
-		{name: "delete fails", absent: false, failOnExecCall: 1, wantContains: "delete no-show"},
+		{name: "event meta fails", absent: true, failOn: "GetEventGroupMetaByEventId", wantContains: "get event group meta"},
+		{name: "count lobbies fails", absent: true, failOn: "CountLobbiesForEvent", wantContains: "count lobbies for event"},
+		{name: "player placements fails", absent: true, failOn: "GetPlayerPlacementsForEvent", wantContains: "get player placements"},
+		{name: "upsert fails", absent: true, failOn: "UpsertNoShow", wantContains: "upsert no-show"},
+		{name: "delete fails", absent: false, failOn: "DeleteNoShow", wantContains: "delete no-show"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := setupAbsenceFixture(t)
 			faulty := &faultInjectTx{
-				DBTX:               f.tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        f.tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			s := store.NewPostgresStoreFromDBTXForTest(faulty)
 

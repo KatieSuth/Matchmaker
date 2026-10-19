@@ -103,7 +103,11 @@ export interface EventLobby {
   host_id: string | null;
   join_code: string | null;
   fairness_warning: boolean;
+  /** True while the warning is still the lock-in one; cleared when a manual change fixes or changes it. */
   fairness_warning_at_lock: boolean;
+  /** Live warning reasons; both false on a flagged lobby locked in before reasons were recorded. */
+  fairness_outlier: boolean;
+  fairness_team_separation: boolean;
   teams: EventTeam[];
   subs: LobbyPlayer[];
 }
@@ -144,10 +148,17 @@ export interface EventGroupDetail {
   registration_open: boolean;
   region: string;
   sort_logic: EventSortLogic;
+  deprioritize_noshows: boolean;
+  /** No-show threshold for deprioritization; only meaningful while deprioritize_noshows is true. */
+  max_noshows: number;
   created_at: string;
   updated_at: string;
   events: EventGroupEvent[];
   discord_guilds: DiscordGuild[];
+  /** Host-only: user ID → no-show count at this host in the last 6 months, for players at/above max_noshows. */
+  excessive_no_shows: Record<string, number>;
+  /** The viewer's own no-show game start times at this host in the last 6 months, oldest first. */
+  viewer_no_show_dates: string[];
 }
 
 export interface DiscordGuild {

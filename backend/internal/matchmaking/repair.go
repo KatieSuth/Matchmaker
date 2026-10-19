@@ -16,8 +16,9 @@ const repairFringeRanks = 2
 
 // repairUnfairWindowPairs pulls unplaced leftovers into an unfair lobby when
 // that strictly improves the check that is failing (team-average separation
-// and/or outlier gap). Ranked mode never runs this: contiguous rank packing is
-// the product.
+// and/or outlier gap). Deprioritized no-shows are leftovers too, but are only used
+// when no other leftover makes the lobby fair or matches their improvement.
+// Ranked mode never runs this: contiguous rank packing is the product.
 func repairUnfairWindowPairs(lobbies []LobbyPlan, allPlayers []Player, cfg Config, settings Settings) []LobbyPlan {
 	if len(lobbies) == 0 || cfg.SortLogic == "ranked" {
 		return lobbies
@@ -104,22 +105,167 @@ func repairPrimary(state repairState, optimizeSep bool) float64 {
 	return state.outlier
 }
 
-// tryRepairUnfairLobbyWindow searches one improving leftover swap. Leftovers
-// are unplaced players only — other lobbies are never raided. In-place 1-for-1
-// (same window, then adjacent fringe) runs before a full-window re-split so a
-// near-fringe leftover can sit in the vacated seat without reshuffling the lobby.
+// repairStage applies one kind of improving leftover change to lobby, reporting whether it did.
+type repairStage func(lobby *LobbyPlan, leftovers []Player) bool
+
+// repairCandidate is one stage's proposed lobby, scored for cross-stage comparison.
+type repairCandidate struct {
+	lobby LobbyPlan
+	state repairState
+	stage int
+}
+
+// moreBalanced reports whether a beats b: a fair lobby beats an unfair one, then the smaller
+// team-average gap, then the smaller outlier gap; ties go to the earlier, less disruptive stage.
+func moreBalanced(a, b repairCandidate) bool {
+	aFair := !a.state.sepOver && !a.state.outOver
+	bFair := !b.state.sepOver && !b.state.outOver
+	if aFair != bFair {
+		return aFair
+	}
+	if math.Abs(a.state.sep-b.state.sep) > balanceEpsilon {
+		return a.state.sep < b.state.sep
+	}
+	if math.Abs(a.state.outlier-b.state.outlier) > balanceEpsilon {
+		return a.state.outlier < b.state.outlier
+	}
+	return a.stage < b.stage
+}
+
+// tryRepairUnfairLobbyWindow applies the single most balanced leftover change to an unfair lobby.
+// Leftovers are unplaced players only — other lobbies are never raided. Every stage proposes its
+// best change: in-place 1-for-1 (same window, then adjacent fringe), an outlier partner from any
+// window, and a full-window re-split; the most balanced proposal wins (see moreBalanced). If it
+// brings in a deprioritized no-show, the most balanced clean proposal is used instead when it
+// leaves the lobby fair or improves it as much (preferCleanRepair).
 func tryRepairUnfairLobbyWindow(lobby *LobbyPlan, lobbies []LobbyPlan, allPlayers []Player, cfg Config, windows []rankWindow, settings Settings) bool {
 	leftovers := unplacedPlayers(allPlayers, lobbies)
 	unrosteredCanSubs := countUnrosteredCanSubs(allPlayers, lobbies)
 	reserved := reservedCanSubs(cfg)
+	optimizeSep := captureRepairState(*lobby, settings, cfg.TierCount).sepOver
 
-	if tryInPlaceLeftoverSwap(lobby, leftovers, unrosteredCanSubs, reserved, windows, cfg, settings, true) {
-		return true
+	// Listed least to most disruptive: the order breaks balance ties.
+	stages := []repairStage{
+		func(l *LobbyPlan, pool []Player) bool {
+			return tryInPlaceLeftoverSwap(l, pool, unrosteredCanSubs, reserved, windows, cfg, settings, true)
+		},
+		func(l *LobbyPlan, pool []Player) bool {
+			return tryInPlaceLeftoverSwap(l, pool, unrosteredCanSubs, reserved, windows, cfg, settings, false)
+		},
+		func(l *LobbyPlan, pool []Player) bool {
+			return tryOutlierPartnerSwap(l, pool, unrosteredCanSubs, reserved, cfg, settings)
+		},
+		func(l *LobbyPlan, pool []Player) bool {
+			return tryRepairUnfairLobbyWindowCombo(l, pool, unrosteredCanSubs, reserved, cfg, windows, settings)
+		},
 	}
-	if tryInPlaceLeftoverSwap(lobby, leftovers, unrosteredCanSubs, reserved, windows, cfg, settings, false) {
-		return true
+
+	best := func(pool []Player) (repairCandidate, bool) {
+		var winner repairCandidate
+		found := false
+		for i, stage := range stages {
+			trial := *lobby
+			trial.Roster = append([]Player(nil), lobby.Roster...)
+			if !stage(&trial, pool) {
+				continue
+			}
+			cand := repairCandidate{lobby: trial, state: captureRepairState(trial, settings, cfg.TierCount), stage: i}
+			if !found || moreBalanced(cand, winner) {
+				winner = cand
+				found = true
+			}
+		}
+		return winner, found
 	}
-	return tryRepairUnfairLobbyWindowCombo(lobby, leftovers, unrosteredCanSubs, reserved, cfg, windows, settings)
+
+	overall, ok := best(leftovers)
+	if !ok {
+		return false
+	}
+	if bringsInDeprioritized(lobby.Roster, overall.lobby.Roster) {
+		if clean, cleanOK := best(eligiblePlayers(leftovers)); cleanOK && preferCleanRepair(true, clean.state, overall.state, optimizeSep) {
+			*lobby = clean.lobby
+			return true
+		}
+	}
+	*lobby = overall.lobby
+	return true
+}
+
+// bringsInDeprioritized is true when after seats a deprioritized no-show who was not on before.
+func bringsInDeprioritized(before, after []Player) bool {
+	seated := playerIDSet(before)
+	return addsDeprioritized(after, seated)
+}
+
+// tryOutlierPartnerSwap fixes a lobby failing only because its top player has no one near
+// their rank: a leftover within the outlier gap of that player takes a seat on the other
+// team, so each side has a strong player. The leftover may come from any window (e.g. an
+// Ascendant 3 partnering a lone Diamond), so the change only counts when the lobby ends up
+// fully fair. Among fair trials, the most even teams win; clean leftovers beat deprioritized ones.
+func tryOutlierPartnerSwap(lobby *LobbyPlan, leftovers []Player, unrosteredCanSubs, reserved int, cfg Config, settings Settings) bool {
+	before := captureRepairState(*lobby, settings, cfg.TierCount)
+	if !before.outOver {
+		return false
+	}
+	top, ok := topSeatedPlayer(lobby.Roster)
+	if !ok {
+		return false
+	}
+	gap := ScaledFairnessThresholds(settings, cfg.TierCount).OutlierGap
+
+	overall := inPlaceBest{state: before, delta: math.Inf(1)}
+	clean := inPlaceBest{state: before, delta: math.Inf(1)}
+	for _, leftover := range leftovers {
+		if !leftoverCanJoinRoster(leftover, unrosteredCanSubs, reserved) {
+			continue
+		}
+		if math.Abs(leftover.AvgRank-top.AvgRank) > gap+balanceEpsilon {
+			continue
+		}
+		for _, seat := range lobby.Roster {
+			if seat.TeamNumber == nil || *seat.TeamNumber == *top.TeamNumber {
+				continue
+			}
+			trial := replaceRosterPlayerKeepingTeam(lobby.Roster, seat.UserID, leftover)
+			trialState := captureRepairState(LobbyPlan{Roster: trial}, settings, cfg.TierCount)
+			if trialState.sepOver || trialState.outOver {
+				continue
+			}
+			delta := math.Abs(seat.AvgRank - leftover.AvgRank)
+			// Every trial here is fair, so rank them by how even the teams end up.
+			overall.offer(true, trialState, delta, trial, seat, leftover)
+			if !leftover.Deprioritized {
+				clean.offer(true, trialState, delta, trial, seat, leftover)
+			}
+		}
+	}
+
+	switch {
+	case clean.found:
+		lobby.Roster = clean.roster
+	case overall.found:
+		lobby.Roster = overall.roster
+	default:
+		return false
+	}
+	return true
+}
+
+// topSeatedPlayer is the highest-ranked player with a team seat (subs excluded).
+func topSeatedPlayer(roster []Player) (Player, bool) {
+	var top Player
+	found := false
+	for _, p := range roster {
+		if p.TeamNumber == nil {
+			continue
+		}
+		if !found || p.AvgRank > top.AvgRank {
+			top = p
+			found = true
+		}
+	}
+	return top, found
 }
 
 // leftoverCanJoinRoster is false when taking this can-sub would leave too few
@@ -146,11 +292,9 @@ func tryInPlaceLeftoverSwap(
 	before := captureRepairState(*lobby, settings, cfg.TierCount)
 	// Both checks failing: even the sides first; the outlier often follows.
 	optimizeSep := before.sepOver
-	bestState := before
-	bestDelta := math.Inf(1)
-	found := false
-	var bestRoster []Player
-	var bestOut, bestIn Player
+	// overall considers every leftover; clean only those who are not deprioritized no-shows.
+	overall := inPlaceBest{state: before, delta: math.Inf(1)}
+	clean := inPlaceBest{state: before, delta: math.Inf(1)}
 
 	for _, leftover := range leftovers {
 		if !leftoverCanJoinRoster(leftover, unrosteredCanSubs, reserved) {
@@ -176,28 +320,58 @@ func tryInPlaceLeftoverSwap(
 				continue
 			}
 			delta := math.Abs(rostered.AvgRank - leftover.AvgRank)
-			if found && inPlaceTrialNotBetter(optimizeSep, bestState, trialState, delta, bestDelta, rostered, leftover, bestOut, bestIn) {
-				continue
+			overall.offer(optimizeSep, trialState, delta, trial, rostered, leftover)
+			if !leftover.Deprioritized {
+				clean.offer(optimizeSep, trialState, delta, trial, rostered, leftover)
 			}
-
-			bestState = trialState
-			bestDelta = delta
-			bestRoster = trial
-			bestOut = rostered
-			bestIn = leftover
-			found = true
 		}
 	}
 
-	if !found {
+	if !overall.found {
 		return false
 	}
-	lobby.Roster = bestRoster
+	if preferCleanRepair(clean.found, clean.state, overall.state, optimizeSep) {
+		lobby.Roster = clean.roster
+		return true
+	}
+	lobby.Roster = overall.roster
 	return true
 }
 
+// inPlaceBest is the best accepted 1-for-1 seen so far in one repair pass.
+type inPlaceBest struct {
+	found   bool
+	state   repairState
+	delta   float64
+	roster  []Player
+	out, in Player
+}
+
+// offer replaces the current best with this trial unless inPlaceTrialNotBetter rejects it.
+func (b *inPlaceBest) offer(optimizeSep bool, state repairState, delta float64, roster []Player, out, in Player) {
+	if b.found && inPlaceTrialNotBetter(optimizeSep, b.state, state, delta, b.delta, out, in, b.out, b.in) {
+		return
+	}
+	*b = inPlaceBest{found: true, state: state, delta: delta, roster: roster, out: out, in: in}
+}
+
+// preferCleanRepair reports whether the best trial that brings in no deprioritized
+// no-show should win over the overall best. It wins when it leaves the lobby fair, or
+// when it is at least as good on the metric being optimized; otherwise a repeat no-show
+// is used because they are the only way to get a fairer match.
+func preferCleanRepair(cleanFound bool, clean, overall repairState, optimizeSep bool) bool {
+	if !cleanFound {
+		return false
+	}
+	if !clean.sepOver && !clean.outOver {
+		return true
+	}
+	return repairPrimary(clean, optimizeSep) <= repairPrimary(overall, optimizeSep)+balanceEpsilon
+}
+
 // inPlaceTrialNotBetter is true when trial should not replace the current best
-// 1-for-1. Primary metric first, then closer ranks, then preferInPlaceSwap.
+// 1-for-1. Primary metric first, then closer ranks, then no-show deprioritization,
+// then preferInPlaceSwap.
 func inPlaceTrialNotBetter(
 	optimizeSep bool,
 	best, trial repairState,
@@ -213,8 +387,14 @@ func inPlaceTrialNotBetter(
 		if delta > bestDelta+balanceEpsilon {
 			return true
 		}
-		if delta >= bestDelta-balanceEpsilon && !preferInPlaceSwap(rostered, leftover, bestOut, bestIn) {
-			return true
+		if delta >= bestDelta-balanceEpsilon {
+			// Full tie: a non-deprioritized leftover, then fewer no-shows, beats the rest.
+			if r, bestR := deprioritizationRank(leftover), deprioritizationRank(bestIn); r != bestR {
+				return r > bestR
+			}
+			if !preferInPlaceSwap(rostered, leftover, bestOut, bestIn) {
+				return true
+			}
 		}
 	}
 	return false
@@ -341,10 +521,9 @@ func tryRepairUnfairLobbyWindowCombo(
 	before := captureRepairState(*lobby, settings, cfg.TierCount)
 	// Both checks failing: even the sides first; the outlier often follows.
 	optimizeSep := before.sepOver
-	bestState := before
-	found := false
-	bestOverlap := 0
-	var bestRoster []Player
+	// overall considers every combo; clean only combos that add no deprioritized no-show.
+	overall := comboBest{state: before}
+	clean := comboBest{state: before}
 
 	for w := range windows {
 		rosteredInWindow := playersInWindow(lobby.Roster, w, windows, cfg.TierCount)
@@ -389,31 +568,61 @@ func tryRepairUnfairLobbyWindowCombo(
 				continue
 			}
 			overlap := overlapCount(chosen, currentIDs)
-			if found {
-				bestPrimary := repairPrimary(bestState, optimizeSep)
-				trialPrimary := repairPrimary(trialState, optimizeSep)
-				if trialPrimary > bestPrimary+balanceEpsilon {
-					continue
-				}
-				// Equal primary: keep the combo that retains more of the current
-				// window roster so a re-split is not a full reshuffle for a tie.
-				if trialPrimary >= bestPrimary-balanceEpsilon && overlap <= bestOverlap {
-					continue
-				}
+			roster := append(team1, team2...)
+			overall.offer(optimizeSep, trialState, overlap, roster)
+			if !addsDeprioritized(chosen, currentIDs) {
+				clean.offer(optimizeSep, trialState, overlap, roster)
 			}
-
-			bestState = trialState
-			bestOverlap = overlap
-			bestRoster = append(team1, team2...)
-			found = true
 		}
 	}
 
-	if !found {
+	if !overall.found {
 		return false
 	}
-	lobby.Roster = bestRoster
+	if preferCleanRepair(clean.found, clean.state, overall.state, optimizeSep) {
+		lobby.Roster = clean.roster
+		return true
+	}
+	lobby.Roster = overall.roster
 	return true
+}
+
+// comboBest is the best accepted window re-split seen so far in one repair pass.
+type comboBest struct {
+	found   bool
+	state   repairState
+	overlap int
+	roster  []Player
+}
+
+// offer keeps the better primary metric; on a tie, the combo that retains more of the
+// current window roster so a re-split is not a full reshuffle for the same score.
+func (b *comboBest) offer(optimizeSep bool, state repairState, overlap int, roster []Player) {
+	if b.found {
+		bestPrimary := repairPrimary(b.state, optimizeSep)
+		trialPrimary := repairPrimary(state, optimizeSep)
+		if trialPrimary > bestPrimary+balanceEpsilon {
+			return
+		}
+		if trialPrimary >= bestPrimary-balanceEpsilon && overlap <= b.overlap {
+			return
+		}
+	}
+	*b = comboBest{found: true, state: state, overlap: overlap, roster: roster}
+}
+
+// addsDeprioritized is true when a combo brings in a deprioritized no-show who is not
+// already in this window's roster.
+func addsDeprioritized(chosen []Player, alreadyRostered map[uuid.UUID]struct{}) bool {
+	for _, p := range chosen {
+		if !p.Deprioritized {
+			continue
+		}
+		if _, ok := alreadyRostered[p.UserID]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // reservedCanSubs is n × sub_min, the volunteer floor that leftover repair

@@ -1222,8 +1222,9 @@ paths:
       operationId: setPlayerAbsenceForEvent
       description: >
         Host-only. With absent=true, records a no-show for a player currently on a team in this
-        locked-in game (re-marking keeps the original marked_absent_at). With absent=false, removes
-        the mark; this is idempotent and does not require the player to still be on a team.
+        locked-in game once its start time has passed (re-marking keeps the original
+        marked_absent_at). With absent=false, removes the mark; this is idempotent and requires
+        neither a started game nor the player still being on a team.
       security:
         - bearerAuth: []
       parameters:
@@ -1251,7 +1252,7 @@ paths:
         "204":
           description: Attendance updated successfully
         "400":
-          description: Invalid request, no teams exist, or player is not on a team
+          description: Invalid request, no teams exist, the game has not started yet, or player is not on a team
           content:
             application/json:
               schema:
@@ -2041,6 +2042,20 @@ components:
           description: >
             Discord snowflakes to lock this event to. Empty or omitted means unrestricted.
             The host must belong to every selected server.
+        deprioritize_noshows:
+          type: boolean
+          default: false
+          description: >
+            When true, team creation holds out players whose no-shows at this host's games
+            (counted by game start time, past 6 months) reach max_noshows. They are added back
+            fewest-no-shows-first only when needed to fill lobbies, and are a last resort for
+            the final fairness repair.
+        max_noshows:
+          type: integer
+          minimum: 1
+          description: >
+            No-show count (greater than or equal) that triggers deprioritization. Required and must be
+            at least 1 when deprioritize_noshows is true; ignored otherwise (400 if invalid).
 
     CreateEventResponse:
       type: object
@@ -2101,6 +2116,17 @@ components:
           description: >
             Discord snowflakes to lock this event to. Empty or omitted replaces the lock with
             zero rows (unrestricted). The host must belong to every selected server.
+        deprioritize_noshows:
+          type: boolean
+          description: >
+            Turns no-show deprioritization on or off. Omit to keep the stored setting.
+            Turning it off keeps the stored max_noshows so re-enabling restores it.
+        max_noshows:
+          type: integer
+          minimum: 1
+          description: >
+            No-show count (greater than or equal) that triggers deprioritization. Required and must be
+            at least 1 when deprioritize_noshows is true; ignored when it is false or omitted.
 
     UpdateRegistrationStatusRequest:
       type: object
@@ -2292,7 +2318,7 @@ components:
 
     EventLobby:
       type: object
-      required: [id, fairness_warning, fairness_warning_at_lock, teams, subs]
+      required: [id, fairness_warning, fairness_warning_at_lock, fairness_outlier, fairness_team_separation, teams, subs]
       properties:
         id:
           type: string
@@ -2313,7 +2339,18 @@ components:
           type: boolean
         fairness_warning_at_lock:
           type: boolean
-          description: Whether the lobby was flagged unfair when teams were locked in (unchanged by manual roster edits).
+          description: >
+            True while the lobby's warning is still the one from lock-in (flagged unfair at lock-in and
+            still failing for exactly the same reasons). Cleared once a manual roster change fixes the
+            lobby or changes why it is unfair, so the UI switches to its manual-change wording.
+        fairness_outlier:
+          type: boolean
+          description: >
+            Live fairness_warning reason: one player is ranked far above the rest of the lobby.
+            Both reasons false on a flagged lobby means it was locked in before reasons were recorded.
+        fairness_team_separation:
+          type: boolean
+          description: Live fairness_warning reason — the two teams' average ranks are too far apart.
         teams:
           type: array
           items:
@@ -2341,6 +2378,10 @@ components:
         - registration_open
         - region
         - sort_logic
+        - deprioritize_noshows
+        - max_noshows
+        - excessive_no_shows
+        - viewer_no_show_dates
         - created_at
         - updated_at
         - events
@@ -2395,6 +2436,30 @@ components:
           type: string
         sort_logic:
           $ref: "#/components/schemas/SortLogic"
+        deprioritize_noshows:
+          type: boolean
+          description: Whether team creation deprioritizes repeat no-shows.
+        max_noshows:
+          type: integer
+          description: No-show threshold; only meaningful while deprioritize_noshows is true.
+        excessive_no_shows:
+          type: object
+          additionalProperties:
+            type: integer
+          description: >
+            Host viewer only (empty object for everyone else, and when deprioritize_noshows is off).
+            Maps registrant user IDs to their no-show count at this host's games in the past 6 months,
+            limited to players at or above max_noshows.
+        viewer_no_show_dates:
+          type: array
+          items:
+            type: string
+            format: date-time
+          description: >
+            Start times of this host's games in the past 6 months where the viewer was marked
+            absent, oldest first. Always the viewer's own record. Empty when they have none or
+            when deprioritize_noshows is off. Compared with max_noshows to decide whether the
+            viewer is currently deprioritized.
         created_at:
           type: string
           format: date-time

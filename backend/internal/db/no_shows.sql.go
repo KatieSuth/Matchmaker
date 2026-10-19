@@ -7,9 +7,59 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const countRecentNoShowsForHost = `-- name: CountRecentNoShowsForHost :many
+SELECT ns.user_id, COUNT(*)::INT AS no_show_count
+FROM no_shows ns
+JOIN events e ON e.id = ns.event_id
+WHERE ns.host_id = $1
+  AND ns.user_id = ANY($2::uuid[])
+  AND e.start_time BETWEEN $3 AND $4
+GROUP BY ns.user_id
+`
+
+type CountRecentNoShowsForHostParams struct {
+	HostID  uuid.UUID
+	UserIds []uuid.UUID
+	Since   time.Time
+	Until   time.Time
+}
+
+type CountRecentNoShowsForHostRow struct {
+	UserID      uuid.UUID
+	NoShowCount int32
+}
+
+// Per-player no-show counts at one host's games whose start_time falls in [since, until].
+// Counted by game date, not when the mark was recorded.
+func (q *Queries) CountRecentNoShowsForHost(ctx context.Context, arg CountRecentNoShowsForHostParams) ([]CountRecentNoShowsForHostRow, error) {
+	rows, err := q.db.Query(ctx, countRecentNoShowsForHost,
+		arg.HostID,
+		arg.UserIds,
+		arg.Since,
+		arg.Until,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountRecentNoShowsForHostRow
+	for rows.Next() {
+		var i CountRecentNoShowsForHostRow
+		if err := rows.Scan(&i.UserID, &i.NoShowCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const deleteNoShow = `-- name: DeleteNoShow :exec
 DELETE FROM no_shows
@@ -46,6 +96,49 @@ func (q *Queries) ListNoShowUserIdsForEvent(ctx context.Context, eventID uuid.UU
 			return nil, err
 		}
 		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentNoShowDatesForHostUser = `-- name: ListRecentNoShowDatesForHostUser :many
+SELECT e.start_time
+FROM no_shows ns
+JOIN events e ON e.id = ns.event_id
+WHERE ns.host_id = $1
+  AND ns.user_id = $2
+  AND e.start_time BETWEEN $3 AND $4
+ORDER BY e.start_time ASC
+`
+
+type ListRecentNoShowDatesForHostUserParams struct {
+	HostID uuid.UUID
+	UserID uuid.UUID
+	Since  time.Time
+	Until  time.Time
+}
+
+// Start times of one host's games in [since, until] where this user was marked absent, oldest first.
+func (q *Queries) ListRecentNoShowDatesForHostUser(ctx context.Context, arg ListRecentNoShowDatesForHostUserParams) ([]time.Time, error) {
+	rows, err := q.db.Query(ctx, listRecentNoShowDatesForHostUser,
+		arg.HostID,
+		arg.UserID,
+		arg.Since,
+		arg.Until,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []time.Time
+	for rows.Next() {
+		var start_time time.Time
+		if err := rows.Scan(&start_time); err != nil {
+			return nil, err
+		}
+		items = append(items, start_time)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

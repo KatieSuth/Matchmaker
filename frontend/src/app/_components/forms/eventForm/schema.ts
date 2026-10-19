@@ -9,7 +9,10 @@ export type EventFormEditScheduleRow = {
   game_mode_id: string;
 };
 
-/** Zod schema for create vs edit: edit omits required start time / mode; Discord lock needs at least one server. */
+/**
+ * Zod schema for create vs edit: edit omits required start time / mode; Discord lock needs at
+ * least one server; the no-show absence limit is only validated while deprioritization is on.
+ */
 export function buildEventFormSchema(mode: "create" | "edit") {
   const startTimeField =
     mode === "create"
@@ -54,10 +57,18 @@ export function buildEventFormSchema(mode: "create" | "edit") {
     sort_logic: z.enum(["balanced", "ranked"]),
     discord_lock: z.boolean(),
     discord_guild_ids: z.array(z.string()),
+    deprioritize_noshows: z.boolean(),
+    max_noshows: z.number(),
   }).refine((data) => !data.discord_lock || data.discord_guild_ids.length > 0, {
     message: "Select at least one Discord server.",
     path: ["discord_guild_ids"],
-  });
+  }).refine(
+    (data) => !data.deprioritize_noshows || (Number.isInteger(data.max_noshows) && data.max_noshows >= 1),
+    {
+      message: "Absence limit must be a whole number greater than 0.",
+      path: ["max_noshows"],
+    },
+  );
 }
 
 export type EventFormValues = z.infer<ReturnType<typeof buildEventFormSchema>>;

@@ -23,7 +23,8 @@ type absenceFixture struct {
 	target  uuid.UUID
 }
 
-// setupAbsenceFixture creates a locked-in game with four team players and returns one as the target.
+// setupAbsenceFixture creates a locked-in game that started an hour ago, with four team players,
+// and returns one as the target.
 func setupAbsenceFixture(t *testing.T) absenceFixture {
 	t.Helper()
 	s, tx := createEventTestStoreTx(t)
@@ -32,7 +33,7 @@ func setupAbsenceFixture(t *testing.T) absenceFixture {
 	games, err := s.GetSystemGames(ctx)
 	require.NoError(t, err)
 	modeID := insertSmallTeamMode(t, ctx, tx, games[0].ID)
-	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(24*time.Hour))
+	groupID, eventID := insertEventFixture(t, ctx, tx, host.ID, modeID, time.Now().UTC().Add(-time.Hour))
 
 	for i := 0; i < 4; i++ {
 		u := createTestUser(t, ctx, s)
@@ -278,4 +279,26 @@ func TestVisibleAbsentUserIDs(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestSetPlayerAbsenceForEvent_RejectsMarkBeforeGameStarts(t *testing.T) {
+	f := setupAbsenceFixture(t)
+	beforeStart := time.Now().Add(-2 * time.Hour)
+
+	err := store.SetPlayerAbsenceForEventAtForTest(f.s, f.ctx, f.eventID, f.hostID, f.target, true, beforeStart)
+	assert.ErrorIs(t, err, store.ErrInvalidAbsenceChange)
+	var absenceErr *store.AbsenceValidationError
+	require.ErrorAs(t, err, &absenceErr)
+	assert.Equal(t, "Players can be marked absent once the game has started", absenceErr.Message)
+	_, _, found := noShowRow(t, f, f.target)
+	assert.False(t, found)
+}
+
+func TestSetPlayerAbsenceForEvent_ClearAllowedBeforeGameStarts(t *testing.T) {
+	f := setupAbsenceFixture(t)
+	require.NoError(t, f.s.SetPlayerAbsenceForEvent(f.ctx, f.eventID, f.hostID, f.target, true))
+
+	require.NoError(t, store.SetPlayerAbsenceForEventAtForTest(f.s, f.ctx, f.eventID, f.hostID, f.target, false, time.Now().Add(-2*time.Hour)))
+	_, _, found := noShowRow(t, f, f.target)
+	assert.False(t, found)
 }

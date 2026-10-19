@@ -13,6 +13,7 @@ import { buildDiscordPingMessage } from "@/app/_lib/discordPings";
 import { EventGroupDetail, EventRegistration } from "@/app/_types/types";
 import { EventGroupHeaderCard } from "./_components/EventGroupHeaderCard";
 import { GameTabsStrip } from "./_components/GameTabsStrip";
+import { NoShowNoticeBanner } from "./_components/NoShowNoticeBanner";
 import {
   RegistrationEditorForm,
   RegistrationSaveFooter,
@@ -277,6 +278,12 @@ export default function EventGroupPage() {
           onScrollToEvent={scrollToEventSection}
         />
 
+        <NoShowNoticeBanner
+          noShowDates={group.viewer_no_show_dates ?? []}
+          deprioritizeNoShows={group.deprioritize_noshows}
+          maxNoShows={group.max_noshows}
+        />
+
         {hasVisibleGames && (
           <RegistrationToggleButton
             group={group}
@@ -340,6 +347,7 @@ export default function EventGroupPage() {
                       eventRegion={group.region}
                       currentUserRegion={user?.region}
                       isHostView={isHost}
+                      excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                       currentUserId={user?.id}
                       gameRanks={gameRanks}
                       onShowDetails={handleShowDetails}
@@ -364,6 +372,7 @@ export default function EventGroupPage() {
                       eventRegion={group.region}
                       currentUserRegion={user?.region}
                       isHostView={isHost}
+                      excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                       currentUserId={user?.id}
                       onShowDetails={handleShowDetails}
                       onDeleteRegistrationForGame={(registration, gameNumber) =>
@@ -408,6 +417,7 @@ export default function EventGroupPage() {
                 eventRegion={group.region}
                 currentUserRegion={user?.region}
                 isHostView={isHost}
+                excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                 currentUserId={user?.id}
                 gameRanks={gameRanks}
                 onShowDetails={handleShowDetails}
@@ -432,6 +442,7 @@ export default function EventGroupPage() {
                 eventRegion={group.region}
                 currentUserRegion={user?.region}
                 isHostView={isHost}
+                excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                 currentUserId={user?.id}
                 onShowDetails={handleShowDetails}
                 onDeleteRegistrationForGame={(registration, gameNumber) =>

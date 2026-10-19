@@ -42,6 +42,7 @@ func TestPersistTeamPlansForTest_PersistsRosterSubsAndFairness(t *testing.T) {
 		Lobbies: []matchmaking.LobbyPlan{{
 			HostID:          &p1.ID,
 			FairnessWarning: true,
+			FairnessChecks:  matchmaking.FairnessChecks{Outlier: true},
 			Roster: []matchmaking.Player{
 				{UserID: p1.ID, TeamNumber: &team1},
 				{UserID: p2.ID, TeamNumber: &team2},
@@ -63,6 +64,12 @@ func TestPersistTeamPlansForTest_PersistsRosterSubsAndFairness(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, lobbyCount)
 	assert.True(t, fairnessWarning)
+
+	var outlier, teamSep bool
+	err = tx.QueryRow(ctx, `SELECT fairness_outlier, fairness_team_separation FROM lobbies WHERE event_id = $1`, eventID).Scan(&outlier, &teamSep)
+	require.NoError(t, err)
+	assert.True(t, outlier, "lock-in records which check failed")
+	assert.False(t, teamSep)
 
 	err = tx.QueryRow(ctx, `
 		SELECT count(*)
@@ -159,13 +166,14 @@ func TestMapRegistrationsToPlayersForTest_MapsDuoFields(t *testing.T) {
 			CurrentRankOrder: 10,
 			PeakRankOrder:    12,
 		},
-	}, map[uuid.UUID]int{userID: 2})
+	}, map[uuid.UUID]int{userID: 2}, map[uuid.UUID]int{userID: 4})
 
 	require.Len(t, players, 1)
 	assert.Equal(t, "alpha", players[0].DiscordName)
 	require.NotNil(t, players[0].DuoRequest)
 	assert.Equal(t, "partner", *players[0].DuoRequest)
 	assert.Equal(t, 2, players[0].RegisteredGameCount)
+	assert.Equal(t, 4, players[0].NoShowCount)
 }
 
 func TestMapRegistrationsToPlayersForTest_NilOptionalFields(t *testing.T) {
@@ -181,7 +189,7 @@ func TestMapRegistrationsToPlayersForTest_NilOptionalFields(t *testing.T) {
 			CurrentRankOrder: 4,
 			PeakRankOrder:    4,
 		},
-	}, map[uuid.UUID]int{userID: 1})
+	}, map[uuid.UUID]int{userID: 1}, nil)
 
 	require.Len(t, players, 1)
 	assert.Empty(t, players[0].DiscordName)

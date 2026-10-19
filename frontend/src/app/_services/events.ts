@@ -18,6 +18,9 @@ export interface CreateEventRequest {
   sort_logic: EventSortLogic;
   name?: string;
   discord_guild_ids: string[];
+  deprioritize_noshows: boolean;
+  /** Required (>= 1) when deprioritize_noshows is true; ignored otherwise. */
+  max_noshows: number;
 }
 
 export interface CreateEventResponse {
@@ -43,6 +46,9 @@ export interface UpdateEventGroupRequest {
   name?: string;
   events: PatchGroupEventScheduleItem[];
   discord_guild_ids: string[];
+  deprioritize_noshows: boolean;
+  /** Required (>= 1) when deprioritize_noshows is true; the backend keeps the stored value when off. */
+  max_noshows: number;
 }
 
 export interface UpdateRegistrationRequest {

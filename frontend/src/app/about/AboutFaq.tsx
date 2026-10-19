@@ -111,8 +111,8 @@ export default function AboutFaq() {
         <p className={bodyText}>
           After teams are created, each lobby is checked for balance. If Matchmaker could not get
           a good result, you will see a warning on that game or lobby. The message explains that
-          teams were formed with the best available balance, but the rank spread was too wide for
-          fully fair teams in that lobby.
+          teams were formed with the best available balance and which of the problems below kept
+          that lobby from being fully fair.
         </p>
         <p className={bodyText}>A warning usually means one of two things:</p>
         <ul className={listCls}>

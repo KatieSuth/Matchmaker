@@ -15,6 +15,7 @@ export function EventPanel({
   onShowDetails,
   onDeleteRegistrationForGame,
   onDeleteAllFromUser,
+  excessiveNoShows,
 }: {
   event: EventGroupEvent;
   gameNumber: number;
@@ -25,6 +26,8 @@ export function EventPanel({
   onShowDetails: (registration: EventRegistration) => void;
   onDeleteRegistrationForGame: (registration: EventRegistration, gameNumber: number) => void;
   onDeleteAllFromUser: (registration: EventRegistration, gameNumber: number) => void;
+  /** Host-only: user ID → recent no-show count for players at/above the deprioritization limit. */
+  excessiveNoShows?: Record<string, number>;
 }) {
   const absentUserIds = new Set(event.absent_user_ids ?? []);
   return (
@@ -49,6 +52,7 @@ export function EventPanel({
             onDeleteRegistrationForGame={onDeleteRegistrationForGame}
             onDeleteAllFromUser={onDeleteAllFromUser}
             isAbsent={absentUserIds.has(registration.user_id)}
+            recentNoShowCount={excessiveNoShows?.[registration.user_id] ?? 0}
           />
         ))
       )}

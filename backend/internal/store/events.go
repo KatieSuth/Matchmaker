@@ -39,7 +39,31 @@ var (
 	ErrInvalidGroupEvents          = errors.New("events payload does not match this group's schedule")
 	ErrEventStartInPast            = errors.New("event start time cannot be in the past")
 	ErrRegistrationDeleteWithTeams = errors.New("registration delete blocked by teams")
+	ErrInvalidNoShowThreshold      = errors.New("invalid no-show threshold")
 )
+
+// NoShowPolicy is the host's no-show deprioritization setting. Threshold is the 6-month
+// no-show count that triggers deprioritization and is only read while Enabled is true.
+type NoShowPolicy struct {
+	Enabled   bool
+	Threshold int32
+}
+
+// resolveNoShowPolicy returns the deprioritize_noshows / max_noshows values to persist.
+// A nil policy keeps the stored values. A disabled policy keeps the stored threshold so
+// re-enabling restores it. An enabled policy must carry a threshold of at least 1.
+func resolveNoShowPolicy(policy *NoShowPolicy, currentEnabled bool, currentThreshold int32) (bool, int32, error) {
+	if policy == nil {
+		return currentEnabled, currentThreshold, nil
+	}
+	if !policy.Enabled {
+		return false, currentThreshold, nil
+	}
+	if policy.Threshold < 1 {
+		return false, 0, ErrInvalidNoShowThreshold
+	}
+	return true, policy.Threshold, nil
+}
 
 // GroupEventUpdate is one row in PATCH /events/:groupId (per-game schedule + mode).
 type GroupEventUpdate struct {
@@ -182,10 +206,15 @@ func isValidSortLogic(s string) bool {
 	return s == "balanced" || s == "ranked"
 }
 
-// CreateEventGroupWithEvents inserts a group, its scheduled games, and the Discord lock snapshot in one transaction.
-func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
+// CreateEventGroupWithEvents inserts a group, its scheduled games, the Discord lock snapshot,
+// and the no-show deprioritization setting in one transaction.
+func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild, noShows NoShowPolicy) (uuid.UUID, error) {
 	if !isValidSortLogic(sortLogic) {
 		return uuid.Nil, ErrInvalidSortLogic
+	}
+	deprioritize, maxNoShows, err := resolveNoShowPolicy(&noShows, false, 0)
+	if err != nil {
+		return uuid.Nil, err
 	}
 
 	var groupID uuid.UUID
@@ -194,7 +223,7 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 		namePtr = &name
 	}
 
-	err := s.WithTx(ctx, func(tx Store) error {
+	err = s.WithTx(ctx, func(tx Store) error {
 		txStore, ok := tx.(*PostgresStore)
 		if !ok {
 			return fmt.Errorf("unexpected tx store type %T", tx)
@@ -209,12 +238,14 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 		}
 
 		group, err := txStore.q.CreateEventGroup(ctx, db.CreateEventGroupParams{
-			OwnerID:          userID,
-			SubMin:           subMin,
-			RegistrationOpen: registrationOpen,
-			Region:           region,
-			SortLogic:        sortLogic,
-			Name:             namePtr,
+			OwnerID:             userID,
+			SubMin:              subMin,
+			RegistrationOpen:    registrationOpen,
+			Region:              region,
+			SortLogic:           sortLogic,
+			Name:                namePtr,
+			DeprioritizeNoshows: deprioritize,
+			MaxNoshows:          maxNoShows,
 		})
 		if err != nil {
 			return fmt.Errorf("create event group: %w", err)
@@ -251,7 +282,8 @@ func (s *PostgresStore) CreateEventGroupWithEvents(ctx context.Context, userID, 
 
 // GetEventGroupDetail loads a group header plus each scheduled game and, per game,
 // the registration list the viewer may see (full detail for the host, limited otherwise)
-// and the no-show marks visible to the viewer.
+// and the no-show marks visible to the viewer. When deprioritization is on, the viewer also gets
+// their own recent no-show dates at this host, and the host gets each excessive registrant's count.
 func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error) {
 	groupRow, err := s.q.GetEventGroupDetailById(ctx, groupID)
 	if err != nil {
@@ -306,11 +338,82 @@ func (s *PostgresStore) GetEventGroupDetail(ctx context.Context, groupID, viewer
 		return model.EventGroupDetail{}, err
 	}
 	detail.DiscordGuilds = guilds
+
+	if err := s.attachNoShowDetail(ctx, &detail, groupRow, viewerID, viewerIsHost, time.Now()); err != nil {
+		return model.EventGroupDetail{}, err
+	}
 	return detail, nil
 }
 
-// UpdateEventGroupSettings patches group settings, per-game schedule, and Discord lock rows in one transaction.
-func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
+// attachNoShowDetail fills the no-show deprioritization fields of detail. While the event
+// deprioritizes no-shows, the viewer gets their own recent no-show dates at this host and the
+// host also gets each excessive registrant's count. Otherwise both stay empty and nothing is queried.
+func (s *PostgresStore) attachNoShowDetail(ctx context.Context, detail *model.EventGroupDetail, groupRow db.GetEventGroupDetailByIdRow, viewerID uuid.UUID, viewerIsHost bool, now time.Time) error {
+	if !groupRow.DeprioritizeNoshows {
+		return nil
+	}
+
+	since, until := noShowWindow(now)
+	viewerDates, err := s.q.ListRecentNoShowDatesForHostUser(ctx, db.ListRecentNoShowDatesForHostUserParams{
+		HostID: groupRow.OwnerID,
+		UserID: viewerID,
+		Since:  since,
+		Until:  until,
+	})
+	if err != nil {
+		return fmt.Errorf("list viewer no-show dates: %w", err)
+	}
+	if viewerDates != nil {
+		detail.ViewerNoShowDates = viewerDates
+	}
+
+	if !viewerIsHost {
+		return nil
+	}
+	excessive, err := s.excessiveNoShowsForDetail(ctx, groupRow.OwnerID, int(groupRow.MaxNoshows), detail.Events, now)
+	if err != nil {
+		return err
+	}
+	detail.ExcessiveNoShows = excessive
+	return nil
+}
+
+// excessiveNoShowsForDetail returns registrants across the group's games whose recent no-show
+// count at this host meets threshold, so the host UI can flag them. Below-threshold counts are dropped.
+func (s *PostgresStore) excessiveNoShowsForDetail(ctx context.Context, hostID uuid.UUID, threshold int, events []model.EventGroupEvent, now time.Time) (map[uuid.UUID]int, error) {
+	out := map[uuid.UUID]int{}
+	if threshold < 1 {
+		return out, nil
+	}
+	seen := map[uuid.UUID]bool{}
+	var userIDs []uuid.UUID
+	for _, event := range events {
+		for _, reg := range event.Registrations {
+			if seen[reg.UserID] {
+				continue
+			}
+			seen[reg.UserID] = true
+			userIDs = append(userIDs, reg.UserID)
+		}
+	}
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	counts, err := s.recentNoShowCounts(ctx, hostID, userIDs, now)
+	if err != nil {
+		return nil, err
+	}
+	for id, count := range counts {
+		if count >= threshold {
+			out[id] = count
+		}
+	}
+	return out, nil
+}
+
+// UpdateEventGroupSettings patches group settings, per-game schedule, Discord lock rows, and
+// the no-show deprioritization setting (nil keeps the stored value) in one transaction.
+func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild, noShows *NoShowPolicy) error {
 	if len(eventUpdates) == 0 {
 		return ErrInvalidGroupEvents
 	}
@@ -333,6 +436,11 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 		}
 		if strings.TrimSpace(region) == "" || subMin < 0 {
 			return ErrInvalidSubMin
+		}
+
+		deprioritize, maxNoShows, err := resolveNoShowPolicy(noShows, group.DeprioritizeNoshows, group.MaxNoshows)
+		if err != nil {
+			return err
 		}
 
 		effectiveSort := strings.TrimSpace(sortLogic)
@@ -407,12 +515,14 @@ func (s *PostgresStore) UpdateEventGroupSettings(ctx context.Context, groupID, o
 			namePtr = &name
 		}
 		_, err = txStore.q.UpdateEventGroupSettings(ctx, db.UpdateEventGroupSettingsParams{
-			ID:               groupID,
-			Region:           strings.TrimSpace(region),
-			SubMin:           subMin,
-			SortLogic:        effectiveSort,
-			RegistrationOpen: registrationOpen,
-			Name:             namePtr,
+			ID:                  groupID,
+			Region:              strings.TrimSpace(region),
+			SubMin:              subMin,
+			SortLogic:           effectiveSort,
+			RegistrationOpen:    registrationOpen,
+			Name:                namePtr,
+			DeprioritizeNoshows: deprioritize,
+			MaxNoshows:          maxNoShows,
 		})
 		if err != nil {
 			return fmt.Errorf("update event group settings: %w", err)

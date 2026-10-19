@@ -15,9 +15,32 @@ function validCreatePayload(overrides: Record<string, unknown> = {}) {
     sort_logic: "balanced",
     discord_lock: false,
     discord_guild_ids: [],
+    deprioritize_noshows: false,
+    max_noshows: 0,
     ...overrides,
   };
 }
+
+describe("buildEventFormSchema no-show deprioritization", () => {
+  const schema = buildEventFormSchema("edit");
+
+  it("ignores the absence limit while deprioritization is off", () => {
+    expect(schema.safeParse(validCreatePayload({ deprioritize_noshows: false, max_noshows: 0 })).success).toBe(true);
+  });
+
+  it("accepts a positive whole-number limit when on", () => {
+    expect(schema.safeParse(validCreatePayload({ deprioritize_noshows: true, max_noshows: 3 })).success).toBe(true);
+  });
+
+  it.each([0, -1, 2.5])("rejects a limit of %s when on", (limit) => {
+    const result = schema.safeParse(validCreatePayload({ deprioritize_noshows: true, max_noshows: limit }));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(["max_noshows"]);
+      expect(result.error.issues[0]?.message).toBe("Absence limit must be a whole number greater than 0.");
+    }
+  });
+});
 
 describe("buildEventFormSchema (create mode)", () => {
   beforeEach(() => {
