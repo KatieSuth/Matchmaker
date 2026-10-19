@@ -471,7 +471,7 @@ describe("EventGroupPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Register Now" }));
     expect(await screen.findByRole("heading", { name: "Register" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cancel Change to Registration" }));
+    await user.click(screen.getByRole("button", { name: "Cancel Registration" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Register" })).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Register Now" }));

@@ -51,19 +51,43 @@ describe("RegistrationToggleButton", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("shows 'Cancel Change to Registration' and calls onClose when the editor is open", async () => {
-    const onClose = vi.fn();
-    const user = userEvent.setup();
-    render(<RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, onClose })} />);
+  it.each([
+    [0, "Cancel Registration", "text-[var(--color-text-danger)]"],
+    [1, "Cancel Change to Registration", "text-[var(--color-accent-blue)]"],
+  ])(
+    "with %i existing registrations, shows %s and calls onClose when the editor is open",
+    async (myRegistrationsCount, label, colorClass) => {
+      const onClose = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, myRegistrationsCount, onClose })} />,
+      );
 
-    await user.click(screen.getByRole("button", { name: "Cancel Change to Registration" }));
+      const button = screen.getByRole("button", { name: label });
+      expect(button).toHaveClass(colorClass);
+      await user.click(button);
 
-    expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [0, "Cancel Registration"],
+    [1, "Cancel Change to Registration"],
+  ])("disables the cancel button while working (%i existing registrations)", (myRegistrationsCount, label) => {
+    render(
+      <RegistrationToggleButton
+        {...baseProps({ registrationEditorOpen: true, working: true, myRegistrationsCount })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: label })).toBeDisabled();
   });
 
-  it("disables Cancel Change to Registration while working", () => {
-    render(<RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, working: true })} />);
-    expect(screen.getByRole("button", { name: "Cancel Change to Registration" })).toBeDisabled();
+  it.each([0, 1])("has no accessibility violations with the editor open (%i existing registrations)", async (myRegistrationsCount) => {
+    const { container } = render(
+      <RegistrationToggleButton {...baseProps({ registrationEditorOpen: true, myRegistrationsCount })} />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("has no accessibility violations", async () => {
