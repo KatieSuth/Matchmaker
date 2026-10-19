@@ -149,4 +149,29 @@ describe("EventGroupHeaderCard", () => {
     );
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it("shows the calendar button only when a download handler is passed (viewer is registered)", async () => {
+    const { rerender } = render(<EventGroupHeaderCard {...baseProps()} />);
+    expect(screen.queryByRole("button", { name: "Download calendar invitation" })).not.toBeInTheDocument();
+
+    const onDownloadCalendar = vi.fn();
+    const user = userEvent.setup();
+    rerender(<EventGroupHeaderCard {...baseProps({ onDownloadCalendar })} />);
+    await user.click(screen.getByRole("button", { name: "Download calendar invitation" }));
+    expect(onDownloadCalendar).toHaveBeenCalledTimes(1);
+  });
+
+  it("places the calendar button right after the share button", () => {
+    render(<EventGroupHeaderCard {...baseProps({ onDownloadCalendar: vi.fn() })} />);
+    const share = screen.getByRole("button", { name: "Copy share link" });
+    const calendar = screen.getByRole("button", { name: "Download calendar invitation" });
+    const settings = screen.getByRole("button", { name: "Event settings" });
+    expect(share.compareDocumentPosition(calendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(calendar.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("has no accessibility violations with the calendar button", async () => {
+    const { container } = render(<EventGroupHeaderCard {...baseProps({ onDownloadCalendar: vi.fn() })} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });

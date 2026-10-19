@@ -86,11 +86,13 @@ type EventLobby struct {
 
 // EventGroupEvent is one scheduled game within a group, with optional registration rows.
 type EventGroupEvent struct {
-	ID               uuid.UUID           `json:"id"`
-	StartTime        time.Time           `json:"start_time"`
-	GameModeID       uuid.UUID           `json:"game_mode_id"`
-	GameModeName     string              `json:"game_mode_name"`
-	TeamSize         int                 `json:"team_size"`
+	ID           uuid.UUID `json:"id"`
+	StartTime    time.Time `json:"start_time"`
+	GameModeID   uuid.UUID `json:"game_mode_id"`
+	GameModeName string    `json:"game_mode_name"`
+	TeamSize     int       `json:"team_size"`
+	// DurationMinutes is the game mode's expected length, used for calendar invitation end times.
+	DurationMinutes  int                 `json:"duration_minutes"`
 	RegisteredCount  int                 `json:"registered_count"`
 	LobbiesCount     int                 `json:"lobbies_count"`
 	PlayerRegistered bool                `json:"player_registered"`
@@ -196,6 +198,7 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 		GameModeID:       row.GameModeID,
 		GameModeName:     row.GameModeName,
 		TeamSize:         int(row.TeamSize),
+		DurationMinutes:  int(row.Duration),
 		RegisteredCount:  int(row.RegisteredCount),
 		LobbiesCount:     int(row.LobbiesCount),
 		PlayerRegistered: row.PlayerRegistered,

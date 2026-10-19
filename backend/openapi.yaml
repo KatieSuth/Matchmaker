@@ -2212,7 +2212,7 @@ components:
 
     EventGroupEvent:
       type: object
-      required: [id, start_time, game_mode_id, game_mode_name, team_size, registered_count, lobbies_count, player_registered, registrations, lobbies, unplaced, absent_user_ids]
+      required: [id, start_time, game_mode_id, game_mode_name, team_size, duration_minutes, registered_count, lobbies_count, player_registered, registrations, lobbies, unplaced, absent_user_ids]
       properties:
         id:
           type: string
@@ -2228,6 +2228,9 @@ components:
         team_size:
           type: integer
           format: int32
+        duration_minutes:
+          type: integer
+          description: Expected length of one game in this mode, in minutes (used for calendar invitations).
         registered_count:
           type: integer
           format: int32

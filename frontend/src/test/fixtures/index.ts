@@ -172,6 +172,7 @@ export function buildEventGroupEvent(overrides: Partial<EventGroupEvent> = {}): 
     game_mode_id: nextId("game-mode"),
     game_mode_name: "5v5",
     team_size: 5,
+    duration_minutes: 45,
     registered_count: 1,
     lobbies_count: 0,
     player_registered: false,

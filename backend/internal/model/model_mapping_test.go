@@ -649,6 +649,7 @@ func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testin
 		GameModeID:       gmid,
 		GameModeName:     "Competitive",
 		TeamSize:         5,
+		Duration:         45,
 		RegisteredCount:  2,
 		LobbiesCount:     0,
 		PlayerRegistered: true,
@@ -660,6 +661,7 @@ func TestMapDbGetGroupEventsSummaryRowToEventGroupEvent_MapsNestedRegs(t *testin
 	assert.Equal(t, gmid, result.GameModeID)
 	assert.Equal(t, "Competitive", result.GameModeName)
 	assert.Equal(t, 5, result.TeamSize)
+	assert.Equal(t, 45, result.DurationMinutes)
 	assert.Equal(t, 2, result.RegisteredCount)
 	assert.Equal(t, 0, result.LobbiesCount)
 	assert.True(t, result.PlayerRegistered)

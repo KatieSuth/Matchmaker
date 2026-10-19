@@ -21,6 +21,7 @@ import {
 } from "./_components/RegistrationEditorPanel";
 import { EventPanel } from "./_components/EventPanel";
 import { TeamsPanel } from "./_components/TeamsPanel";
+import { CalendarInviteSheet } from "./_components/sheets/CalendarInviteSheet";
 import { DeleteRegistrationSheet } from "./_components/sheets/DeleteRegistrationSheet";
 import { DeleteTeamsWarningSheet } from "./_components/sheets/DeleteTeamsWarningSheet";
 import { EditEventSheet } from "./_components/sheets/EditEventSheet";
@@ -35,6 +36,7 @@ import { useEventGroupData } from "./_hooks/useEventGroupData";
 import { useHostRosterActions } from "./_hooks/useHostRosterActions";
 import { useJoinLobbySheet } from "./_hooks/useJoinLobbySheet";
 import { useRegistrationEditor } from "./_hooks/useRegistrationEditor";
+import { downloadCalendarInvite } from "./_lib/calendarInvite";
 import { discordLockLeadSentence, formatDateTime, formatPlayerCount, joinDiscordGuildNames } from "./_lib/formatters";
 import { findUserLobbyHostAssignments } from "./_lib/placements";
 
@@ -139,6 +141,12 @@ export default function EventGroupPage() {
   const handleShare = () => {
     const shareUrl = typeof window !== "undefined" ? window.location.href : "";
     void copyShareLink(shareUrl);
+  };
+
+  const handleDownloadCalendar = () => {
+    if (!group) return;
+    const pageUrl = typeof window !== "undefined" ? window.location.href : "";
+    downloadCalendarInvite(group, new Set(myRegistrationsByEvent.keys()), pageUrl);
   };
 
   const handleCopyDiscordPings = () => {
@@ -253,6 +261,7 @@ export default function EventGroupPage() {
           onCopyDiscordPings={handleCopyDiscordPings}
           shareStatus={shareStatus}
           onShare={handleShare}
+          onDownloadCalendar={myRegistrationsByEvent.size > 0 ? handleDownloadCalendar : undefined}
           onOpenEditSheet={() => setEditSheetOpen(true)}
           onLockInClick={() => {
             if (!group.registration_open && hasAnyLobbies) {
@@ -475,6 +484,15 @@ export default function EventGroupPage() {
           />
         )}
       </div>
+
+      <CalendarInviteSheet
+        isOpen={registrationEditor.calendarPromptOpen && myRegistrationsByEvent.size > 0}
+        onClose={() => registrationEditor.setCalendarPromptOpen(false)}
+        onDownload={() => {
+          handleDownloadCalendar();
+          registrationEditor.setCalendarPromptOpen(false);
+        }}
+      />
 
       <EditEventSheet
         isOpen={editSheetOpen}

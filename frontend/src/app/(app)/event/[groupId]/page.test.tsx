@@ -230,6 +230,18 @@ describe("EventGroupPage", () => {
     expect(screen.queryByRole("region", { name: /No-show (notice|warning)/ })).not.toBeInTheDocument();
   });
 
+  it("shows the calendar button only to registered viewers", async () => {
+    stubGroup(groupPayload());
+    const { unmount } = renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+    expect(await screen.findByRole("button", { name: "Download calendar invitation" })).toBeInTheDocument();
+    unmount();
+
+    stubGroup(groupPayload());
+    renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+    expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download calendar invitation" })).not.toBeInTheDocument();
+  });
+
   it("hides unplaced players from a non-host after lock-in", async () => {
     const player = buildLobbyPlayer({ display_name: "Alice" });
     const unplaced = buildEventRegistration({ display_name: "Loose Player" });
@@ -476,8 +488,38 @@ describe("EventGroupPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Register Now" }));
     expect(await screen.findByRole("heading", { name: "Register" })).toBeInTheDocument();
+    // After saving, the reloaded group shows the host as registered, so the calendar prompt appears.
+    stubGroup(
+      groupPayload({
+        game_id: "game-valorant",
+        events: [
+          buildEventGroupEvent({
+            id: "event-1",
+            start_time: "2026-12-01T18:00:00Z",
+            registrations: [buildEventRegistration({ user_id: HOST.id, display_name: "Hosty" })],
+          }),
+        ],
+      }),
+    );
     await user.click(screen.getByRole("button", { name: "Save Registration" }));
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Register" })).not.toBeInTheDocument());
+
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:invite");
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      expect(await screen.findByRole("dialog", { name: "You're registered!" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Download calendar invite" }));
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("dialog", { name: "You're registered!" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Download calendar invitation" })).toBeInTheDocument();
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      click.mockRestore();
+    }
   });
 
   it("opens player details and host roster sheets from the locked-in teams view", async () => {

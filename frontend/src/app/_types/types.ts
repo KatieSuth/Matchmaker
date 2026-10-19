@@ -118,6 +118,8 @@ export interface EventGroupEvent {
   game_mode_id: string;
   game_mode_name: string;
   team_size: number;
+  /** Expected length of one game in this mode, in minutes. */
+  duration_minutes: number;
   registered_count: number;
   lobbies_count: number;
   player_registered: boolean;

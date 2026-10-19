@@ -622,6 +622,7 @@ SELECT
     E.game_mode_id,
     GM.name AS game_mode_name,
     GM.team_size,
+    GM.duration,
     COUNT(DISTINCT R.user_id)::INT AS registered_count,
     COUNT(DISTINCT L.id)::INT AS lobbies_count,
     COALESCE(BOOL_OR(R.user_id = $2), FALSE)::BOOL AS player_registered
@@ -630,7 +631,7 @@ JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN registrations AS R ON R.event_id = E.id
 LEFT JOIN lobbies AS L ON L.event_id = E.id
 WHERE E.group_id = $1
-GROUP BY E.id, E.start_time, E.game_mode_id, GM.name, GM.team_size
+GROUP BY E.id, E.start_time, E.game_mode_id, GM.name, GM.team_size, GM.duration
 ORDER BY E.start_time ASC
 `
 
@@ -645,6 +646,7 @@ type GetGroupEventsSummaryRow struct {
 	GameModeID       uuid.UUID
 	GameModeName     string
 	TeamSize         int32
+	Duration         int32
 	RegisteredCount  int32
 	LobbiesCount     int32
 	PlayerRegistered bool
@@ -665,6 +667,7 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 			&i.GameModeID,
 			&i.GameModeName,
 			&i.TeamSize,
+			&i.Duration,
 			&i.RegisteredCount,
 			&i.LobbiesCount,
 			&i.PlayerRegistered,

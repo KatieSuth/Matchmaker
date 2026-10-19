@@ -403,6 +403,7 @@ describe("useRegistrationEditor", () => {
         events: [{ event_id: "event-1", can_substitute: true, can_lobby_host: true }],
       });
       expect(result.current.registrationEditorOpen).toBe(false);
+      expect(result.current.calendarPromptOpen).toBe(true);
       expect(options.loadGroup).toHaveBeenCalledTimes(1);
       expect(options.setWorking).toHaveBeenLastCalledWith(false);
     });
@@ -488,6 +489,7 @@ describe("useRegistrationEditor", () => {
       expect(result.current.registrationError).toMatch(/Event full/);
       // The sheet stays open (unlike the discord-restriction case) so the user can retry saving.
       expect(result.current.registrationEditorOpen).toBe(true);
+      expect(result.current.calendarPromptOpen).toBe(false);
       expect(options.loadGroup).not.toHaveBeenCalled();
     });
   });
