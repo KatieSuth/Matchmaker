@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -93,7 +95,7 @@ func TestCreateEventHandler_StoreError(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			return uuid.Nil, errors.New("db exploded")
 		},
 	}
@@ -113,7 +115,7 @@ func TestCreateEventHandler_GameModeNotFound(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			return uuid.Nil, pgx.ErrNoRows
 		},
 	}
@@ -201,7 +203,7 @@ func TestCreateEventHandler_Success(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, inGameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			assert.Equal(t, gameModeID, inGameModeID)
 			assert.Equal(t, int32(0), subMin)
@@ -247,7 +249,7 @@ func TestCreateEventHandler_NameTooLong(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -276,7 +278,7 @@ func TestCreateEventHandler_NameInvalidChars(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -305,7 +307,7 @@ func TestCreateEventHandler_NameRejectsHTML(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -358,7 +360,7 @@ func TestCreateEventHandler_SortLogicDefaultsToBalanced(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			assert.Equal(t, "balanced", sortLogic)
 			return groupID, nil
 		},
@@ -422,7 +424,7 @@ func TestCreateEventHandler_StoreInvalidSortLogic(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			return uuid.Nil, store.ErrInvalidSortLogic
 		},
 	}
@@ -443,7 +445,7 @@ func TestCreateEventHandler_UserIDAsUUID(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, inUserID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			assert.Equal(t, userID, inUserID)
 			return groupID, nil
 		},
@@ -485,7 +487,7 @@ func TestCreateEventHandler_SortLogicRanked(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	ms := &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _ string, sortLogic string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			assert.Equal(t, "ranked", sortLogic)
 			return groupID, nil
 		},
@@ -629,6 +631,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 		{"game mode wrong game", store.ErrGameModeWrongGame, http.StatusBadRequest},
 		{"invalid events payload", store.ErrInvalidGroupEvents, http.StatusBadRequest},
 		{"start in past", store.ErrEventStartInPast, http.StatusBadRequest},
+		{"invalid no-show threshold", store.ErrInvalidNoShowThreshold, http.StatusBadRequest},
 		{"not found", pgx.ErrNoRows, http.StatusNotFound},
 		{"other", errors.New("fail"), http.StatusInternalServerError},
 	}
@@ -640,7 +643,7 @@ func TestUpdateEventGroupSettingsHandler_StoreErrors(t *testing.T) {
 			c.Request.Body = io.NopCloser(strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 			h := newTestHandler(t, &store.MockStore{
-				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
+				UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild, _ *store.NoShowPolicy) error {
 					assert.Equal(t, gid, inG)
 					assert.Equal(t, uid, inO)
 					require.Len(t, updates, 1)
@@ -666,7 +669,7 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, name string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, inG, inO uuid.UUID, region string, sub int32, sortLogic string, registrationOpen bool, name string, updates []store.GroupEventUpdate, discordGuilds []model.DiscordGuild, _ *store.NoShowPolicy) error {
 			assert.Equal(t, "EU", region)
 			assert.Equal(t, int32(2), sub)
 			assert.Equal(t, "ranked", sortLogic)
@@ -682,6 +685,109 @@ func TestUpdateEventGroupSettingsHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
 }
 
+// createEventWithNoShowsContext builds a valid POST /events request with extra JSON fields appended.
+func createEventWithNoShowsContext(t *testing.T, extra string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	body := `{"game_mode_id":"` + uuid.NewString() + `","region":"AMER","start_time":"` + startTimeHoursFromNow(48) + `","sub_min":0,"games_to_run":1,"registration_open":true` + extra + `}`
+	c, w := test_util.NewGinContext(http.MethodPost, "/events")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, w
+}
+
+func TestCreateEventHandler_NoShowPolicy(t *testing.T) {
+	cases := []struct {
+		name   string
+		extra  string
+		status int
+		want   store.NoShowPolicy
+	}{
+		{"omitted is off", ``, http.StatusCreated, store.NoShowPolicy{}},
+		{"enabled with threshold", `,"deprioritize_noshows":true,"max_noshows":3`, http.StatusCreated, store.NoShowPolicy{Enabled: true, Threshold: 3}},
+		{"disabled ignores bad threshold", `,"deprioritize_noshows":false,"max_noshows":-2`, http.StatusCreated, store.NoShowPolicy{}},
+		{"enabled missing threshold", `,"deprioritize_noshows":true`, http.StatusBadRequest, store.NoShowPolicy{}},
+		{"enabled zero threshold", `,"deprioritize_noshows":true,"max_noshows":0`, http.StatusBadRequest, store.NoShowPolicy{}},
+		{"enabled non-integer threshold", `,"deprioritize_noshows":true,"max_noshows":2.5`, http.StatusBadRequest, store.NoShowPolicy{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureSlog(t)
+			c, w := createEventWithNoShowsContext(t, tc.extra)
+			called := false
+			h := newTestHandler(t, &store.MockStore{
+				CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _, _, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, policy store.NoShowPolicy) (uuid.UUID, error) {
+					called = true
+					assert.Equal(t, tc.want, policy)
+					return uuid.New(), nil
+				},
+			}, nil, "")
+			h.CreateEventHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+			assert.Equal(t, tc.status == http.StatusCreated, called)
+			if tc.status == http.StatusBadRequest {
+				assert.True(t, logs.hasLevel(slog.LevelWarn))
+			}
+		})
+	}
+}
+
+func TestCreateEventHandler_NoShowThresholdMessage(t *testing.T) {
+	c, w := createEventWithNoShowsContext(t, `,"deprioritize_noshows":true,"max_noshows":0`)
+	h := newTestHandler(t, &store.MockStore{}, nil, "")
+	h.CreateEventHandler(c)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"status":"error","message":"Absence limit must be a whole number greater than 0"}`, w.Body.String())
+}
+
+func TestCreateEventHandler_StoreRejectsNoShowThreshold(t *testing.T) {
+	c, w := createEventWithNoShowsContext(t, `,"deprioritize_noshows":true,"max_noshows":3`)
+	h := newTestHandler(t, &store.MockStore{
+		CreateEventGroupWithEventsFn: func(_ context.Context, _, _ uuid.UUID, _ int32, _ bool, _, _, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
+			return uuid.Nil, store.ErrInvalidNoShowThreshold
+		},
+	}, nil, "")
+	h.CreateEventHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateEventGroupSettingsHandler_NoShowPolicy(t *testing.T) {
+	base := `{"region":"AMER","sub_min":0,"sort_logic":"balanced","registration_open":false,"events":[{"event_id":"` + uuid.NewString() + `","start_time":"2099-06-01T12:00:00Z","game_mode_id":"` + uuid.NewString() + `"}]`
+	cases := []struct {
+		name   string
+		extra  string
+		status int
+		want   *store.NoShowPolicy
+	}{
+		{"omitted keeps stored", ``, http.StatusNoContent, nil},
+		{"threshold without toggle keeps stored", `,"max_noshows":0`, http.StatusNoContent, nil},
+		{"enabled", `,"deprioritize_noshows":true,"max_noshows":4`, http.StatusNoContent, &store.NoShowPolicy{Enabled: true, Threshold: 4}},
+		{"disabled with any threshold", `,"deprioritize_noshows":false,"max_noshows":-1`, http.StatusNoContent, &store.NoShowPolicy{}},
+		{"enabled missing threshold", `,"deprioritize_noshows":true`, http.StatusBadRequest, nil},
+		{"enabled zero threshold", `,"deprioritize_noshows":true,"max_noshows":0`, http.StatusBadRequest, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := test_util.NewGinContext(http.MethodPatch, "/events/x")
+			test_util.WithUserIDString(c, uuid.New())
+			c.Params = gin.Params{{Key: "groupId", Value: uuid.NewString()}}
+			c.Request.Body = io.NopCloser(strings.NewReader(base + tc.extra + `}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			called := false
+			h := newTestHandler(t, &store.MockStore{
+				UpdateEventGroupSettingsFn: func(_ context.Context, _, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild, policy *store.NoShowPolicy) error {
+					called = true
+					assert.Equal(t, tc.want, policy)
+					return nil
+				},
+			}, nil, "")
+			h.UpdateEventGroupSettingsHandler(c)
+			assert.Equal(t, tc.status, c.Writer.Status())
+			assert.Equal(t, tc.status == http.StatusNoContent, called)
+		})
+	}
+}
+
 func TestUpdateEventGroupSettingsHandler_NameTooLong(t *testing.T) {
 	gid := uuid.New()
 	uid := uuid.New()
@@ -693,7 +799,7 @@ func TestUpdateEventGroupSettingsHandler_NameTooLong(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"` + longName + `","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild, _ *store.NoShowPolicy) error {
 			storeCalled = true
 			return nil
 		},
@@ -713,7 +819,7 @@ func TestUpdateEventGroupSettingsHandler_NameInvalidChars(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"name":"A < B >","events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, _ []model.DiscordGuild, _ *store.NoShowPolicy) error {
 			storeCalled = true
 			return nil
 		},
@@ -1247,6 +1353,121 @@ func TestSetLobbyHostHandler_Success(t *testing.T) {
 	}, nil, "")
 	h.SetLobbyHostHandler(c)
 	assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+}
+
+// newAbsenceContext builds a POST /registrations/:eventId/absence request context for the handler.
+func newAbsenceContext(t *testing.T, eventID, body string) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	c, w := test_util.NewGinContext(http.MethodPost, "/registrations/x/absence")
+	test_util.WithUserIDString(c, uuid.New())
+	c.Params = gin.Params{{Key: "eventId", Value: eventID}}
+	c.Request.Body = io.NopCloser(strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, w
+}
+
+func TestSetPlayerAbsenceHandler_StoreErrors(t *testing.T) {
+	body := `{"user_id":"` + uuid.NewString() + `","absent":true}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		level  slog.Level
+	}{
+		{"forbidden", store.ErrForbidden, http.StatusForbidden, slog.LevelWarn},
+		{"not on team", &store.AbsenceValidationError{Message: "Only players on a team can be marked absent"}, http.StatusBadRequest, slog.LevelWarn},
+		{"no teams", store.ErrTeamsNotCreated, http.StatusBadRequest, slog.LevelWarn},
+		{"not found", store.ErrEventNotFound, http.StatusNotFound, slog.LevelWarn},
+		{"other", errors.New("fail"), http.StatusInternalServerError, slog.LevelError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureSlog(t)
+			c, w := newAbsenceContext(t, uuid.NewString(), body)
+			h := newTestHandler(t, &store.MockStore{
+				SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error { return tc.err },
+			}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, tc.status, w.Code)
+			assert.True(t, logs.hasLevel(tc.level))
+			assert.False(t, logs.hasLevel(slog.LevelInfo))
+		})
+	}
+}
+
+func TestSetPlayerAbsenceHandler_ValidationMessage(t *testing.T) {
+	c, w := newAbsenceContext(t, uuid.NewString(), `{"user_id":"`+uuid.NewString()+`","absent":true}`)
+	h := newTestHandler(t, &store.MockStore{
+		SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error {
+			return &store.AbsenceValidationError{Message: "Only players on a team can be marked absent"}
+		},
+	}, nil, "")
+	h.SetPlayerAbsenceHandler(c)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"status":"error","message":"Only players on a team can be marked absent"}`, w.Body.String())
+}
+
+func TestSetPlayerAbsenceHandler_NonHostForbidden(t *testing.T) {
+	// MockStore has no EventGroupIDByEventIDFn, so this would panic if a Discord lock lookup ran first.
+	c, w := newAbsenceContext(t, uuid.NewString(), `{"user_id":"`+uuid.NewString()+`","absent":true}`)
+	h := newTestHandler(t, &store.MockStore{
+		SetPlayerAbsenceForEventFn: func(_ context.Context, _, _, _ uuid.UUID, _ bool) error { return store.ErrForbidden },
+	}, nil, "")
+	h.SetPlayerAbsenceHandler(c)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.JSONEq(t, `{"status":"error","message":"Only the host can mark attendance"}`, w.Body.String())
+}
+
+func TestSetPlayerAbsenceHandler_Validation(t *testing.T) {
+	validUser := uuid.NewString()
+	cases := []struct {
+		name    string
+		eventID string
+		body    string
+	}{
+		{"invalid event id", "nope", `{"user_id":"` + validUser + `","absent":true}`},
+		{"bad json", uuid.NewString(), `not-json`},
+		{"wrong absent type", uuid.NewString(), `{"user_id":"` + validUser + `","absent":"yes"}`},
+		{"missing absent", uuid.NewString(), `{"user_id":"` + validUser + `"}`},
+		{"invalid user_id", uuid.NewString(), `{"user_id":"bad","absent":true}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureSlog(t)
+			c, w := newAbsenceContext(t, tc.eventID, tc.body)
+			h := newTestHandler(t, &store.MockStore{}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.True(t, logs.hasLevel(slog.LevelWarn))
+		})
+	}
+}
+
+func TestSetPlayerAbsenceHandler_Success(t *testing.T) {
+	for _, absent := range []bool{true, false} {
+		t.Run(fmt.Sprintf("absent=%v", absent), func(t *testing.T) {
+			logs := captureSlog(t)
+			eventID := uuid.New()
+			targetUser := uuid.New()
+			body := fmt.Sprintf(`{"user_id":"%s","absent":%v}`, targetUser, absent)
+			c, _ := newAbsenceContext(t, eventID.String(), body)
+
+			var gotEvent, gotTarget uuid.UUID
+			var gotAbsent bool
+			h := newTestHandler(t, &store.MockStore{
+				SetPlayerAbsenceForEventFn: func(_ context.Context, e, _, u uuid.UUID, a bool) error {
+					gotEvent, gotTarget, gotAbsent = e, u, a
+					return nil
+				},
+			}, nil, "")
+			h.SetPlayerAbsenceHandler(c)
+			assert.Equal(t, http.StatusNoContent, c.Writer.Status())
+			assert.Equal(t, eventID, gotEvent)
+			assert.Equal(t, targetUser, gotTarget)
+			assert.Equal(t, absent, gotAbsent)
+			assert.True(t, logs.hasLevel(slog.LevelInfo))
+		})
+	}
 }
 
 func TestSwapPlayersHandler_Success(t *testing.T) {

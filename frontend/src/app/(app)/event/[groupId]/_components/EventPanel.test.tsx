@@ -19,6 +19,31 @@ function baseProps(overrides: Partial<Parameters<typeof EventPanel>[0]> = {}) {
 }
 
 describe("EventPanel", () => {
+  it("flags excessive no-shows on the registration list for the host only", () => {
+    const event = buildEventGroupEvent({
+      registrations: [buildEventRegistration({ user_id: "flagged" }), buildEventRegistration({ user_id: "clean" })],
+    });
+    const { rerender } = render(
+      <EventPanel {...baseProps({ event, isHostView: true, excessiveNoShows: { flagged: 3 } })} />,
+    );
+    expect(screen.getAllByRole("button", { name: /^No-show 3 times/ })).toHaveLength(1);
+
+    rerender(<EventPanel {...baseProps({ event, isHostView: false, excessiveNoShows: { flagged: 3 } })} />);
+    expect(screen.queryByRole("button", { name: /^No-show/ })).not.toBeInTheDocument();
+  });
+
+  it("labels registrations that kept an absent mark after teams were deleted", () => {
+    const event = buildEventGroupEvent({
+      registrations: [
+        buildEventRegistration({ user_id: "absent-1", display_name: "Gone" }),
+        buildEventRegistration({ user_id: "present-1", display_name: "Here" }),
+      ],
+      absent_user_ids: ["absent-1"],
+    });
+    render(<EventPanel {...baseProps({ event })} />);
+    expect(screen.getAllByText("Absent")).toHaveLength(1);
+  });
+
   it("shows an empty-state message when there are no registrations", () => {
     const event = buildEventGroupEvent({ registrations: [] });
     render(<EventPanel {...baseProps({ event })} />);
@@ -74,6 +99,21 @@ describe("EventPanel", () => {
       registrations: [buildEventRegistration({ display_name: "Alice" })],
     });
     const { container } = render(<EventPanel {...baseProps({ event, isHostView: true })} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no accessibility violations for a host with absences and no-show warnings", async () => {
+    const event = buildEventGroupEvent({
+      registrations: [
+        buildEventRegistration({ user_id: "absent-1", display_name: "Gone" }),
+        buildEventRegistration({ user_id: "flagged-1", display_name: "Flagged" }),
+      ],
+      absent_user_ids: ["absent-1"],
+    });
+    const { container } = render(
+      <EventPanel {...baseProps({ event, isHostView: true, excessiveNoShows: { "flagged-1": 3 } })} />,
+    );
+    expect(screen.getByText("Absent")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -25,13 +25,30 @@ func ScaledFairnessThresholds(settings Settings, tierCount int) ScaledThresholds
 	}
 }
 
+// FairnessChecks reports which fairness checks a lobby fails: outlier is one player far above
+// the rest; teamSeparation is the two teams' average ranks too far apart.
+type FairnessChecks struct {
+	Outlier        bool
+	TeamSeparation bool
+}
+
+// Unfair is true when either check fails.
+func (c FairnessChecks) Unfair() bool {
+	return c.Outlier || c.TeamSeparation
+}
+
+// EvaluateLobbyFairness runs both scaled fairness checks so callers can store which one failed.
+func EvaluateLobbyFairness(lobby LobbyPlan, settings Settings, tierCount int) FairnessChecks {
+	thresholds := ScaledFairnessThresholds(settings, tierCount)
+	return FairnessChecks{
+		Outlier:        outlierExceeds(lobby.Roster, thresholds.OutlierGap),
+		TeamSeparation: teamSeparationExceeds(lobby, thresholds.TeamSeparation),
+	}
+}
+
 // IsLobbyUnfair flags a lobby when outlier or team-average separation exceeds scaled thresholds.
 func IsLobbyUnfair(lobby LobbyPlan, settings Settings, tierCount int) bool {
-	thresholds := ScaledFairnessThresholds(settings, tierCount)
-	if outlierExceeds(lobby.Roster, thresholds.OutlierGap) {
-		return true
-	}
-	return teamSeparationExceeds(lobby, thresholds.TeamSeparation)
+	return EvaluateLobbyFairness(lobby, settings, tierCount).Unfair()
 }
 
 // outlierGap is highest roster rank minus the next highest. Empty or single-player

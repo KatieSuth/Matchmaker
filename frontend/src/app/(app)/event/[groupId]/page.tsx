@@ -4,7 +4,7 @@
 // and participant registration / profile actions. Composes hooks + presentational pieces from
 // ./_hooks, ./_components, and ./_lib; this file is orchestration only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { LobbyHostAssignmentBanner } from "@/app/_components/LobbyHostAssignmentBanner";
 import { useAuth } from "@/app/_context/AuthContext";
 import { useCopyStatus } from "@/app/_hooks/useCopyStatus";
@@ -13,6 +13,7 @@ import { buildDiscordPingMessage } from "@/app/_lib/discordPings";
 import { EventGroupDetail, EventRegistration } from "@/app/_types/types";
 import { EventGroupHeaderCard } from "./_components/EventGroupHeaderCard";
 import { GameTabsStrip } from "./_components/GameTabsStrip";
+import { NoShowNoticeBanner } from "./_components/NoShowNoticeBanner";
 import {
   RegistrationEditorForm,
   RegistrationSaveFooter,
@@ -20,6 +21,7 @@ import {
 } from "./_components/RegistrationEditorPanel";
 import { EventPanel } from "./_components/EventPanel";
 import { TeamsPanel } from "./_components/TeamsPanel";
+import { CalendarInviteSheet } from "./_components/sheets/CalendarInviteSheet";
 import { DeleteRegistrationSheet } from "./_components/sheets/DeleteRegistrationSheet";
 import { DeleteTeamsWarningSheet } from "./_components/sheets/DeleteTeamsWarningSheet";
 import { EditEventSheet } from "./_components/sheets/EditEventSheet";
@@ -34,6 +36,7 @@ import { useEventGroupData } from "./_hooks/useEventGroupData";
 import { useHostRosterActions } from "./_hooks/useHostRosterActions";
 import { useJoinLobbySheet } from "./_hooks/useJoinLobbySheet";
 import { useRegistrationEditor } from "./_hooks/useRegistrationEditor";
+import { downloadCalendarInvite, HOST_GAMES_HEADING, PLAYER_GAMES_HEADING } from "./_lib/calendarInvite";
 import { discordLockLeadSentence, formatDateTime, formatPlayerCount, joinDiscordGuildNames } from "./_lib/formatters";
 import { findUserLobbyHostAssignments } from "./_lib/placements";
 
@@ -138,6 +141,32 @@ export default function EventGroupPage() {
   const handleShare = () => {
     const shareUrl = typeof window !== "undefined" ? window.location.href : "";
     void copyShareLink(shareUrl);
+  };
+
+  // The host's invitation spans every game; a player's spans the games they registered for.
+  const calendarEventIds = useMemo(
+    () => new Set(isHost ? (group?.events ?? []).map((event) => event.id) : myRegistrationsByEvent.keys()),
+    [isHost, group, myRegistrationsByEvent],
+  );
+
+  const handleDownloadCalendar = () => {
+    if (!group) return;
+    // Built from the group ID: the browser URL can lag behind the router right after navigation.
+    const pageUrl = typeof window !== "undefined" ? `${window.location.origin}/event/${group.id}` : "";
+    downloadCalendarInvite(group, calendarEventIds, pageUrl, isHost ? HOST_GAMES_HEADING : PLAYER_GAMES_HEADING);
+  };
+
+  // The create form lands here with ?created=1 so the host is offered the invitation once.
+  // Read from the router (not window.location): after router.push the browser URL only updates
+  // once this page has rendered, so window.location would still show the create form's page.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const justCreated = searchParams.get("created") === "1";
+  const [createdSheetDismissed, setCreatedSheetDismissed] = useState(false);
+  const closeCreatedSheet = () => {
+    setCreatedSheetDismissed(true);
+    // Drop the flag so a refresh does not offer it again.
+    router.replace(`/event/${groupId}`, { scroll: false });
   };
 
   const handleCopyDiscordPings = () => {
@@ -252,6 +281,7 @@ export default function EventGroupPage() {
           onCopyDiscordPings={handleCopyDiscordPings}
           shareStatus={shareStatus}
           onShare={handleShare}
+          onDownloadCalendar={calendarEventIds.size > 0 ? handleDownloadCalendar : undefined}
           onOpenEditSheet={() => setEditSheetOpen(true)}
           onLockInClick={() => {
             if (!group.registration_open && hasAnyLobbies) {
@@ -275,6 +305,12 @@ export default function EventGroupPage() {
             setShowAllEvents(false);
           }}
           onScrollToEvent={scrollToEventSection}
+        />
+
+        <NoShowNoticeBanner
+          noShowDates={group.viewer_no_show_dates ?? []}
+          deprioritizeNoShows={group.deprioritize_noshows}
+          maxNoShows={group.max_noshows}
         />
 
         {hasVisibleGames && (
@@ -340,6 +376,7 @@ export default function EventGroupPage() {
                       eventRegion={group.region}
                       currentUserRegion={user?.region}
                       isHostView={isHost}
+                      excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                       currentUserId={user?.id}
                       gameRanks={gameRanks}
                       onShowDetails={handleShowDetails}
@@ -353,6 +390,7 @@ export default function EventGroupPage() {
                       onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
                       onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
                       onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                      onToggleAbsent={isHost ? hostActions.handleToggleAbsent : undefined}
                       onJoinLobby={joinLobby.openJoinLobbySheet}
                       showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
                     />
@@ -363,6 +401,7 @@ export default function EventGroupPage() {
                       eventRegion={group.region}
                       currentUserRegion={user?.region}
                       isHostView={isHost}
+                      excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                       currentUserId={user?.id}
                       onShowDetails={handleShowDetails}
                       onDeleteRegistrationForGame={(registration, gameNumber) =>
@@ -407,6 +446,7 @@ export default function EventGroupPage() {
                 eventRegion={group.region}
                 currentUserRegion={user?.region}
                 isHostView={isHost}
+                excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                 currentUserId={user?.id}
                 gameRanks={gameRanks}
                 onShowDetails={handleShowDetails}
@@ -420,6 +460,7 @@ export default function EventGroupPage() {
                 onMoveToUnplaced={isHost ? hostActions.handleMoveToUnplaced : undefined}
                 onMoveToSubs={isHost ? hostActions.handleMoveToSubs : undefined}
                 onMakeLobbyHost={isHost ? hostActions.handleMakeLobbyHost : undefined}
+                onToggleAbsent={isHost ? hostActions.handleToggleAbsent : undefined}
                 onJoinLobby={joinLobby.openJoinLobbySheet}
                 showJoinLobby={isHost || myRegistrationsByEvent.size > 0}
               />
@@ -430,6 +471,7 @@ export default function EventGroupPage() {
                 eventRegion={group.region}
                 currentUserRegion={user?.region}
                 isHostView={isHost}
+                excessiveNoShows={isHost ? group.excessive_no_shows : undefined}
                 currentUserId={user?.id}
                 onShowDetails={handleShowDetails}
                 onDeleteRegistrationForGame={(registration, gameNumber) =>
@@ -462,6 +504,25 @@ export default function EventGroupPage() {
           />
         )}
       </div>
+
+      <CalendarInviteSheet
+        isOpen={registrationEditor.calendarPromptOpen && calendarEventIds.size > 0}
+        onClose={() => registrationEditor.setCalendarPromptOpen(false)}
+        onDownload={() => {
+          handleDownloadCalendar();
+          registrationEditor.setCalendarPromptOpen(false);
+        }}
+      />
+
+      <CalendarInviteSheet
+        variant="created"
+        isOpen={justCreated && !createdSheetDismissed && isHost && calendarEventIds.size > 0}
+        onClose={closeCreatedSheet}
+        onDownload={() => {
+          handleDownloadCalendar();
+          closeCreatedSheet();
+        }}
+      />
 
       <EditEventSheet
         isOpen={editSheetOpen}

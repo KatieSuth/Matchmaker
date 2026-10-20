@@ -1,13 +1,16 @@
 "use client";
 
 // Registration card shown in the registration list and in each roster/subs/unplaced section of
-// TeamsPanel. Owns the per-player ellipsis menu (show details, swap, move, make host, delete).
+// TeamsPanel. Owns the per-player ellipsis menu (show details, swap, move, make host, attendance,
+// delete), the red "Absent" label for players the host marked as a no-show, and (host only)
+// an orange warning for players whose recent no-shows meet the deprioritization limit.
 import { EllipsisMenu, EllipsisMenuOption } from "@/app/_components/EllipsisMenu";
 import { EMPTY_VALUE } from "@/app/_lib/constants";
 import { formatUserDisplayLabel } from "@/app/_lib/userDisplayName";
 import { EventRegistration } from "@/app/_types/types";
 import { isSubPlacement, isTeamAssignedPlacement, isUnplacedPlacement } from "../_lib/placements";
 import { PlayerPlacement } from "../_types";
+import { NoShowWarningIcon } from "./NoShowWarningIcon";
 
 export function PlayerCard({
   registration,
@@ -28,6 +31,9 @@ export function PlayerCard({
   onMakeLobbyHost,
   lobbyHostId,
   showDuoRequest = false,
+  isAbsent = false,
+  onToggleAbsent,
+  recentNoShowCount = 0,
 }: {
   registration: EventRegistration;
   gameNumber: number;
@@ -47,6 +53,10 @@ export function PlayerCard({
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
   lobbyHostId?: string | null;
   showDuoRequest?: boolean;
+  isAbsent?: boolean;
+  onToggleAbsent?: (placement: PlayerPlacement, absent: boolean) => void;
+  /** Recent no-shows at this host when at/above the limit (host-only data); 0 hides the warning. */
+  recentNoShowCount?: number;
 }) {
   const canOpenMenu = isHostView || canEditRegistration;
   const canDelete =
@@ -100,6 +110,13 @@ export function PlayerCard({
       onSelect: () => onMakeLobbyHost(placement),
     });
   }
+  // Attendance is tracked for team players only; subs/unplaced keep any earlier mark but can't toggle it.
+  if (isHostView && isTeamAssignedPlacement(placement) && onToggleAbsent) {
+    menuOptions.push({
+      label: isAbsent ? "Mark Present" : "Mark Absent",
+      onSelect: () => onToggleAbsent(placement, !isAbsent),
+    });
+  }
   if (canDelete) {
     menuOptions.push({
       label: `Delete for Game ${gameNumber}`,
@@ -123,12 +140,18 @@ export function PlayerCard({
       <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-            {formatUserDisplayLabel(registration.display_name, registration.discord_name)}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            {isHostView && recentNoShowCount > 0 && <NoShowWarningIcon count={recentNoShowCount} />}
+            <p className="text-sm font-semibold text-[var(--color-text)] truncate">
+              {formatUserDisplayLabel(registration.display_name, registration.discord_name)}
+            </p>
+          </div>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
             {registration.pronouns || EMPTY_VALUE}
           </p>
+          {isAbsent && (
+            <p className="text-[11px] font-medium text-red-400 mt-1">Absent</p>
+          )}
           {regionMismatch && (
             <p className="text-[11px] text-amber-300 mt-1">
               Region: {currentUserRegion}

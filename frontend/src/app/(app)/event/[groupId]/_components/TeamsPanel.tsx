@@ -11,6 +11,7 @@ import { lobbyFairnessWarningMessage } from "../_lib/lobbyFairness";
 import { lobbyHostName, lobbyPlayerAsRegistration } from "../_lib/placements";
 import { teamAverageRankLabel } from "../_lib/ranks";
 import { PlayerPlacement } from "../_types";
+import { useHasStarted } from "../_hooks/useHasStarted";
 import { PlayerCard } from "./PlayerCard";
 
 export function TeamsPanel({
@@ -28,6 +29,8 @@ export function TeamsPanel({
   onMoveToUnplaced,
   onMoveToSubs,
   onMakeLobbyHost,
+  onToggleAbsent,
+  excessiveNoShows,
   onJoinLobby,
   showJoinLobby,
 }: {
@@ -45,14 +48,20 @@ export function TeamsPanel({
   onMoveToUnplaced?: (placement: PlayerPlacement) => void;
   onMoveToSubs?: (placement: PlayerPlacement) => void;
   onMakeLobbyHost?: (placement: PlayerPlacement) => void;
+  onToggleAbsent?: (placement: PlayerPlacement, absent: boolean) => void;
+  /** Host-only: user ID → recent no-show count for players at/above the deprioritization limit. */
+  excessiveNoShows?: Record<string, number>;
   onJoinLobby: (lobby: EventLobby, lobbyIndex: number, gameNumber: number, startTime: string) => void;
   showJoinLobby: boolean;
 }) {
+  // No-shows can only be recorded once the game has started (the API enforces this too).
+  const gameStarted = useHasStarted(event.start_time);
   const lobbies = event.lobbies ?? [];
   if (lobbies.length === 0) {
     return null;
   }
 
+  const absentUserIds = new Set(event.absent_user_ids ?? []);
   const substituteEntries = lobbies.flatMap((lobby, lobbyIndex) =>
     lobby.subs.map((player) => ({ lobby, lobbyIndex, player })),
   );
@@ -123,6 +132,9 @@ export function TeamsPanel({
                     onMoveToUnplaced={onMoveToUnplaced}
                     onMoveToSubs={onMoveToSubs}
                     onMakeLobbyHost={onMakeLobbyHost}
+                    isAbsent={absentUserIds.has(player.user_id)}
+                    recentNoShowCount={excessiveNoShows?.[player.user_id] ?? 0}
+                    onToggleAbsent={gameStarted ? onToggleAbsent : undefined}
                   />
                 ))}
               </div>
@@ -158,6 +170,8 @@ export function TeamsPanel({
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
               showDuoRequest
+              isAbsent={absentUserIds.has(player.user_id)}
+              recentNoShowCount={excessiveNoShows?.[player.user_id] ?? 0}
               placement={{
                 eventId: event.id,
                 userId: player.user_id,
@@ -196,6 +210,8 @@ export function TeamsPanel({
               onDeleteRegistrationForGame={onDeleteRegistrationForGame}
               onDeleteAllFromUser={onDeleteAllFromUser}
               showDuoRequest
+              isAbsent={absentUserIds.has(registration.user_id)}
+              recentNoShowCount={excessiveNoShows?.[registration.user_id] ?? 0}
               placement={{
                 eventId: event.id,
                 userId: registration.user_id,

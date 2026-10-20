@@ -2,6 +2,7 @@
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
+import { axe } from "@/test/axe";
 import { buildGame, buildGameMode, buildUser } from "@/test/fixtures";
 import { server } from "@/test/msw/server";
 import { TEST_API_URL } from "@/test/constants";
@@ -78,7 +79,34 @@ describe("EventForm (create)", () => {
     await user.click(screen.getByRole("button", { name: "Create Event" }));
 
     await waitFor(() => expect(onCancel).toHaveBeenCalled());
-    expect(mockRouter.push).toHaveBeenCalledWith("/event/group-created");
+    expect(mockRouter.push).toHaveBeenCalledWith("/event/group-created?created=1");
+  });
+
+  it("sends the no-show deprioritization setting when creating", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post(`${TEST_API_URL}/events`, async ({ request }) => {
+        receivedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ group_id: "group-created" });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EventForm mode="create" onCancel={vi.fn()} />, {
+      user: USER,
+      isAuthenticated: true,
+    });
+
+    expect(await screen.findByText("Select game")).toBeInTheDocument();
+    await pickOption(user, "Select game", "Valorant");
+    expect(await screen.findByText("Select game mode")).toBeInTheDocument();
+    await pickOption(user, "Select game mode", "5v5");
+    await pickOption(user, "Select region", "AMER");
+    await user.click(screen.getByRole("switch", { name: /Deprioritize no-shows/ }));
+    await user.click(screen.getByRole("button", { name: "Increase Absences before deprioritizing" }));
+    await user.click(screen.getByRole("button", { name: "Create Event" }));
+
+    await waitFor(() => expect(receivedBody).toBeDefined());
+    expect(receivedBody).toMatchObject({ deprioritize_noshows: true, max_noshows: 4 });
   });
 
   it("surfaces an API error message when create fails", async () => {
@@ -171,6 +199,47 @@ describe("EventForm (edit)", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  it("sends the stored no-show setting when saving", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.patch(`${TEST_API_URL}/events/:groupId`, async ({ request }) => {
+        receivedBody = (await request.json()) as Record<string, unknown>;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const onSubmitted = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <EventForm
+        mode="edit"
+        eventGroupId="group-1"
+        onCancel={vi.fn()}
+        onSubmitted={onSubmitted}
+        initialValues={{
+          name: "Friday Customs",
+          game_id: GAME.id,
+          region: "AMER",
+          sub_min: 0,
+          games_to_run: 1,
+          registration_open: true,
+          sort_logic: "balanced",
+          discord_lock: false,
+          discord_guild_ids: [],
+          deprioritize_noshows: true,
+          max_noshows: 2,
+        }}
+        editSchedule={[{ id: "event-1", start_time: "2026-12-01T18:00:00Z", game_mode_id: MODE.id }]}
+      />,
+      { user: USER, isAuthenticated: true },
+    );
+
+    expect(screen.getByLabelText("Absences before deprioritizing")).toHaveValue(2);
+    await user.click(screen.getByRole("button", { name: "Save Settings" }));
+
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+    expect(receivedBody).toMatchObject({ deprioritize_noshows: true, max_noshows: 2 });
+  });
+
   it("deletes the event group after confirmation and navigates to My Events", async () => {
     const onCancel = vi.fn();
     const user = userEvent.setup();
@@ -200,5 +269,32 @@ describe("EventForm (edit)", () => {
 
     await waitFor(() => expect(onCancel).toHaveBeenCalled());
     expect(mockRouter.push).toHaveBeenCalledWith("/my_events");
+  });
+
+  it("has no accessibility violations with no-show deprioritization on", async () => {
+    const { container } = renderWithProviders(
+      <EventForm
+        mode="edit"
+        eventGroupId="group-1"
+        onCancel={vi.fn()}
+        initialValues={{
+          name: "Friday Customs",
+          game_id: GAME.id,
+          region: "AMER",
+          sub_min: 0,
+          games_to_run: 1,
+          registration_open: true,
+          sort_logic: "balanced",
+          discord_lock: false,
+          discord_guild_ids: [],
+          deprioritize_noshows: true,
+          max_noshows: 3,
+        }}
+        editSchedule={[{ id: "event-1", start_time: "2026-12-01T18:00:00Z", game_mode_id: MODE.id }]}
+      />,
+      { user: USER, isAuthenticated: true },
+    );
+    expect(await screen.findByLabelText("Absences before deprioritizing")).toHaveValue(3);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

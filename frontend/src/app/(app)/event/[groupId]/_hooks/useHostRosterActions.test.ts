@@ -164,6 +164,40 @@ describe("useHostRosterActions", () => {
     });
   });
 
+  describe("attendance", () => {
+    it.each([true, false])("handleToggleAbsent posts absent=%s and reloads via withHostAction", async (absent) => {
+      let receivedBody: unknown;
+      let receivedEventId: unknown;
+      server.use(
+        http.post(`${TEST_API_URL}/registrations/:eventId/absence`, async ({ request, params }) => {
+          receivedEventId = params.eventId;
+          receivedBody = await request.json();
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const { result, loadGroup } = setup();
+
+      act(() => result.current.handleToggleAbsent(teamPlacement({ eventId: "event-9", userId: "user-9" }), absent));
+      await waitFor(() => expect(loadGroup).toHaveBeenCalledTimes(1));
+
+      expect(receivedEventId).toBe("event-9");
+      expect(receivedBody).toEqual({ user_id: "user-9", absent });
+    });
+
+    it("handleToggleAbsent surfaces the backend error on the page banner", async () => {
+      server.use(
+        http.post(`${TEST_API_URL}/registrations/:eventId/absence`, () =>
+          HttpResponse.json({ status: "error", message: "Only players on a team can be marked absent" }, { status: 400 }),
+        ),
+      );
+      const { result, loadGroup, setPageError } = setup();
+
+      act(() => result.current.handleToggleAbsent(teamPlacement(), true));
+      await waitFor(() => expect(setPageError).toHaveBeenCalledWith("Only players on a team can be marked absent"));
+      expect(loadGroup).not.toHaveBeenCalled();
+    });
+  });
+
   describe("move to unplaced / subs", () => {
     it("handleMoveToUnplaced calls the API and reloads via withHostAction", async () => {
       let receivedBody: unknown;

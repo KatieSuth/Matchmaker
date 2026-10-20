@@ -136,6 +136,72 @@ describe("TeamsPanel", () => {
     );
   });
 
+  it("labels absent players on teams and in the substitute pool", () => {
+    const teamPlayer = buildLobbyPlayer({ user_id: "team-absent", display_name: "Gone" });
+    const presentPlayer = buildLobbyPlayer({ user_id: "team-present", display_name: "Here" });
+    const swappedSub = buildLobbyPlayer({ user_id: "sub-absent", display_name: "Swapped" });
+    const lobby = buildEventLobby({
+      teams: [buildEventTeam({ players: [teamPlayer, presentPlayer] })],
+      subs: [swappedSub],
+    });
+    const event = buildEventGroupEvent({ lobbies: [lobby], absent_user_ids: ["team-absent", "sub-absent"] });
+    render(<TeamsPanel {...baseProps({ event })} />);
+
+    expect(screen.getAllByText("Absent")).toHaveLength(2);
+  });
+
+  it("hides the attendance toggle until the game has started", async () => {
+    const player = buildLobbyPlayer({ user_id: "user-1" });
+    const lobby = buildEventLobby({ teams: [buildEventTeam({ players: [player] })] });
+    const event = buildEventGroupEvent({ lobbies: [lobby], start_time: "2099-01-01T00:00:00Z" });
+    const user = userEvent.setup();
+    render(<TeamsPanel {...baseProps({ event, isHostView: true, onToggleAbsent: vi.fn() })} />);
+
+    await user.click(screen.getByRole("button", { name: "Registration actions" }));
+    expect(screen.queryByText(/Mark (Absent|Present)/)).not.toBeInTheDocument();
+  });
+
+  it("passes the attendance toggle to team players only for the host view", async () => {
+    const onToggleAbsent = vi.fn();
+    const player = buildLobbyPlayer({ user_id: "user-1" });
+    const sub = buildLobbyPlayer({ user_id: "sub-1" });
+    const lobby = buildEventLobby({ teams: [buildEventTeam({ players: [player] })], subs: [sub] });
+    const event = buildEventGroupEvent({
+      lobbies: [lobby],
+      absent_user_ids: ["user-1"],
+      start_time: "2020-01-01T00:00:00Z",
+    });
+    const user = userEvent.setup();
+    render(<TeamsPanel {...baseProps({ event, isHostView: true, onToggleAbsent })} />);
+
+    const [teamMenu, subMenu] = screen.getAllByRole("button", { name: "Registration actions" });
+    await user.click(subMenu);
+    expect(screen.queryByText(/Mark (Absent|Present)/)).not.toBeInTheDocument();
+
+    await user.click(teamMenu);
+    await user.click(screen.getByText("Mark Present"));
+    expect(onToggleAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: event.id, userId: "user-1", teamNumber: 1 }),
+      false,
+    );
+  });
+
+  it("flags excessive no-shows on team, substitute, and unplaced cards for the host", () => {
+    const teamPlayer = buildLobbyPlayer({ user_id: "team-1" });
+    const sub = buildLobbyPlayer({ user_id: "sub-1" });
+    const clean = buildLobbyPlayer({ user_id: "clean-1" });
+    const unplaced = buildEventRegistration({ user_id: "loose-1" });
+    const lobby = buildEventLobby({ teams: [buildEventTeam({ players: [teamPlayer, clean] })], subs: [sub] });
+    const event = buildEventGroupEvent({ lobbies: [lobby], unplaced: [unplaced] });
+    const excessiveNoShows = { "team-1": 3, "sub-1": 4, "loose-1": 5 };
+
+    const { rerender } = render(<TeamsPanel {...baseProps({ event, isHostView: true, excessiveNoShows })} />);
+    expect(screen.getAllByRole("button", { name: /^No-show \d+ times/ })).toHaveLength(3);
+
+    rerender(<TeamsPanel {...baseProps({ event, isHostView: false, excessiveNoShows })} />);
+    expect(screen.queryByRole("button", { name: /^No-show/ })).not.toBeInTheDocument();
+  });
+
   it("has no accessibility violations for a guest viewer", async () => {
     const player = buildLobbyPlayer({ display_name: "Alice" });
     const sub = buildLobbyPlayer({ display_name: "Subby" });
@@ -159,6 +225,38 @@ describe("TeamsPanel", () => {
     const { container } = render(
       <TeamsPanel {...baseProps({ event, isHostView: true, gameRanks, showJoinLobby: true })} />,
     );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no accessibility violations for a host with absences and no-show warnings", async () => {
+    const teamPlayer = buildLobbyPlayer({ user_id: "team-1", display_name: "Gone" });
+    const other = buildLobbyPlayer({ user_id: "team-2", display_name: "Here" });
+    const sub = buildLobbyPlayer({ user_id: "sub-1", display_name: "Subby" });
+    const unplaced = buildEventRegistration({ user_id: "loose-1", display_name: "Loose" });
+    const lobby = buildEventLobby({
+      fairness_warning: true,
+      fairness_warning_at_lock: true,
+      fairness_outlier: true,
+      teams: [buildEventTeam({ players: [teamPlayer, other] })],
+      subs: [sub],
+    });
+    const event = buildEventGroupEvent({
+      lobbies: [lobby],
+      unplaced: [unplaced],
+      absent_user_ids: ["team-1", "sub-1"],
+      start_time: "2020-01-01T00:00:00Z",
+    });
+    const { container } = render(
+      <TeamsPanel
+        {...baseProps({
+          event,
+          isHostView: true,
+          onToggleAbsent: vi.fn(),
+          excessiveNoShows: { "team-1": 3, "sub-1": 4, "loose-1": 5 },
+        })}
+      />,
+    );
+    expect(screen.getAllByText("Absent")).toHaveLength(2);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

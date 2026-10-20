@@ -105,7 +105,7 @@ func lockedGroup(t *testing.T, s *store.PostgresStore, host model.User, guilds [
 	t.Helper()
 	mode := firstHandlerMode(t, s)
 	start := time.Now().UTC().Add(24 * time.Hour)
-	groupID, err := s.CreateEventGroupWithEvents(context.Background(), host.ID, mode.ID, 0, true, "AMER", "balanced", "Locked Scrims", start, 1, guilds)
+	groupID, err := s.CreateEventGroupWithEvents(context.Background(), host.ID, mode.ID, 0, true, "AMER", "balanced", "Locked Scrims", start, 1, guilds, store.NoShowPolicy{})
 	require.NoError(t, err)
 	detail, err := s.GetEventGroupDetail(context.Background(), groupID, host.ID)
 	require.NoError(t, err)
@@ -219,7 +219,7 @@ func TestGetEventGroupAccessHandler_UnnamedEventTitleIsGame(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, games)
 	start := time.Now().UTC().Add(24 * time.Hour)
-	groupID, err := s.CreateEventGroupWithEvents(context.Background(), host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, []model.DiscordGuild{{ID: "g1", Name: "Alpha"}})
+	groupID, err := s.CreateEventGroupWithEvents(context.Background(), host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, []model.DiscordGuild{{ID: "g1", Name: "Alpha"}}, store.NoShowPolicy{})
 	require.NoError(t, err)
 
 	c, w := test_util.NewGinContext(http.MethodGet, "/events/"+groupID.String()+"/access")
@@ -373,7 +373,7 @@ func TestCreateEventHandler_DiscordGuildNotMember(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandlerWithDiscord(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, _ []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			storeCalled = true
 			return uuid.Nil, nil
 		},
@@ -401,7 +401,7 @@ func TestCreateEventHandler_DiscordGuildsSnapshot(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandlerWithDiscord(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, guilds []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, guilds []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			got = guilds
 			return uuid.New(), nil
 		},
@@ -422,7 +422,7 @@ func TestUpdateEventGroupSettingsHandler_ClearsDiscordGuilds(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(`{"region":"EU","sub_min":2,"sort_logic":"ranked","registration_open":false,"discord_guild_ids":[],"events":[{"event_id":"33333333-3333-3333-3333-333333333333","start_time":"2099-03-01T15:30:00Z","game_mode_id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}]}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandler(t, &store.MockStore{
-		UpdateEventGroupSettingsFn: func(_ context.Context, _, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, guilds []model.DiscordGuild) error {
+		UpdateEventGroupSettingsFn: func(_ context.Context, _, _ uuid.UUID, _ string, _ int32, _ string, _ bool, _ string, _ []store.GroupEventUpdate, guilds []model.DiscordGuild, _ *store.NoShowPolicy) error {
 			got = guilds
 			return nil
 		},
@@ -696,7 +696,7 @@ func TestCreateEventHandler_DedupesGuildIDs(t *testing.T) {
 	c.Request.Body = io.NopCloser(strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h := newTestHandlerWithDiscord(t, &store.MockStore{
-		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, guilds []model.DiscordGuild) (uuid.UUID, error) {
+		CreateEventGroupWithEventsFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ int32, _ bool, _ string, _ string, _ string, _ time.Time, _ int32, guilds []model.DiscordGuild, _ store.NoShowPolicy) (uuid.UUID, error) {
 			got = guilds
 			return uuid.New(), nil
 		},

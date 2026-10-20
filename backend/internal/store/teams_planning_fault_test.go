@@ -17,7 +17,7 @@ func TestBuildGroupRegistrationCounts_DatabaseErrors(t *testing.T) {
 	registerUserForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, joiner.ID)
 
 	t.Run("get events fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventsByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.BuildGroupRegistrationCountsForTest(fs, fixture.ctx, fixture.groupID)
@@ -26,7 +26,7 @@ func TestBuildGroupRegistrationCounts_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get registrations fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationsForEvent", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.BuildGroupRegistrationCountsForTest(fs, fixture.ctx, fixture.groupID)
@@ -58,7 +58,7 @@ func TestPlanTeamsForGroup_DatabaseErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("get events fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventsByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.PlanTeamsForGroupForTest(fs, fixture.ctx, group, defaultMatchmakingSettings())
@@ -67,7 +67,7 @@ func TestPlanTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get registrations for counts fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationsForEvent", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.PlanTeamsForGroupForTest(fs, fixture.ctx, group, defaultMatchmakingSettings())
@@ -76,7 +76,7 @@ func TestPlanTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get matchmaking registrations fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetMatchmakingRegistrationsForEvent", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.PlanTeamsForGroupForTest(fs, fixture.ctx, group, defaultMatchmakingSettings())
@@ -85,7 +85,7 @@ func TestPlanTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get game mode fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetGameModeById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.PlanTeamsForGroupForTest(fs, fixture.ctx, group, defaultMatchmakingSettings())
@@ -94,7 +94,7 @@ func TestPlanTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get max rank order fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetMaxRankOrderForGame", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := store.PlanTeamsForGroupForTest(fs, fixture.ctx, group, defaultMatchmakingSettings())

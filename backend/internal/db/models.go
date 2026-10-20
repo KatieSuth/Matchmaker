@@ -85,14 +85,24 @@ type GameRank struct {
 }
 
 type Lobby struct {
-	ID                    uuid.UUID
-	EventID               *uuid.UUID
-	Host                  *uuid.UUID
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	FairnessWarning       bool
-	FairnessWarningAtLock bool
-	JoinCode              *string
+	ID                     uuid.UUID
+	EventID                *uuid.UUID
+	Host                   *uuid.UUID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	FairnessWarning        bool
+	FairnessWarningAtLock  bool
+	JoinCode               *string
+	FairnessOutlier        bool
+	FairnessTeamSeparation bool
+}
+
+type NoShow struct {
+	UserID         uuid.UUID
+	EventID        uuid.UUID
+	HostID         uuid.UUID
+	MarkedAbsentAt time.Time
+	CreatedAt      time.Time
 }
 
 type OneTimeCode struct {
@@ -154,9 +164,4 @@ type UserGame struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	AvgRank       *uuid.UUID
-}
-
-type UserNoshow struct {
-	UserID  uuid.UUID
-	EventID uuid.UUID
 }

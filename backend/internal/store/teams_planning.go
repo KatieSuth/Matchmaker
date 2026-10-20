@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
@@ -14,6 +15,14 @@ var (
 	ErrInsufficientPlayers     = errors.New("insufficient players")
 	ErrInsufficientSubstitutes = errors.New("insufficient substitutes")
 )
+
+// noShowLookbackMonths is how far back (by game start time) no-shows count toward deprioritization.
+const noShowLookbackMonths = 6
+
+// noShowWindow is the [since, until] range of game start times whose no-shows count as recent.
+func noShowWindow(now time.Time) (since, until time.Time) {
+	return now.AddDate(0, -noShowLookbackMonths, 0), now
+}
 
 // TeamCreationError wraps a sentinel with a client-facing message for handler mapping.
 type TeamCreationError struct {
@@ -30,17 +39,23 @@ func (e *TeamCreationError) Unwrap() error {
 }
 
 // buildMatchmakingConfig assembles per-game matchmaking input from group settings and game mode.
+// max_noshows only becomes a threshold while deprioritize_noshows is on.
 func buildMatchmakingConfig(event db.Event, group db.EventGroup, mode modelGameModeInfo, tierCount int, gameIndex int) matchmaking.Config {
 	slots := int(mode.TeamSize) * 2
 	label := fmt.Sprintf("Game %d (%s)", gameIndex+1, mode.Name)
+	threshold := 0
+	if group.DeprioritizeNoshows {
+		threshold = int(group.MaxNoshows)
+	}
 	return matchmaking.Config{
-		EventID:   event.ID,
-		TeamSize:  int(mode.TeamSize),
-		SubMin:    int(group.SubMin),
-		SortLogic: group.SortLogic,
-		TierCount: tierCount,
-		GameLabel: label,
-		Slots:     slots,
+		EventID:         event.ID,
+		TeamSize:        int(mode.TeamSize),
+		SubMin:          int(group.SubMin),
+		SortLogic:       group.SortLogic,
+		TierCount:       tierCount,
+		GameLabel:       label,
+		Slots:           slots,
+		NoShowThreshold: threshold,
 	}
 }
 
@@ -70,8 +85,43 @@ func (s *PostgresStore) buildGroupRegistrationCounts(ctx context.Context, groupI
 	return counts, nil
 }
 
+// buildGroupNoShowCounts returns each registrant's no-shows at the group owner's games that
+// started in the noShowLookbackMonths before now. Returns nil without querying when the
+// group has deprioritization off, since the counts would be unused.
+func (s *PostgresStore) buildGroupNoShowCounts(ctx context.Context, group db.EventGroup, regCounts map[uuid.UUID]int, now time.Time) (map[uuid.UUID]int, error) {
+	if !group.DeprioritizeNoshows || len(regCounts) == 0 {
+		return nil, nil
+	}
+	userIDs := make([]uuid.UUID, 0, len(regCounts))
+	for id := range regCounts {
+		userIDs = append(userIDs, id)
+	}
+	return s.recentNoShowCounts(ctx, group.OwnerID, userIDs, now)
+}
+
+// recentNoShowCounts returns each user's no-shows at hostID's games that started in the
+// noShowLookbackMonths before now. Users with no recent no-shows are absent from the map.
+func (s *PostgresStore) recentNoShowCounts(ctx context.Context, hostID uuid.UUID, userIDs []uuid.UUID, now time.Time) (map[uuid.UUID]int, error) {
+	since, until := noShowWindow(now)
+	rows, err := s.q.CountRecentNoShowsForHost(ctx, db.CountRecentNoShowsForHostParams{
+		HostID:  hostID,
+		UserIds: userIDs,
+		Since:   since,
+		Until:   until,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count recent no-shows for host: %w", err)
+	}
+	counts := make(map[uuid.UUID]int, len(rows))
+	for _, row := range rows {
+		counts[row.UserID] = int(row.NoShowCount)
+	}
+	return counts, nil
+}
+
 // mapRegistrationsToPlayers converts DB registration rows into matchmaking.Player values.
-func mapRegistrationsToPlayers(rows []db.GetMatchmakingRegistrationsForEventRow, regCounts map[uuid.UUID]int) []matchmaking.Player {
+// noShowCounts may be nil (deprioritization off), leaving every NoShowCount at 0.
+func mapRegistrationsToPlayers(rows []db.GetMatchmakingRegistrationsForEventRow, regCounts map[uuid.UUID]int, noShowCounts map[uuid.UUID]int) []matchmaking.Player {
 	players := make([]matchmaking.Player, 0, len(rows))
 	for _, row := range rows {
 		discordName := ""
@@ -91,12 +141,14 @@ func mapRegistrationsToPlayers(rows []db.GetMatchmakingRegistrationsForEventRow,
 			CanLobbyHost:        row.CanLobbyHost,
 			RegisteredGameCount: regCounts[row.UserID],
 			CreatedAt:           row.CreatedAt,
+			NoShowCount:         noShowCounts[row.UserID],
 		})
 	}
 	return players
 }
 
 // planTeamsForGroup runs matchmaking independently for each game in the group before persistence.
+// When the group deprioritizes no-shows, each player's recent no-show count at this host is attached.
 func (s *PostgresStore) planTeamsForGroup(ctx context.Context, group db.EventGroup, settings matchmaking.Settings) ([]matchmaking.GamePlan, error) {
 	events, err := s.q.GetEventsByGroupId(ctx, &group.ID)
 	if err != nil {
@@ -104,6 +156,12 @@ func (s *PostgresStore) planTeamsForGroup(ctx context.Context, group db.EventGro
 	}
 
 	regCounts, err := s.buildGroupRegistrationCounts(ctx, group.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lock-in time anchors the no-show lookback window.
+	noShowCounts, err := s.buildGroupNoShowCounts(ctx, group, regCounts, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +197,7 @@ func (s *PostgresStore) planTeamsForGroup(ctx context.Context, group db.EventGro
 			GameID:   mode.GameID,
 		}, int(tierCount), i)
 
-		players := mapRegistrationsToPlayers(regRows, regCounts)
+		players := mapRegistrationsToPlayers(regRows, regCounts, noShowCounts)
 		plan, err := matchmaking.PlanEvent(players, cfg, settings)
 		if err != nil {
 			var valErr *matchmaking.ValidationError
@@ -160,9 +218,11 @@ func (s *PostgresStore) persistTeamPlans(ctx context.Context, plans []matchmakin
 	for _, plan := range plans {
 		for _, lobby := range plan.Lobbies {
 			created, err := s.q.CreateLobby(ctx, db.CreateLobbyParams{
-				EventID:         &plan.EventID,
-				Host:            lobby.HostID,
-				FairnessWarning: lobby.FairnessWarning,
+				EventID:                &plan.EventID,
+				Host:                   lobby.HostID,
+				FairnessWarning:        lobby.FairnessWarning,
+				FairnessOutlier:        lobby.FairnessChecks.Outlier,
+				FairnessTeamSeparation: lobby.FairnessChecks.TeamSeparation,
 			})
 			if err != nil {
 				return fmt.Errorf("create lobby for event %s: %w", plan.EventID.String(), err)

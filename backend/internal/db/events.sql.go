@@ -63,7 +63,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) error 
 }
 
 const createEventGroup = `-- name: CreateEventGroup :one
-INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, created_at, updated_at)
+INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, deprioritize_noshows, max_noshows, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     $1,
@@ -72,6 +72,8 @@ VALUES (
     $4,
     $5,
     $6,
+    $7,
+    $8,
     NOW(),
     NOW()
 )
@@ -79,12 +81,14 @@ RETURNING id, owner_id, sub_min, registration_open, is_public, deprioritize_nosh
 `
 
 type CreateEventGroupParams struct {
-	OwnerID          uuid.UUID
-	SubMin           int32
-	RegistrationOpen bool
-	Region           string
-	SortLogic        string
-	Name             *string
+	OwnerID             uuid.UUID
+	SubMin              int32
+	RegistrationOpen    bool
+	Region              string
+	SortLogic           string
+	Name                *string
+	DeprioritizeNoshows bool
+	MaxNoshows          int32
 }
 
 func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupParams) (EventGroup, error) {
@@ -95,6 +99,8 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 		arg.Region,
 		arg.SortLogic,
 		arg.Name,
+		arg.DeprioritizeNoshows,
+		arg.MaxNoshows,
 	)
 	var i EventGroup
 	err := row.Scan(
@@ -116,19 +122,27 @@ func (q *Queries) CreateEventGroup(ctx context.Context, arg CreateEventGroupPara
 }
 
 const createLobby = `-- name: CreateLobby :one
-INSERT INTO lobbies (id, event_id, host, fairness_warning, fairness_warning_at_lock, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, $3, $3, NOW(), NOW())
-RETURNING id, event_id, host, created_at, updated_at, fairness_warning, fairness_warning_at_lock, join_code
+INSERT INTO lobbies (id, event_id, host, fairness_warning, fairness_warning_at_lock, fairness_outlier, fairness_team_separation, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, $3, $4, $5, NOW(), NOW())
+RETURNING id, event_id, host, created_at, updated_at, fairness_warning, fairness_warning_at_lock, join_code, fairness_outlier, fairness_team_separation
 `
 
 type CreateLobbyParams struct {
-	EventID         *uuid.UUID
-	Host            *uuid.UUID
-	FairnessWarning bool
+	EventID                *uuid.UUID
+	Host                   *uuid.UUID
+	FairnessWarning        bool
+	FairnessOutlier        bool
+	FairnessTeamSeparation bool
 }
 
 func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby, error) {
-	row := q.db.QueryRow(ctx, createLobby, arg.EventID, arg.Host, arg.FairnessWarning)
+	row := q.db.QueryRow(ctx, createLobby,
+		arg.EventID,
+		arg.Host,
+		arg.FairnessWarning,
+		arg.FairnessOutlier,
+		arg.FairnessTeamSeparation,
+	)
 	var i Lobby
 	err := row.Scan(
 		&i.ID,
@@ -139,6 +153,8 @@ func (q *Queries) CreateLobby(ctx context.Context, arg CreateLobbyParams) (Lobby
 		&i.FairnessWarning,
 		&i.FairnessWarningAtLock,
 		&i.JoinCode,
+		&i.FairnessOutlier,
+		&i.FairnessTeamSeparation,
 	)
 	return i, err
 }
@@ -317,6 +333,8 @@ SELECT
     EG.region,
     EG.sort_logic,
     EG.name,
+    EG.deprioritize_noshows,
+    EG.max_noshows,
     EG.created_at,
     EG.updated_at
 FROM event_groups AS EG
@@ -325,24 +343,26 @@ WHERE EG.id = $1
 `
 
 type GetEventGroupDetailByIdRow struct {
-	ID               uuid.UUID
-	OwnerID          uuid.UUID
-	OwnerName        string
-	OwnerDisplayName string
-	OwnerPronouns    string
-	GameModeName     string
-	GameModeID       uuid.UUID
-	GameID           uuid.UUID
-	GameName         string
-	JoinLinkBase     *string
-	TeamSize         int32
-	SubMin           int32
-	RegistrationOpen bool
-	Region           string
-	SortLogic        string
-	Name             *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                  uuid.UUID
+	OwnerID             uuid.UUID
+	OwnerName           string
+	OwnerDisplayName    string
+	OwnerPronouns       string
+	GameModeName        string
+	GameModeID          uuid.UUID
+	GameID              uuid.UUID
+	GameName            string
+	JoinLinkBase        *string
+	TeamSize            int32
+	SubMin              int32
+	RegistrationOpen    bool
+	Region              string
+	SortLogic           string
+	Name                *string
+	DeprioritizeNoshows bool
+	MaxNoshows          int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (GetEventGroupDetailByIdRow, error) {
@@ -365,6 +385,8 @@ func (q *Queries) GetEventGroupDetailById(ctx context.Context, id uuid.UUID) (Ge
 		&i.Region,
 		&i.SortLogic,
 		&i.Name,
+		&i.DeprioritizeNoshows,
+		&i.MaxNoshows,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -375,7 +397,8 @@ const getEventGroupMetaByEventId = `-- name: GetEventGroupMetaByEventId :one
 SELECT EG.id AS group_id,
        EG.owner_id,
        EG.sub_min,
-       E.game_mode_id
+       E.game_mode_id,
+       E.start_time
 FROM events AS E
 JOIN event_groups AS EG ON EG.id = E.group_id
 WHERE E.id = $1
@@ -386,6 +409,7 @@ type GetEventGroupMetaByEventIdRow struct {
 	OwnerID    uuid.UUID
 	SubMin     int32
 	GameModeID uuid.UUID
+	StartTime  time.Time
 }
 
 func (q *Queries) GetEventGroupMetaByEventId(ctx context.Context, id uuid.UUID) (GetEventGroupMetaByEventIdRow, error) {
@@ -396,6 +420,7 @@ func (q *Queries) GetEventGroupMetaByEventId(ctx context.Context, id uuid.UUID) 
 		&i.OwnerID,
 		&i.SubMin,
 		&i.GameModeID,
+		&i.StartTime,
 	)
 	return i, err
 }
@@ -597,6 +622,7 @@ SELECT
     E.game_mode_id,
     GM.name AS game_mode_name,
     GM.team_size,
+    GM.duration,
     COUNT(DISTINCT R.user_id)::INT AS registered_count,
     COUNT(DISTINCT L.id)::INT AS lobbies_count,
     COALESCE(BOOL_OR(R.user_id = $2), FALSE)::BOOL AS player_registered
@@ -605,7 +631,7 @@ JOIN game_modes AS GM ON GM.id = E.game_mode_id
 LEFT JOIN registrations AS R ON R.event_id = E.id
 LEFT JOIN lobbies AS L ON L.event_id = E.id
 WHERE E.group_id = $1
-GROUP BY E.id, E.start_time, E.game_mode_id, GM.name, GM.team_size
+GROUP BY E.id, E.start_time, E.game_mode_id, GM.name, GM.team_size, GM.duration
 ORDER BY E.start_time ASC
 `
 
@@ -620,6 +646,7 @@ type GetGroupEventsSummaryRow struct {
 	GameModeID       uuid.UUID
 	GameModeName     string
 	TeamSize         int32
+	Duration         int32
 	RegisteredCount  int32
 	LobbiesCount     int32
 	PlayerRegistered bool
@@ -640,6 +667,7 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 			&i.GameModeID,
 			&i.GameModeName,
 			&i.TeamSize,
+			&i.Duration,
 			&i.RegisteredCount,
 			&i.LobbiesCount,
 			&i.PlayerRegistered,
@@ -655,19 +683,21 @@ func (q *Queries) GetGroupEventsSummary(ctx context.Context, arg GetGroupEventsS
 }
 
 const getLobbiesForEvent = `-- name: GetLobbiesForEvent :many
-SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock, join_code
+SELECT id, event_id, host, fairness_warning, fairness_warning_at_lock, fairness_outlier, fairness_team_separation, join_code
 FROM lobbies
 WHERE event_id = $1
 ORDER BY created_at ASC, id ASC
 `
 
 type GetLobbiesForEventRow struct {
-	ID                    uuid.UUID
-	EventID               *uuid.UUID
-	Host                  *uuid.UUID
-	FairnessWarning       bool
-	FairnessWarningAtLock bool
-	JoinCode              *string
+	ID                     uuid.UUID
+	EventID                *uuid.UUID
+	Host                   *uuid.UUID
+	FairnessWarning        bool
+	FairnessWarningAtLock  bool
+	FairnessOutlier        bool
+	FairnessTeamSeparation bool
+	JoinCode               *string
 }
 
 func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([]GetLobbiesForEventRow, error) {
@@ -685,6 +715,8 @@ func (q *Queries) GetLobbiesForEvent(ctx context.Context, eventID *uuid.UUID) ([
 			&i.Host,
 			&i.FairnessWarning,
 			&i.FairnessWarningAtLock,
+			&i.FairnessOutlier,
+			&i.FairnessTeamSeparation,
 			&i.JoinCode,
 		); err != nil {
 			return nil, err
@@ -920,18 +952,21 @@ func (q *Queries) SetEventGroupRegistrationOpen(ctx context.Context, arg SetEven
 
 const updateEventGroupSettings = `-- name: UpdateEventGroupSettings :one
 UPDATE event_groups
-SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, name = $6, updated_at = NOW()
+SET region = $2, sub_min = $3, sort_logic = $4, registration_open = $5, name = $6,
+    deprioritize_noshows = $7, max_noshows = $8, updated_at = NOW()
 WHERE id = $1
 RETURNING id, owner_id, sub_min, registration_open, is_public, deprioritize_noshows, max_noshows, discord_guild, region, created_at, updated_at, sort_logic, name
 `
 
 type UpdateEventGroupSettingsParams struct {
-	ID               uuid.UUID
-	Region           string
-	SubMin           int32
-	SortLogic        string
-	RegistrationOpen bool
-	Name             *string
+	ID                  uuid.UUID
+	Region              string
+	SubMin              int32
+	SortLogic           string
+	RegistrationOpen    bool
+	Name                *string
+	DeprioritizeNoshows bool
+	MaxNoshows          int32
 }
 
 func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventGroupSettingsParams) (EventGroup, error) {
@@ -942,6 +977,8 @@ func (q *Queries) UpdateEventGroupSettings(ctx context.Context, arg UpdateEventG
 		arg.SortLogic,
 		arg.RegistrationOpen,
 		arg.Name,
+		arg.DeprioritizeNoshows,
+		arg.MaxNoshows,
 	)
 	var i EventGroup
 	err := row.Scan(
@@ -990,17 +1027,28 @@ func (q *Queries) UpdateEventSchedule(ctx context.Context, arg UpdateEventSchedu
 
 const updateLobbyFairnessWarning = `-- name: UpdateLobbyFairnessWarning :exec
 UPDATE lobbies
-SET fairness_warning = $2, updated_at = NOW()
+SET fairness_warning_at_lock = fairness_warning_at_lock AND $2
+        AND fairness_outlier = $3 AND fairness_team_separation = $4,
+    fairness_warning = $2, fairness_outlier = $3, fairness_team_separation = $4, updated_at = NOW()
 WHERE id = $1
 `
 
 type UpdateLobbyFairnessWarningParams struct {
-	ID              uuid.UUID
-	FairnessWarning bool
+	ID                     uuid.UUID
+	FairnessWarning        bool
+	FairnessOutlier        bool
+	FairnessTeamSeparation bool
 }
 
+// fairness_warning_at_lock keeps its lock-in wording only while the lobby is still unfair for
+// exactly the same reasons; right-hand sides read the row's values from before this update.
 func (q *Queries) UpdateLobbyFairnessWarning(ctx context.Context, arg UpdateLobbyFairnessWarningParams) error {
-	_, err := q.db.Exec(ctx, updateLobbyFairnessWarning, arg.ID, arg.FairnessWarning)
+	_, err := q.db.Exec(ctx, updateLobbyFairnessWarning,
+		arg.ID,
+		arg.FairnessWarning,
+		arg.FairnessOutlier,
+		arg.FairnessTeamSeparation,
+	)
 	return err
 }
 

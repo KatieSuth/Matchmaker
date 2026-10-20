@@ -11,12 +11,16 @@ Matchmaking runs **independently per game** in a group. Group-level settings (`s
 `PlanEvent(players, cfg, settings)` in `plan.go` orchestrates the full pipeline:
 
 ```
-ValidateCapacity
-  → strategy (balanced window fill | ranked packing)
+ValidateCapacity                       (sized from every registrant)
+  → markDeprioritized                  (no-show hold-out + add-back; no-op when disabled)
+  → strategy (balanced window fill | ranked packing)   (non-deprioritized players only)
   → ApplySubCapacityRosterConstraint   (n ≥ 2 only)
   → ApplyDuoLobbyGrouping              (n ≥ 2 only; best-effort)
   → team split                         (windows when balanced; snake when ranked; duo pass)
-  → repairUnfairWindowPairs            (balanced only; leftover in-place, adjacent fringe, then same-window combo)
+  → pairTeamsAcrossLobbies             (balanced only, n ≥ 2; closest-average teams face each other)
+  → repairUnfairWindowPairs            (balanced only; leftover in-place, adjacent fringe, same-window combo, then outlier partner)
+  → pairTeamsAcrossLobbies             (balanced only, n ≥ 2; re-checked after repair)
+  → repairUnfairRankedLobbies          (ranked only; one swap, only when a held-out no-show could make the lobby fair)
   → AssignMandatorySubs                (n ≥ 2 only)
   → AssignRemainingAsSubs
   → PickLobbyHost                      (per lobby)
@@ -44,6 +48,8 @@ Built by `mapRegistrationsToPlayers` in `store/teams_planning.go` from `GetMatch
 | `CanLobbyHost` | `registrations.can_lobby_host` | Lobby host selection |
 | `RegisteredGameCount` | Registrations across all games in the group | Tie-break |
 | `CreatedAt` | Registration timestamp | Tie-break; host fallback |
+| `NoShowCount` | `no_shows` at this host's games, past 6 months | No-show deprioritization |
+| `Deprioritized` | Set per plan by `markDeprioritized` | Excludes from fill and sub-capacity replacements |
 
 Rank orders come from `game_ranks.order` for the event's game. Tier count for fairness scaling is `MAX(game_ranks.order)` for that game.
 
@@ -57,6 +63,7 @@ Rank orders come from `game_ranks.order` for the event's game. Tier count for fa
 | `SortLogic` | `event_groups.sort_logic` (`balanced` or `ranked`) |
 | `TierCount` | `MAX(game_ranks.order)` for the game |
 | `LobbyCount` | Set by `ValidateCapacity` |
+| `NoShowThreshold` | `event_groups.max_noshows` when `deprioritize_noshows` is on, else `0` |
 
 ### `Settings` (env-backed fairness)
 
@@ -123,6 +130,33 @@ That ceiling **may bench every can-sub** (`MaxSubstituteEligibleOnRoster == 0`).
 - 26 registrants, 7 sub-eligible → **2 lobbies** (20 roster + 6 mandatory subs, one can-sub may still be rostered).
 
 2v2 (`slots = 4`), `sub_min = 2`, 18 registrants, 6 sub-eligible → **3 lobbies** when the 12 non-subs form even windows; **2 lobbies** when they cannot.
+
+---
+
+## No-show deprioritization (`deprioritize.go`)
+
+Opt-in per event group (`event_groups.deprioritize_noshows`). When it is off, `NoShowThreshold` is 0, `max_noshows` is ignored, and the pipeline behaves exactly as if this section did not exist.
+
+**Counting.** The store counts each registrant's `no_shows` rows whose `host_id` is this group's owner and whose game (`events.start_time`) falls in the 6 months before lock-in. The count is by game date, not by when the mark was recorded.
+
+**Hold-out.** A player with `NoShowCount ≥ NoShowThreshold` is *deprioritized*:
+
+- Lobby count is still sized from **every** registrant, so deprioritization never reduces `n`.
+- Deprioritized players are left out of the lobby fill (`AssignBalanced` / `AssignRanked`) and are never chosen by `bestNonSubReplacement`.
+- Substitute assignment ignores absences: deprioritized can-subs are mandatory/overflow sub candidates like anyone else.
+
+**Add-back.** If holding everyone out would leave too few players to fill the `n × slots` roster seats, held-out players are added back, **fewest no-shows first** (ties: fewer group games, then earlier registration):
+
+1. While the eligible non-sub count is below `n × slots − MaxSubstituteEligibleOnRoster`, add back held-out non-subs (rosters can only hold so many can-subs when `sub_min` reserves the rest).
+2. While the eligible total is below `n × slots`, add back any held-out player.
+
+Example: 5v5, 11 registrants, threshold 3. A has 4 no-shows and B has 3. Holding both out leaves 9 < 10, so B (fewer no-shows) is added back and A sits out. Add-back is recomputed whenever `PlanEvent` retries at `n − 1`.
+
+**Final fairness repair (balanced only).** Deprioritized players are unplaced leftovers, so `repairUnfairWindowPairs` may use them — but only as a last resort. Within each stage, the best clean trial (no deprioritized player brought in) beats the best overall trial when it leaves the lobby fair or is at least as good on the metric being optimized. On a full tie, a non-deprioritized leftover wins, then the one with fewer no-shows. Across steps, the most balanced proposal is chosen first; if it needs a held-out player, the most balanced clean proposal from any step replaces it under the same rule.
+
+**Duos.** No step uses a duo request to decide who gets a seat, so an excessive player is never preferred over someone with equal or better balance because of a duo request. Duo grouping still pairs them if both partners end up rostered.
+
+**Ranked mode** keeps its packed rank band and otherwise never swaps leftovers in for balance. The no-show hold-out is the exception: if an unfair ranked lobby could be made **fully fair** by swapping one held-out player in (`repairUnfairRankedLobbies`), the swap is made. The seat is either kept or the lobby is re-drafted, and the most balanced fair swap wins; a clean leftover is preferred only when it balances just as well. When no held-out player could fix the lobby, nothing changes, so ranked lobbies without deprioritized players behave exactly as before.
 
 ---
 
@@ -257,19 +291,28 @@ Rules:
 
 Subs are not assigned a team number.
 
+### Cross-lobby team pairing (`pairTeamsAcrossLobbies`)
+
+Balanced only, when there are 2+ lobbies. Each lobby's split is decided on its own, so two lobbies can each be fair while pairing a strong team with a weak one: Plat 2 vs Gold 2 in one lobby and Gold 3 vs Plat 2 in the other. This step sorts all teams by average rank and seats neighbors together (Plat 2 vs Plat 2, Gold 3 vs Gold 2). That is the pairing that minimizes team-average gaps. Teams move intact.
+
+The new pairing is kept only when it lowers the worst team-average gap across lobbies **and** leaves no more lobbies unfair than before (moving teams changes each lobby's outlier check). It runs before fairness repair, and again after it because repair can change team averages. Trade-offs: lobbies become less mixed (one lobby may be noticeably higher-ranked than another, even though every matchup is closer), and a duo the lobby pass united on opposite teams can end up in different lobbies, since balance wins. Ranked mode never runs it; its lobbies are already contiguous rank bands.
+
 ### Fairness repair (`repairUnfairWindowPairs`)
 
 Balanced only, after team split and before mandatory subs. Fill and sub-capacity never look back at unplaced players; a lobby can end up **Plat vs Bronze** while a **Gold 2** sits unplaced even though swapping them in place would even the sides.
 
 The pass runs while `IsLobbyUnfair` is true — **either** `teamSeparationExceeds` **or** `outlierExceeds`. Other lobbies are never raided (leftovers are unplaced players only; anyone already on a roster or sub pool is ineligible). Unplaced can-subs are eligible only when enough can-subs would remain unrostered for `n × sub_min`. Apply a change only when the failing check **strictly improves**, and do not newly trip the other check (an outlier fix must not create a team-separation warning, and a team-sep fix must not create an outlier warning). If both checks fail, team-average separation is optimized first. One improving change per pass; repeat while the lobby is still unfair and a swap still helps, up to `min(window count + 2, 8)` passes.
 
-Each pass tries, in order:
+Each pass asks every step for its best accepted change:
 
 1. **In-place 1-for-1, same window.** Replace one rostered player with one unplaced leftover from that rank band. Everyone else keeps their `team_number`. This is the host-style fix (Plat 1 off, leftover Gold 2 on that seat) and does not re-deal the lobby. The leftover must not widen that window's rank spread (a leftover Radiant cannot replace an Ascendant to paper over Plat vs Bronze). Among accepted swaps, pick the best primary metric, then the closer rank delta; on a sep+delta tie, replace the lower-ranked seat so a high leftover cannot mask a low-window hole.
 2. **In-place 1-for-1, adjacent fringe.** Same seat-preserving swap, but the leftover may come from a neighboring window if **both** ranks sit within 2 ladder steps of the shared edge (e.g. 5v5 Gold 1 ↔ Plat 1). A Radiant is not “adjacent” to Gold.
-3. **Same-window combo re-split.** If no 1-for-1 helps, the `k` rostered players in a window plus unplaced players in that window are retried as combinations (current occupants always stay in the search pool; leftovers may be trimmed so the combination count stays small) and the **whole lobby** is re-split with `splitIntoTeamsWindowed` (window pairing + duo pass). Combinations that widen that window's rank spread are skipped. Ties keep more of the current window roster (less churn).
+3. **Same-window combo re-split.** The `k` rostered players in a window plus unplaced players in that window are retried as combinations (current occupants always stay in the search pool; leftovers may be trimmed so the combination count stays small) and the **whole lobby** is re-split with `splitIntoTeamsWindowed` (window pairing + duo pass). Combinations that widen that window's rank spread are skipped. Ties keep more of the current window roster (less churn).
+4. **Outlier partner (any window).** Only when the outlier check is failing: a lone top player has no one within the outlier gap, and the stages above cannot help because the nearest leftover sits in a band nobody on the roster occupies. For example, a lone Diamond 3 (19) above a Plat-and-below lobby, with an Ascendant 3 (21) leftover. A leftover within the outlier gap of the top player takes a seat on the **other** team, so each side has a strong player. Because this crosses windows, it counts only if the lobby ends up **fully fair**. Among fair trials, the most even teams win.
 
-This does **not** set `SubCapacityAdjusted`. If repair (or the rest of the pipeline) leaves every lobby fair, `PlanEvent` clears that flag so the host is not warned. Ranked mode never runs it.
+**Best balance wins.** Of the steps' proposals, the most balanced is applied: a fair lobby beats an unfair one, then the smaller team-average gap, then the smaller outlier gap. Ties go to the least disruptive step, in this order: same-window swap, fringe swap, outlier partner, combo re-split. So a simple seat swap that is already fair can still lose to a re-split that evens the teams further, and a cross-window outlier partner wins only when it is genuinely the most balanced option. If the winner brings in a deprioritized no-show, the most balanced proposal built from clean leftovers only is used instead, as long as it leaves the lobby fair or improves it as much (see [No-show deprioritization](#no-show-deprioritization-deprioritizego)).
+
+This does **not** set `SubCapacityAdjusted`. If repair (or the rest of the pipeline) leaves every lobby fair, `PlanEvent` clears that flag so the host is not warned. Ranked mode never runs it; its only final pass is the held-out no-show swap described under [No-show deprioritization](#no-show-deprioritization-deprioritizego).
 
 ### Mandatory subs (`AssignMandatorySubs`)
 
@@ -393,6 +436,7 @@ All three must be positive if set; invalid values cause startup failure.
 | File          | Responsibility                                      |
 |---------------|-----------------------------------------------------|
 | `duos.go`     | Mutual duo detection, lobby grouping, team grouping |
+| `deprioritize.go` | No-show hold-out and add-back (`markDeprioritized`) |
 | `plan.go`     | `PlanEvent` orchestrator; may drop `n` via `shouldDropReservedSubLobby`; clears `SubCapacityAdjusted` via `anyLobbyUnfair` |
 | `balanced.go` | Balanced lobby fill from rank windows                 |
 | `windows.go`  | Rank windows, midpoint picks, windowed team pairing   |
@@ -405,7 +449,9 @@ All three must be positive if set; invalid values cause startup failure.
 | `rank.go`     | `AverageRankOrder`, `FlooredAverageRankOrder`       |
 | `host.go`     | `PickLobbyHost`                                     |
 | `fairness.go` | Threshold scaling and `IsLobbyUnfair`               |
-| `repair.go`   | Balanced leftover in-place, fringe, and combo repair |
+| `repair.go`   | Balanced leftover in-place, fringe, combo, and outlier-partner repair |
+| `ranked_repair.go` | Ranked final pass for held-out no-shows |
+| `team_pairing.go` | Balanced cross-lobby team pairing |
 | `types.go`    | Domain types                                        |
 | `errors.go`   | `ValidationError`                                   |
 

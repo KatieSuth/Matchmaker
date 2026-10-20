@@ -50,14 +50,15 @@ func collectRosteredSubEligible(lobbies []LobbyPlan) []Player {
 	return out
 }
 
-// bestNonSubReplacement finds an unrostered non-sub to fill the vacated slot.
+// bestNonSubReplacement finds an unrostered, non-deprioritized non-sub to fill the vacated slot.
 // Same rank window first, then the nearest window; within that band, closest to the
 // vacated rank. Highest leftover skill is not used — that is how Radiant lands in a Gold hole.
 func bestNonSubReplacement(allPlayers []Player, lobbies []LobbyPlan, vacated Player, windows []rankWindow, tierCount int) (Player, bool) {
 	rostered := rosteredUserIDs(lobbies)
 	var candidates []Player
 	for _, p := range allPlayers {
-		if p.CanSubstitute || rostered[p.UserID] {
+		// Deprioritized no-shows are not part of the initial team passes.
+		if p.CanSubstitute || p.Deprioritized || rostered[p.UserID] {
 			continue
 		}
 		candidates = append(candidates, p)

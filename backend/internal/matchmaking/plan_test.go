@@ -453,7 +453,9 @@ func TestPlanEvent_SubCapacitySwapKeepsTwoVTwoWindows(t *testing.T) {
 	}
 }
 
-func TestPlanEvent_RepairsUnfairLowWindowPairWithUnplacedIrons(t *testing.T) {
+// Each lobby starts lopsided; pairing the closest-average teams across lobbies evens them without
+// pulling unplaced Irons onto rosters (leftover repair is covered in repair_test.go).
+func TestPlanEvent_TeamPairingEvensLobbiesWithoutLeftovers(t *testing.T) {
 	now := time.Now()
 	ironA := uuid.New()
 	ironB := uuid.New()
@@ -508,11 +510,13 @@ func TestPlanEvent_RepairsUnfairLowWindowPairWithUnplacedIrons(t *testing.T) {
 			rostered[p.UserID] = true
 		}
 	}
-	assert.True(t, rostered[ironA] || rostered[ironB], "an unplaced Iron should repair the Plat-vs-Bronze split")
-	assert.False(t, rostered[plat], "Plat 1 should come off the strong side")
-	assert.False(t, plan.SubCapacityAdjusted, "repair made the lobbies fair, so the substitute warning stays off")
+	assert.False(t, rostered[ironA], "re-pairing teams makes leftover Irons unnecessary")
+	assert.False(t, rostered[ironB])
+	assert.True(t, rostered[plat])
+	assert.True(t, rostered[bronze])
+	assert.False(t, plan.SubCapacityAdjusted, "every lobby ends fair, so the substitute warning stays off")
 	for i, lobby := range plan.Lobbies {
-		assert.False(t, lobby.FairnessWarning, "lobby %d should be fair after repair", i)
+		assert.False(t, lobby.FairnessWarning, "lobby %d should be fair", i)
 	}
 }
 
@@ -564,11 +568,12 @@ func TestPlanEvent_SubCapacityWarningStaysWhenLobbyRemainsUnfair(t *testing.T) {
 	plat := uuid.New()
 	bronze := uuid.New()
 
+	// A lone 24 has no one near their rank, so no team pairing or repair can clear the outlier.
 	players := make([]matchmaking.Player, 0, 12)
-	for i := 0; i < 4; i++ {
+	for i, rank := range []float64{14, 14, 14, 24} {
 		players = append(players, matchmaking.Player{
 			UserID:    uuid.New(),
-			AvgRank:   21,
+			AvgRank:   rank,
 			CreatedAt: now.Add(time.Duration(i) * time.Minute),
 		})
 	}
@@ -609,7 +614,7 @@ func TestPlanEvent_SubCapacityWarningStaysWhenLobbyRemainsUnfair(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, anyUnfair, "Plat-vs-Bronze should remain after sub-capacity with no leftover Irons")
+	require.True(t, anyUnfair, "the lone 24 keeps a lobby unfair after sub-capacity")
 	assert.True(t, plan.SubCapacityAdjusted)
 }
 

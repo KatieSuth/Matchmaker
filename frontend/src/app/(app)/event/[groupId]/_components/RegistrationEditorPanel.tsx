@@ -30,13 +30,20 @@ export function RegistrationToggleButton({
   return (
     <div className="flex justify-center">
       {registrationEditorOpen ? (
+        // Editing an existing registration backs out of the change (blue); a first-time
+        // registration is abandoned outright (red).
         <button
           type="button"
           onClick={onClose}
           disabled={working}
-          className="rounded-lg border border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 px-5 py-2.5 text-sm font-medium text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20 disabled:opacity-40"
+          className={[
+            "rounded-lg border px-5 py-2.5 text-sm font-medium disabled:opacity-40",
+            myRegistrationsCount > 0
+              ? "border-[var(--color-accent-blue)]/35 bg-[var(--color-accent-blue)]/10 text-[var(--color-accent-blue)] hover:bg-[var(--color-accent-blue)]/20"
+              : "border-[var(--color-text-danger)]/40 bg-[var(--color-text-danger)]/10 text-[var(--color-text-danger)] hover:bg-[var(--color-text-danger)]/20",
+          ].join(" ")}
         >
-          Cancel Registration
+          {myRegistrationsCount > 0 ? "Cancel Change to Registration" : "Cancel Registration"}
         </button>
       ) : (
         <span

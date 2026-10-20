@@ -1,7 +1,7 @@
 "use client";
 
-// Host-only roster management: lock-in/delete teams, swap players, move to subs/unplaced, and
-// lobby-host reassignment. All mutations funnel through `withHostAction`, which refreshes the
+// Host-only roster management: lock-in/delete teams, swap players, move to subs/unplaced,
+// lobby-host reassignment, and attendance (no-show) marks. All mutations funnel through `withHostAction`, which refreshes the
 // group and surfaces failures on the shared page error banner.
 import { useCallback, useMemo, useState } from "react";
 import { SelectOption } from "@/app/_components/Select";
@@ -11,6 +11,7 @@ import {
   moveSubToUnplaced,
   moveUnplacedToSubs,
   setLobbyHost,
+  setPlayerAbsence,
   swapPlayers,
 } from "@/app/_services/events";
 import { extractApiError } from "@/app/_services/games";
@@ -152,6 +153,10 @@ export function useHostRosterActions(
     }
   };
 
+  const handleToggleAbsent = (placement: PlayerPlacement, absent: boolean) => {
+    void withHostAction(() => setPlayerAbsence(placement.eventId, placement.userId, absent));
+  };
+
   const closeLobbyHostConfirm = useCallback(() => {
     setLobbyHostConfirmOpen(false);
     setPendingLobbyHostChange(null);
@@ -263,5 +268,6 @@ export function useHostRosterActions(
     closeLobbyHostConfirm,
     submitLobbyHostChange,
     handleMakeLobbyHost,
+    handleToggleAbsent,
   };
 }

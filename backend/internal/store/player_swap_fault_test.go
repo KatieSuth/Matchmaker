@@ -61,56 +61,55 @@ func TestSwapPlayersForEvent_DatabaseErrors(t *testing.T) {
 	injectedErr := errors.New("injected database failure")
 
 	cases := []struct {
-		name               string
-		failOnQueryRowCall int
-		failOnQueryCall    int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
 		{
-			name:               "event meta lookup fails",
-			failOnQueryRowCall: 1,
-			wantContains:       "get event group meta",
+			name:         "event meta lookup fails",
+			failOn:       "GetEventGroupMetaByEventId",
+			wantContains: "get event group meta",
 		},
 		{
-			name:               "count lobbies fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "count lobbies for event",
+			name:         "count lobbies fails",
+			failOn:       "CountLobbiesForEvent",
+			wantContains: "count lobbies for event",
 		},
 		{
-			name:               "registration lookup fails",
-			failOnQueryRowCall: 3,
-			wantContains:       "get registration",
+			name:         "registration lookup fails",
+			failOn:       "GetRegistrationByEventAndUser",
+			wantContains: "get registration",
 		},
 		{
-			name:            "player placements fails",
-			failOnQueryCall: 1,
-			wantContains:    "get player placements",
+			name:         "player placements fails",
+			failOn:       "GetPlayerPlacementsForEvent",
+			wantContains: "get player placements",
 		},
 		{
-			name:            "lobbies lookup fails",
-			failOnQueryCall: 2,
-			wantContains:    "get lobbies for event",
+			name:         "lobbies lookup fails",
+			failOn:       "GetLobbiesForEvent",
+			wantContains: "get lobbies for event",
 		},
 		{
-			name:           "delete player A fails",
-			failOnExecCall: 1,
-			wantContains:   "delete player A",
+			name:         "delete player A fails",
+			failOn:       "DeletePlayer",
+			wantContains: "delete player A",
 		},
 		{
-			name:           "delete player B fails",
-			failOnExecCall: 2,
-			wantContains:   "delete player B",
+			name:   "delete player B fails",
+			failOn: "DeletePlayer", failOnNth: 2,
+			wantContains: "delete player B",
 		},
 		{
-			name:           "insert player A fails",
-			failOnExecCall: 3,
-			wantContains:   "insert player A",
+			name:         "insert player A fails",
+			failOn:       "CreatePlayer",
+			wantContains: "insert player A",
 		},
 		{
-			name:           "insert player B fails",
-			failOnExecCall: 4,
-			wantContains:   "insert player B",
+			name:   "insert player B fails",
+			failOn: "CreatePlayer", failOnNth: 2,
+			wantContains: "insert player B",
 		},
 	}
 
@@ -118,11 +117,10 @@ func TestSwapPlayersForEvent_DatabaseErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupSwapFixture(t)
 			faulty := &faultInjectTx{
-				DBTX:               fixture.tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        fixture.tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			s := store.NewPostgresStoreFromDBTXForTest(faulty)
 
@@ -152,42 +150,40 @@ func TestRecomputeLobbyAfterSwap_DatabaseErrors(t *testing.T) {
 	lobbyID := insertLobbyForEvent(t, ctx, tx, eventID, &host.ID)
 
 	cases := []struct {
-		name               string
-		failOnQueryCall    int
-		failOnQueryRowCall int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
 		{
-			name:            "get players fails",
-			failOnQueryCall: 1,
-			wantContains:    "get players for lobby",
+			name:         "get players fails",
+			failOn:       "GetPlayersForLobby",
+			wantContains: "get players for lobby",
 		},
 		{
-			name:           "update lobby host fails",
-			failOnExecCall: 1,
-			wantContains:   "update lobby host",
+			name:         "update lobby host fails",
+			failOn:       "UpdateLobbyHost",
+			wantContains: "update lobby host",
 		},
 		{
-			name:               "get max rank order fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "get max rank order",
+			name:         "get max rank order fails",
+			failOn:       "GetMaxRankOrderForGame",
+			wantContains: "get max rank order",
 		},
 		{
-			name:           "update fairness warning fails",
-			failOnExecCall: 2,
-			wantContains:   "update lobby fairness",
+			name:         "update fairness warning fails",
+			failOn:       "UpdateLobbyFairnessWarning",
+			wantContains: "update lobby fairness",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			faulty := &faultInjectTx{
-				DBTX:               tx,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 

@@ -23,6 +23,7 @@ import { Game, GameMode } from "@/app/_types/types";
 
 import { DeleteEventDialog } from "./eventForm/DeleteEventDialog";
 import { DiscordLockFields } from "./eventForm/DiscordLockFields";
+import { NoShowDeprioritizationFields } from "./eventForm/NoShowDeprioritizationFields";
 import { EventFormDateTimePicker } from "./eventForm/EventFormDateTimePicker";
 import { MatchmakingModeField } from "./eventForm/MatchmakingModeField";
 import { PerGameScheduleEditor } from "./eventForm/PerGameScheduleEditor";
@@ -77,6 +78,8 @@ export function EventForm({
       sort_logic: initialValues?.sort_logic ?? "balanced",
       discord_lock: initialValues?.discord_lock ?? false,
       discord_guild_ids: initialValues?.discord_guild_ids ?? [],
+      deprioritize_noshows: initialValues?.deprioritize_noshows ?? false,
+      max_noshows: initialValues?.max_noshows ?? 0,
     }),
     [initialValues, mode],
   );
@@ -95,6 +98,7 @@ export function EventForm({
   const watchedGameId = useWatch({ control, name: "game_id" });
   const watchedName = useWatch({ control, name: "name" }) ?? "";
   const watchedDiscordLock = useWatch({ control, name: "discord_lock" });
+  const watchedDeprioritize = useWatch({ control, name: "deprioritize_noshows" });
   const nameCodePoints = codePointLength(watchedName);
   const nameOverLimit = nameCodePoints > EVENT_NAME_MAX_RUNES;
 
@@ -221,9 +225,12 @@ export function EventForm({
           sort_logic: data.sort_logic,
           name: data.name,
           discord_guild_ids: data.discord_lock ? data.discord_guild_ids : [],
+          deprioritize_noshows: data.deprioritize_noshows,
+          max_noshows: data.max_noshows,
         });
         onCancel();
-        router.push(`/event/${result.group_id}`);
+        // ?created=1 lets the event page offer the host a calendar invitation once.
+        router.push(`/event/${result.group_id}?created=1`);
         return;
       }
 
@@ -250,6 +257,8 @@ export function EventForm({
         registration_open: data.registration_open,
         name: data.name,
         discord_guild_ids: data.discord_lock ? data.discord_guild_ids : [],
+        deprioritize_noshows: data.deprioritize_noshows,
+        max_noshows: data.max_noshows,
         events: perGameDraft.map((row) => ({
           event_id: row.eventId,
           start_time: new Date(row.startLocal).toISOString(),
@@ -590,6 +599,15 @@ export function EventForm({
           discordGuildsLoading={discordGuildsLoading}
           discordGuildsError={discordGuildsError}
           discordGuildIdsError={errors.discord_guild_ids?.message}
+          readOnly={readOnly}
+        />
+
+        <NoShowDeprioritizationFields
+          control={control}
+          setValue={setValue}
+          getValues={getValues}
+          watchedDeprioritize={watchedDeprioritize}
+          maxNoshowsError={errors.max_noshows?.message}
           readOnly={readOnly}
         />
 

@@ -25,7 +25,7 @@ func TestEventGroupDiscordGuilds_ReplaceListAndEmpty(t *testing.T) {
 	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, []model.DiscordGuild{
 		{ID: "111", Name: "Alpha"},
 		{ID: "222", Name: "Beta"},
-	})
+	}, store.NoShowPolicy{})
 	require.NoError(t, err)
 
 	got, err := s.ListEventGroupDiscordGuilds(ctx, groupID)
@@ -45,7 +45,7 @@ func TestEventGroupDiscordGuilds_ReplaceListAndEmpty(t *testing.T) {
 	eventID := detail.Events[0].ID
 	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, mode.ID, start), []model.DiscordGuild{
 		{ID: "333", Name: "Gamma"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	got, err = s.ListEventGroupDiscordGuilds(ctx, groupID)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestEventGroupDiscordGuilds_ReplaceListAndEmpty(t *testing.T) {
 	assert.Equal(t, "333", got[0].ID)
 	assert.Equal(t, "Gamma", got[0].Name)
 
-	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, mode.ID, start), []model.DiscordGuild{})
+	err = s.UpdateEventGroupSettings(ctx, groupID, host.ID, "AMER", 0, "balanced", true, "", patchEventUpdates(eventID, mode.ID, start), []model.DiscordGuild{}, nil)
 	require.NoError(t, err)
 	got, err = s.ListEventGroupDiscordGuilds(ctx, groupID)
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestEventGroupDiscordGuilds_CascadeOnGroupDelete(t *testing.T) {
 
 	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, []model.DiscordGuild{
 		{ID: "111", Name: "Alpha"},
-	})
+	}, store.NoShowPolicy{})
 	require.NoError(t, err)
 
 	err = s.DeleteEventGroup(ctx, groupID, host.ID)
@@ -94,7 +94,7 @@ func TestEventGroupDiscordGuilds_UniquePair(t *testing.T) {
 	_, err = s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, []model.DiscordGuild{
 		{ID: "111", Name: "Alpha"},
 		{ID: "111", Name: "Alpha again"},
-	})
+	}, store.NoShowPolicy{})
 	require.Error(t, err)
 }
 
@@ -107,7 +107,7 @@ func TestGetEventGroupAccessMeta_UsesNameOrGameName(t *testing.T) {
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	start := time.Now().UTC().Add(24 * time.Hour)
 
-	namedID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "Scrims", start, 1, nil)
+	namedID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "Scrims", start, 1, nil, store.NoShowPolicy{})
 	require.NoError(t, err)
 	owner, title, named, err := s.GetEventGroupAccessMeta(ctx, namedID)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestGetEventGroupAccessMeta_UsesNameOrGameName(t *testing.T) {
 	assert.Equal(t, "Scrims", title)
 	assert.True(t, named)
 
-	unnamedID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil)
+	unnamedID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil, store.NoShowPolicy{})
 	require.NoError(t, err)
 	_, title, named, err = s.GetEventGroupAccessMeta(ctx, unnamedID)
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestEventGroupIDByEventID_Success(t *testing.T) {
 	require.NoError(t, err)
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	start := time.Now().UTC().Add(24 * time.Hour)
-	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil, store.NoShowPolicy{})
 	require.NoError(t, err)
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestEventGroupIDByLobbyID_Success(t *testing.T) {
 	require.NoError(t, err)
 	mode := firstModeForGame(t, ctx, s, games[0].ID)
 	start := time.Now().UTC().Add(24 * time.Hour)
-	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil)
+	groupID, err := s.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, nil, store.NoShowPolicy{})
 	require.NoError(t, err)
 	detail, err := s.GetEventGroupDetail(ctx, groupID, host.ID)
 	require.NoError(t, err)
@@ -215,17 +215,17 @@ func TestReplaceEventGroupDiscordGuilds_DatabaseErrors(t *testing.T) {
 	guilds := []model.DiscordGuild{{ID: "111", Name: "Alpha"}}
 
 	t.Run("delete fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: tx, failOnExecCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: tx, failOn: "DeleteEventGroupDiscordGuildsByGroupID", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
-		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, guilds)
+		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, guilds, store.NoShowPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "delete event group discord guilds")
 	})
 
 	t.Run("insert fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: tx, failOn: "InsertEventGroupDiscordGuild", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
-		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, guilds)
+		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", start, 1, guilds, store.NoShowPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "insert event group discord guild")
 	})

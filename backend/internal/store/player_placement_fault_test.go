@@ -101,46 +101,45 @@ func TestMoveSubToUnplacedForEvent_DatabaseErrors(t *testing.T) {
 	injectedErr := errors.New("injected database failure")
 
 	cases := []struct {
-		name               string
-		failOnQueryRowCall int
-		failOnQueryCall    int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
 		{
-			name:               "event meta lookup fails",
-			failOnQueryRowCall: 1,
-			wantContains:       "get event group meta",
+			name:         "event meta lookup fails",
+			failOn:       "GetEventGroupMetaByEventId",
+			wantContains: "get event group meta",
 		},
 		{
-			name:               "count lobbies fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "count lobbies for event",
+			name:         "count lobbies fails",
+			failOn:       "CountLobbiesForEvent",
+			wantContains: "count lobbies for event",
 		},
 		{
-			name:               "registration lookup fails",
-			failOnQueryRowCall: 3,
-			wantContains:       "get registration",
+			name:         "registration lookup fails",
+			failOn:       "GetRegistrationByEventAndUser",
+			wantContains: "get registration",
 		},
 		{
-			name:            "player placements fails",
-			failOnQueryCall: 1,
-			wantContains:    "get player placements",
+			name:         "player placements fails",
+			failOn:       "GetPlayerPlacementsForEvent",
+			wantContains: "get player placements",
 		},
 		{
-			name:            "lobbies lookup fails",
-			failOnQueryCall: 2,
-			wantContains:    "get lobbies for event",
+			name:         "lobbies lookup fails",
+			failOn:       "GetLobbiesForEvent",
+			wantContains: "get lobbies for event",
 		},
 		{
-			name:           "delete substitute fails",
-			failOnExecCall: 1,
-			wantContains:   "delete substitute player",
+			name:         "delete substitute fails",
+			failOn:       "DeletePlayer",
+			wantContains: "delete substitute player",
 		},
 		{
-			name:            "recompute lobby fails",
-			failOnQueryCall: 3,
-			wantContains:    "get players for lobby",
+			name:         "recompute lobby fails",
+			failOn:       "GetPlayersForLobby",
+			wantContains: "get players for lobby",
 		},
 	}
 
@@ -148,11 +147,10 @@ func TestMoveSubToUnplacedForEvent_DatabaseErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupMoveSubToUnplacedFixture(t)
 			faulty := &faultInjectTx{
-				DBTX:               fixture.tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        fixture.tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			s := store.NewPostgresStoreFromDBTXForTest(faulty)
 
@@ -173,46 +171,45 @@ func TestMoveUnplacedToSubsForEvent_DatabaseErrors(t *testing.T) {
 	injectedErr := errors.New("injected database failure")
 
 	cases := []struct {
-		name               string
-		failOnQueryRowCall int
-		failOnQueryCall    int
-		failOnExecCall     int
-		wantContains       string
+		name         string
+		failOn       string
+		failOnNth    int
+		wantContains string
 	}{
 		{
-			name:               "event meta lookup fails",
-			failOnQueryRowCall: 1,
-			wantContains:       "get event group meta",
+			name:         "event meta lookup fails",
+			failOn:       "GetEventGroupMetaByEventId",
+			wantContains: "get event group meta",
 		},
 		{
-			name:               "count lobbies fails",
-			failOnQueryRowCall: 2,
-			wantContains:       "count lobbies for event",
+			name:         "count lobbies fails",
+			failOn:       "CountLobbiesForEvent",
+			wantContains: "count lobbies for event",
 		},
 		{
-			name:               "registration lookup fails",
-			failOnQueryRowCall: 3,
-			wantContains:       "get registration",
+			name:         "registration lookup fails",
+			failOn:       "GetRegistrationByEventAndUser",
+			wantContains: "get registration",
 		},
 		{
-			name:            "player placements fails",
-			failOnQueryCall: 1,
-			wantContains:    "get player placements",
+			name:         "player placements fails",
+			failOn:       "GetPlayerPlacementsForEvent",
+			wantContains: "get player placements",
 		},
 		{
-			name:            "lobbies lookup fails",
-			failOnQueryCall: 2,
-			wantContains:    "get lobbies for event",
+			name:         "lobbies lookup fails",
+			failOn:       "GetLobbiesForEvent",
+			wantContains: "get lobbies for event",
 		},
 		{
-			name:           "insert substitute fails",
-			failOnExecCall: 1,
-			wantContains:   "insert substitute player",
+			name:         "insert substitute fails",
+			failOn:       "CreatePlayer",
+			wantContains: "insert substitute player",
 		},
 		{
-			name:            "recompute lobby fails",
-			failOnQueryCall: 3,
-			wantContains:    "get players for lobby",
+			name:         "recompute lobby fails",
+			failOn:       "GetPlayersForLobby",
+			wantContains: "get players for lobby",
 		},
 	}
 
@@ -220,11 +217,10 @@ func TestMoveUnplacedToSubsForEvent_DatabaseErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupMoveUnplacedToSubsFixture(t)
 			faulty := &faultInjectTx{
-				DBTX:               fixture.tx,
-				failOnQueryRowCall: tc.failOnQueryRowCall,
-				failOnQueryCall:    tc.failOnQueryCall,
-				failOnExecCall:     tc.failOnExecCall,
-				injectedErr:        injectedErr,
+				DBTX:        fixture.tx,
+				failOn:      tc.failOn,
+				failOnNth:   tc.failOnNth,
+				injectedErr: injectedErr,
 			}
 			s := store.NewPostgresStoreFromDBTXForTest(faulty)
 

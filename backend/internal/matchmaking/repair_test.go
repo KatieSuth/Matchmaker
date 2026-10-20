@@ -32,7 +32,8 @@ func rosterIDSet(lobby matchmaking.LobbyPlan) map[uuid.UUID]bool {
 	return ids
 }
 
-func TestRepairUnfairWindowPairs_ReplacesPlatBronzeWithUnplacedIrons(t *testing.T) {
+// Two leftover Irons evening the low window (12 vs 12) beat a single Iron in the Plat's seat (12 vs 13.5).
+func TestRepairUnfairWindowPairs_MostBalancedFixReplacesPlatAndBronzeWithIrons(t *testing.T) {
 	now := time.Now()
 	ascA := player(uuid.New(), 21, false, now)
 	ascB := player(uuid.New(), 21, false, now.Add(time.Minute))
@@ -54,12 +55,13 @@ func TestRepairUnfairWindowPairs_ReplacesPlatBronzeWithUnplacedIrons(t *testing.
 	ids := rosterIDSet(out[0])
 	assert.True(t, ids[ascA.UserID])
 	assert.True(t, ids[ascB.UserID])
-	assert.True(t, ids[ironA.UserID] || ids[ironB.UserID], "one leftover Iron is enough in-place")
+	assert.True(t, ids[ironA.UserID])
+	assert.True(t, ids[ironB.UserID])
 	assert.False(t, ids[plat.UserID])
-	assert.True(t, ids[bronze.UserID], "in-place keeps the weak-side Bronze")
+	assert.False(t, ids[bronze.UserID], "the fully even split wins over keeping the Bronze")
 
 	team1, team2 := matchmaking.SplitRosterByTeamNumberForTest(out[0].Roster)
-	assert.Less(t, matchmaking.TeamAverageSeparationForTest(team1, team2), 3.0)
+	assert.InDelta(t, 0.0, matchmaking.TeamAverageSeparationForTest(team1, team2), 1e-9)
 }
 
 func TestRepairUnfairWindowPairs_DoesNotTakeReservedCanSubs(t *testing.T) {
@@ -346,9 +348,11 @@ func TestRepairUnfairWindowPairs_CapsLargeLeftoverPool(t *testing.T) {
 			onRoster++
 		}
 	}
-	assert.Equal(t, 1, onRoster, "in-place takes one leftover; the weak-side Bronze stays")
+	assert.Equal(t, 2, onRoster, "even with 15 leftovers, the search still finds the two-Iron even split")
 	assert.False(t, ids[plat.UserID])
-	assert.True(t, ids[bronze.UserID])
+	assert.False(t, ids[bronze.UserID])
+	team1, team2 := matchmaking.SplitRosterByTeamNumberForTest(out[0].Roster)
+	assert.InDelta(t, 0.0, matchmaking.TeamAverageSeparationForTest(team1, team2), 1e-9)
 }
 
 func TestIndexCombinations(t *testing.T) {
@@ -416,7 +420,9 @@ func TestRepairUnfairWindowPairs_InPlaceSameWindowKeepsOtherTeams(t *testing.T) 
 	assert.Less(t, matchmaking.TeamAverageSeparationForTest(team1, team2), 3.0)
 }
 
-func TestRepairUnfairWindowPairs_InPlaceLowersStrongPlatWithGold2(t *testing.T) {
+// The Gold 2 in the Plat's seat would be fair (gap 2.8), but re-splitting the lobby with them
+// evens it further (gap 0.8), so the re-split wins.
+func TestRepairUnfairWindowPairs_Gold2ReplacesStrongPlatWithMostBalancedSplit(t *testing.T) {
 	now := time.Now()
 	plat := withTeam(player(uuid.New(), 13, false, now), 1)
 	t1 := []matchmaking.Player{
@@ -447,23 +453,14 @@ func TestRepairUnfairWindowPairs_InPlaceLowersStrongPlatWithGold2(t *testing.T) 
 	ids := rosterIDSet(out[0])
 	assert.True(t, ids[gold2.UserID])
 	assert.False(t, ids[plat.UserID])
-
-	byID := map[uuid.UUID]matchmaking.Player{}
-	for _, p := range out[0].Roster {
-		byID[p.UserID] = p
-	}
-	require.NotNil(t, byID[gold2.UserID].TeamNumber)
-	assert.Equal(t, 1, *byID[gold2.UserID].TeamNumber)
-	for _, p := range roster {
-		if p.UserID == plat.UserID {
-			continue
-		}
-		require.NotNil(t, byID[p.UserID].TeamNumber)
-		assert.Equal(t, *p.TeamNumber, *byID[p.UserID].TeamNumber)
-	}
+	assert.False(t, matchmaking.IsLobbyUnfair(out[0], repairSettings(), 25))
+	team1, team2 := matchmaking.SplitRosterByTeamNumberForTest(out[0].Roster)
+	assert.Less(t, matchmaking.TeamAverageSeparationForTest(team1, team2), 2.8, "beats the in-place seat swap")
 }
 
-func TestRepairUnfairWindowPairs_AdjacentFringeGold1ForPlat1(t *testing.T) {
+// The fringe Gold 1 for Plat 1 seat swap would be fair (gap 2.6); the re-split that seats the
+// Gold 1 and benches the 8 is more even (gap 0.8), so it wins.
+func TestRepairUnfairWindowPairs_FringeGold1JoinsMostBalancedSplit(t *testing.T) {
 	now := time.Now()
 	t1 := []matchmaking.Player{
 		withTeam(player(uuid.New(), 25, false, now), 1),
@@ -494,21 +491,10 @@ func TestRepairUnfairWindowPairs_AdjacentFringeGold1ForPlat1(t *testing.T) {
 	require.Len(t, out, 1)
 	ids := rosterIDSet(out[0])
 	assert.True(t, ids[gold1.UserID])
-	assert.False(t, ids[plat.UserID])
-
-	byID := map[uuid.UUID]matchmaking.Player{}
-	for _, p := range out[0].Roster {
-		byID[p.UserID] = p
-	}
-	require.NotNil(t, byID[gold1.UserID].TeamNumber)
-	assert.Equal(t, 1, *byID[gold1.UserID].TeamNumber)
-	for _, p := range roster {
-		if p.UserID == plat.UserID {
-			continue
-		}
-		require.NotNil(t, byID[p.UserID].TeamNumber)
-		assert.Equal(t, *p.TeamNumber, *byID[p.UserID].TeamNumber, "everyone else keeps their seat")
-	}
+	assert.True(t, ids[plat.UserID], "the re-split keeps the Plat and benches the 8 instead")
+	assert.False(t, matchmaking.IsLobbyUnfair(out[0], repairSettings(), 25))
+	team1, team2 := matchmaking.SplitRosterByTeamNumberForTest(out[0].Roster)
+	assert.Less(t, matchmaking.TeamAverageSeparationForTest(team1, team2), 2.6, "beats the fringe seat swap")
 }
 
 func TestRepairUnfairWindowPairs_AdjacentFringeRejectsFarNeighbor(t *testing.T) {

@@ -39,7 +39,8 @@ type swapRegistration struct {
 
 // SwapPlayersForEvent exchanges two players' placements for one locked-in game.
 // Host authorization, validation, and transactional persistence run here; affected lobbies
-// get refreshed hosts and live fairness_warning values (fairness_warning_at_lock is unchanged).
+// get refreshed hosts and live fairness_warning values (fairness_warning_at_lock is kept only while
+// the lobby is still unfair for the same reasons as at lock-in).
 func (s *PostgresStore) SwapPlayersForEvent(
 	ctx context.Context,
 	eventID, ownerID, userA, userB uuid.UUID,
@@ -290,8 +291,9 @@ func affectedLobbySet(placeA, placeB, newA, newB swapPlacement) map[uuid.UUID]bo
 	return ids
 }
 
-// recomputeLobbyAfterSwap refreshes lobby host and live fairness_warning after roster changes.
-// fairness_warning_at_lock is left unchanged so the UI can distinguish lock-in vs manual-edit warnings.
+// recomputeLobbyAfterSwap refreshes lobby host and live fairness_warning (with which check
+// failed) after roster changes. fairness_warning_at_lock is cleared once the warning no longer
+// matches the lock-in one, so the UI switches to its manual-change wording.
 func (s *PostgresStore) recomputeLobbyAfterSwap(
 	ctx context.Context,
 	lobbyID uuid.UUID,
@@ -344,10 +346,12 @@ func (s *PostgresStore) recomputeLobbyAfterSwap(
 		return fmt.Errorf("get max rank order: %w", err)
 	}
 
-	fairnessWarning := matchmaking.IsLobbyUnfair(lobbyPlan, settings, int(tierCount))
+	checks := matchmaking.EvaluateLobbyFairness(lobbyPlan, settings, int(tierCount))
 	if err := s.q.UpdateLobbyFairnessWarning(ctx, db.UpdateLobbyFairnessWarningParams{
-		ID:              lobbyID,
-		FairnessWarning: fairnessWarning,
+		ID:                     lobbyID,
+		FairnessWarning:        checks.Unfair(),
+		FairnessOutlier:        checks.Outlier,
+		FairnessTeamSeparation: checks.TeamSeparation,
 	}); err != nil {
 		return fmt.Errorf("update lobby fairness: %w", err)
 	}

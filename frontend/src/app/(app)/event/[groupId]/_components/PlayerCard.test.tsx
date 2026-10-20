@@ -210,8 +210,118 @@ describe("PlayerCard", () => {
     });
   });
 
+  describe("attendance", () => {
+    it("offers Mark Absent for an unmarked team player and reports absent=true", async () => {
+      const onToggleAbsent = vi.fn();
+      const user = userEvent.setup();
+      render(<PlayerCard {...baseProps({ isHostView: true, placement: teamPlacement, onToggleAbsent })} />);
+
+      await user.click(screen.getByRole("button", { name: "Registration actions" }));
+      expect(screen.queryByText("Mark Present")).not.toBeInTheDocument();
+      await user.click(screen.getByText("Mark Absent"));
+
+      expect(onToggleAbsent).toHaveBeenCalledWith(teamPlacement, true);
+    });
+
+    it("offers Mark Present for a marked team player and reports absent=false", async () => {
+      const onToggleAbsent = vi.fn();
+      const user = userEvent.setup();
+      render(<PlayerCard {...baseProps({ isHostView: true, placement: teamPlacement, isAbsent: true, onToggleAbsent })} />);
+
+      await user.click(screen.getByRole("button", { name: "Registration actions" }));
+      expect(screen.queryByText("Mark Absent")).not.toBeInTheDocument();
+      await user.click(screen.getByText("Mark Present"));
+
+      expect(onToggleAbsent).toHaveBeenCalledWith(teamPlacement, false);
+    });
+
+    it.each([
+      ["sub", subPlacement],
+      ["unplaced", unplacedPlacement],
+    ])("hides the attendance option for a %s placement", async (_label, placement) => {
+      const user = userEvent.setup();
+      render(<PlayerCard {...baseProps({ isHostView: true, placement, isAbsent: true, onToggleAbsent: vi.fn() })} />);
+
+      await user.click(screen.getByRole("button", { name: "Registration actions" }));
+
+      expect(screen.queryByText("Mark Absent")).not.toBeInTheDocument();
+      expect(screen.queryByText("Mark Present")).not.toBeInTheDocument();
+    });
+
+    it("hides the attendance option for a non-host viewer", async () => {
+      const user = userEvent.setup();
+      render(
+        <PlayerCard
+          {...baseProps({ isHostView: false, canEditRegistration: true, placement: teamPlacement, onToggleAbsent: vi.fn() })}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Registration actions" }));
+
+      expect(screen.queryByText("Mark Absent")).not.toBeInTheDocument();
+    });
+
+    it("shows the red Absent label only when the player is marked absent", () => {
+      const { rerender } = render(<PlayerCard {...baseProps({ isAbsent: false })} />);
+      expect(screen.queryByText("Absent")).not.toBeInTheDocument();
+
+      rerender(<PlayerCard {...baseProps({ isAbsent: true })} />);
+      expect(screen.getByText("Absent")).toHaveClass("text-red-400");
+    });
+  });
+
+  describe("no-show warning", () => {
+    const warning = /No-show 4 times at your events in the last 6 months/;
+
+    it("shows the orange warning before the name for the host when the player has excessive no-shows", () => {
+      const registration = buildEventRegistration({ display_name: "Ash", discord_name: "ash#0001" });
+      render(<PlayerCard {...baseProps({ registration, isHostView: true, recentNoShowCount: 4 })} />);
+
+      const icon = screen.getByRole("button", { name: warning });
+      const name = screen.getByText("Ash @ash#0001");
+      expect(icon.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("hides the warning for non-host viewers even if a count is passed", () => {
+      render(<PlayerCard {...baseProps({ isHostView: false, canEditRegistration: true, recentNoShowCount: 4 })} />);
+      expect(screen.queryByRole("button", { name: warning })).not.toBeInTheDocument();
+    });
+
+    it("hides the warning when the player has no excessive no-shows", () => {
+      render(<PlayerCard {...baseProps({ isHostView: true })} />);
+      expect(screen.queryByRole("button", { name: /No-show/ })).not.toBeInTheDocument();
+    });
+  });
+
   it("has no accessibility violations", async () => {
     const { container } = render(<PlayerCard {...baseProps({ isHostView: true, placement: teamPlacement, onSwap: vi.fn() })} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no accessibility violations with the Absent label, no-show warning, and attendance menu open", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <PlayerCard
+        {...baseProps({
+          isHostView: true,
+          placement: teamPlacement,
+          isAbsent: true,
+          recentNoShowCount: 4,
+          onToggleAbsent: vi.fn(),
+          onSwap: vi.fn(),
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Registration actions" }));
+    expect(screen.getByText("Mark Present")).toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no accessibility violations with the no-show tooltip open", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<PlayerCard {...baseProps({ isHostView: true, recentNoShowCount: 3 })} />);
+    await user.hover(screen.getByRole("button", { name: /No-show 3 times/ }));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 });

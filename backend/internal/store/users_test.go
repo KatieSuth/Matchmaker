@@ -49,7 +49,7 @@ func TestGetUserByDiscordID_NotFound(t *testing.T) {
 func TestGetUserByDiscordID_QueryError(t *testing.T) {
 	_, tx := createEventTestStoreTx(t)
 	injectedErr := errors.New("injected database failure")
-	faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+	faulty := &faultInjectTx{DBTX: tx, failOn: "GetUserByDiscordID", injectedErr: injectedErr}
 	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 	_, err := fs.GetUserByDiscordID(context.Background(), "discord-any", true)

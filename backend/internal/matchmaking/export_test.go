@@ -56,7 +56,41 @@ var (
 	AssignBalancedSnakeForTest            = assignBalancedSnake
 	SnakeLobbyIndexForTest                = snakeLobbyIndex
 	AppendToWeakerTeamForTest             = appendToWeakerTeam
+	MarkDeprioritizedForTest              = markDeprioritized
+	AddBackBeforeForTest                  = addBackBefore
+	PairTeamsAcrossLobbiesForTest         = pairTeamsAcrossLobbies
+	RepairUnfairRankedLobbiesForTest      = repairUnfairRankedLobbies
+	TopSeatedPlayerForTest                = topSeatedPlayer
+	BringsInDeprioritizedForTest          = bringsInDeprioritized
+	EligiblePlayersForTest                = eligiblePlayers
 )
+
+// AddsDeprioritizedForTest builds the already-rostered set from IDs.
+func AddsDeprioritizedForTest(chosen []Player, alreadyRostered []uuid.UUID) bool {
+	set := make(map[uuid.UUID]struct{}, len(alreadyRostered))
+	for _, id := range alreadyRostered {
+		set[id] = struct{}{}
+	}
+	return addsDeprioritized(chosen, set)
+}
+
+// MoreBalancedForTest compares two repair results described by their metrics and stage index.
+func MoreBalancedForTest(aSep, aOutlier float64, aUnfair bool, aStage int, bSep, bOutlier float64, bUnfair bool, bStage int) bool {
+	return moreBalanced(
+		repairCandidate{state: repairState{sep: aSep, outlier: aOutlier, sepOver: aUnfair}, stage: aStage},
+		repairCandidate{state: repairState{sep: bSep, outlier: bOutlier, sepOver: bUnfair}, stage: bStage},
+	)
+}
+
+// PreferCleanRepairForTest scores two trials as repair states built from their metrics.
+func PreferCleanRepairForTest(cleanFound bool, cleanSep, cleanOutlier float64, cleanSepOver, cleanOutOver bool, overallSep, overallOutlier float64, optimizeSep bool) bool {
+	return preferCleanRepair(
+		cleanFound,
+		repairState{sep: cleanSep, outlier: cleanOutlier, sepOver: cleanSepOver, outOver: cleanOutOver},
+		repairState{sep: overallSep, outlier: overallOutlier},
+		optimizeSep,
+	)
+}
 
 func AdjacentFringeSwapOKForTest(rosteredRank, leftoverRank float64, teamSize, tierCount int) bool {
 	windows := buildRankWindows(tierCount, teamSize)
@@ -116,6 +150,17 @@ func TryRepairUnfairLobbyWindowComboForTest(
 ) (LobbyPlan, bool) {
 	windows := buildRankWindows(cfg.TierCount, cfg.TeamSize)
 	ok := tryRepairUnfairLobbyWindowCombo(&lobby, leftovers, unrosteredCanSubs, reserved, cfg, windows, settings)
+	return lobby, ok
+}
+
+func TryOutlierPartnerSwapForTest(
+	lobby LobbyPlan,
+	leftovers []Player,
+	unrosteredCanSubs, reserved int,
+	cfg Config,
+	settings Settings,
+) (LobbyPlan, bool) {
+	ok := tryOutlierPartnerSwap(&lobby, leftovers, unrosteredCanSubs, reserved, cfg, settings)
 	return lobby, ok
 }
 

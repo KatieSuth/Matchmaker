@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
 	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
+	"github.com/KatieSuth/MatchmakerAPI/internal/model"
 	"github.com/google/uuid"
 )
 
@@ -27,6 +29,20 @@ var BuildGroupRegistrationCountsForTest = func(s *PostgresStore, ctx context.Con
 	return s.buildGroupRegistrationCounts(ctx, groupID)
 }
 var MapRegistrationsToPlayersForTest = mapRegistrationsToPlayers
+var BuildMatchmakingConfigForTest = func(group db.EventGroup) matchmaking.Config {
+	return buildMatchmakingConfig(db.Event{}, group, modelGameModeInfo{Name: "Mode", TeamSize: 2}, 25, 0)
+}
+var SetPlayerAbsenceForEventAtForTest = func(s *PostgresStore, ctx context.Context, eventID, ownerID, userID uuid.UUID, absent bool, now time.Time) error {
+	return s.setPlayerAbsenceForEventAt(ctx, eventID, ownerID, userID, absent, now)
+}
+var NoShowWindowForTest = noShowWindow
+var ExcessiveNoShowsForDetailForTest = func(s *PostgresStore, ctx context.Context, hostID uuid.UUID, threshold int, events []model.EventGroupEvent, now time.Time) (map[uuid.UUID]int, error) {
+	return s.excessiveNoShowsForDetail(ctx, hostID, threshold, events, now)
+}
+var BuildGroupNoShowCountsForTest = func(s *PostgresStore, ctx context.Context, group db.EventGroup, regCounts map[uuid.UUID]int, now time.Time) (map[uuid.UUID]int, error) {
+	return s.buildGroupNoShowCounts(ctx, group, regCounts, now)
+}
+var VisibleAbsentUserIDsForTest = visibleAbsentUserIDs
 
 var ResolveAvgRankIDForTest = func(s *PostgresStore, ctx context.Context, gameID uuid.UUID, currentOrder, peakOrder int32) (uuid.UUID, int32, error) {
 	return s.resolveAvgRankID(ctx, gameID, currentOrder, peakOrder)

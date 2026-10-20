@@ -88,9 +88,9 @@ func TestResolveAvgRankIDForTest_LookupError(t *testing.T) {
 	low, high := gameRankExtremes(t, ctx, s, games[0].ID)
 
 	faulty := &faultInjectTx{
-		DBTX:               tx,
-		failOnQueryRowCall: 1,
-		injectedErr:        injectedErr,
+		DBTX:        tx,
+		failOn:      "GetRankByGameAndOrder",
+		injectedErr: injectedErr,
 	}
 	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
@@ -123,10 +123,11 @@ func TestEnsureAvgRanksForMatchmakingForTest_SkipsWhenPresent(t *testing.T) {
 		PeakRankOrder:    high.Order,
 	}}
 
+	// Would fail the write if one happened; the stored avg_rank means none should.
 	faulty := &faultInjectTx{
-		DBTX:           tx,
-		failOnExecCall: 1,
-		injectedErr:    injectedErr,
+		DBTX:        tx,
+		failOn:      "UpdateUserGameAvgRank",
+		injectedErr: injectedErr,
 	}
 	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
@@ -235,9 +236,9 @@ func TestEnsureAvgRanksForMatchmakingForTest_PersistError(t *testing.T) {
 
 	// resolve succeeds on real tx; only Exec (UpdateUserGameAvgRank) fails.
 	faulty := &faultInjectTx{
-		DBTX:           tx,
-		failOnExecCall: 1,
-		injectedErr:    injectedErr,
+		DBTX:        tx,
+		failOn:      "UpdateUserGameAvgRank",
+		injectedErr: injectedErr,
 	}
 	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 

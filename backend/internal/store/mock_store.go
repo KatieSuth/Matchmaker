@@ -53,9 +53,9 @@ type MockStore struct {
 
 	// events
 	GetEventsForUserFn              func(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error)
-	CreateEventGroupWithEventsFn    func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error)
+	CreateEventGroupWithEventsFn    func(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild, noShows NoShowPolicy) (uuid.UUID, error)
 	GetEventGroupDetailFn           func(ctx context.Context, groupID, viewerID uuid.UUID) (model.EventGroupDetail, error)
-	UpdateEventGroupSettingsFn      func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error
+	UpdateEventGroupSettingsFn      func(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild, noShows *NoShowPolicy) error
 	ListEventGroupDiscordGuildsFn   func(ctx context.Context, groupID uuid.UUID) ([]model.DiscordGuild, error)
 	GetEventGroupAccessMetaFn       func(ctx context.Context, groupID uuid.UUID) (ownerID uuid.UUID, title string, named bool, err error)
 	EventGroupIDByEventIDFn         func(ctx context.Context, eventID uuid.UUID) (uuid.UUID, error)
@@ -68,6 +68,7 @@ type MockStore struct {
 	MoveSubToUnplacedForEventFn     func(ctx context.Context, eventID, ownerID, userID uuid.UUID, settings matchmaking.Settings) error
 	MoveUnplacedToSubsForEventFn    func(ctx context.Context, eventID, ownerID, userID, lobbyID uuid.UUID, settings matchmaking.Settings) error
 	SetLobbyHostForEventFn          func(ctx context.Context, eventID, ownerID, userID uuid.UUID) error
+	SetPlayerAbsenceForEventFn      func(ctx context.Context, eventID, ownerID, userID uuid.UUID, absent bool) error
 	UpdateLobbyJoinCodeFn           func(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error
 	UpsertRegistrationForEventFn    func(ctx context.Context, eventID, userID uuid.UUID, canSubstitute, canLobbyHost bool, duoRequest *string) error
 	UpsertRegistrationsForGroupFn   func(ctx context.Context, groupID, userID uuid.UUID, registrations []RegistrationUpsertItem, duoRequest *string) error
@@ -178,8 +179,8 @@ func (m *MockStore) ConsumeOneTimeCode(ctx context.Context, code string) (uuid.U
 	return m.ConsumeOneTimeCodeFn(ctx, code)
 }
 
-func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild) (uuid.UUID, error) {
-	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, name, startTime, gamesToRun, discordGuilds)
+func (m *MockStore) CreateEventGroupWithEvents(ctx context.Context, userID, gameModeID uuid.UUID, subMin int32, registrationOpen bool, region string, sortLogic string, name string, startTime time.Time, gamesToRun int32, discordGuilds []model.DiscordGuild, noShows NoShowPolicy) (uuid.UUID, error) {
+	return m.CreateEventGroupWithEventsFn(ctx, userID, gameModeID, subMin, registrationOpen, region, sortLogic, name, startTime, gamesToRun, discordGuilds, noShows)
 }
 
 func (m *MockStore) GetEventsForUser(ctx context.Context, userID uuid.UUID, hosting, past bool, from, to *time.Time, gameId, cursor, timezone string) ([]model.DashboardEvent, bool, string, error) {
@@ -190,8 +191,8 @@ func (m *MockStore) GetEventGroupDetail(ctx context.Context, groupID, viewerID u
 	return m.GetEventGroupDetailFn(ctx, groupID, viewerID)
 }
 
-func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild) error {
-	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, name, eventUpdates, discordGuilds)
+func (m *MockStore) UpdateEventGroupSettings(ctx context.Context, groupID, ownerID uuid.UUID, region string, subMin int32, sortLogic string, registrationOpen bool, name string, eventUpdates []GroupEventUpdate, discordGuilds []model.DiscordGuild, noShows *NoShowPolicy) error {
+	return m.UpdateEventGroupSettingsFn(ctx, groupID, ownerID, region, subMin, sortLogic, registrationOpen, name, eventUpdates, discordGuilds, noShows)
 }
 
 func (m *MockStore) ListEventGroupDiscordGuilds(ctx context.Context, groupID uuid.UUID) ([]model.DiscordGuild, error) {
@@ -253,6 +254,10 @@ func (m *MockStore) MoveUnplacedToSubsForEvent(ctx context.Context, eventID, own
 
 func (m *MockStore) SetLobbyHostForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID) error {
 	return m.SetLobbyHostForEventFn(ctx, eventID, ownerID, userID)
+}
+
+func (m *MockStore) SetPlayerAbsenceForEvent(ctx context.Context, eventID, ownerID, userID uuid.UUID, absent bool) error {
+	return m.SetPlayerAbsenceForEventFn(ctx, eventID, ownerID, userID, absent)
 }
 
 func (m *MockStore) UpdateLobbyJoinCode(ctx context.Context, lobbyID, actorID uuid.UUID, rawJoinCode *string) error {

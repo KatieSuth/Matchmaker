@@ -1,11 +1,15 @@
 package main
 
 import (
+	"math/bits"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/KatieSuth/MatchmakerAPI/internal/db"
+	"github.com/KatieSuth/MatchmakerAPI/internal/matchmaking"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -145,5 +149,254 @@ func stubSystemGames() *systemGames {
 	return &systemGames{
 		Valorant: gameInfo{Ranks: ranks},
 		LoL:      gameInfo{Ranks: ranks},
+	}
+}
+
+// planNoShowScenario runs a scenario's single event through matchmaking the way lock-in would:
+// Valorant's 25 tiers, .env.example fairness defaults, and registration order by slot.
+func planNoShowScenario(t *testing.T, sc Scenario, sortLogic string) (rostered map[int]bool, unfair bool) {
+	t.Helper()
+	require.Len(t, sc.Events, 1)
+	base := time.Now()
+	slotByID := map[uuid.UUID]int{}
+	var players []matchmaking.Player
+	for _, reg := range sc.Events[0].Registrations {
+		id := uuid.New()
+		slotByID[id] = reg.Slot
+		players = append(players, matchmaking.Player{
+			UserID:        id,
+			AvgRank:       float64(reg.RankOrder),
+			CanSubstitute: reg.CanSub,
+			CanLobbyHost:  reg.CanHost,
+			CreatedAt:     base.Add(time.Duration(reg.Slot) * time.Second),
+			NoShowCount:   reg.NoShows,
+		})
+	}
+	cfg := matchmaking.Config{
+		EventID: uuid.New(), TeamSize: 5, Slots: 10, TierCount: 25, SubMin: int(sc.SubMin),
+		SortLogic: sortLogic, GameLabel: sc.Key, NoShowThreshold: int(sc.NoShowThreshold),
+	}
+	settings := matchmaking.Settings{FairnessOutlierGap: 6, FairnessTeamSeparation: 3, FairnessReferenceTierCount: 25}
+	plan, err := matchmaking.PlanEvent(players, cfg, settings)
+	require.NoError(t, err)
+	require.Len(t, plan.Lobbies, 1)
+
+	rostered = map[int]bool{}
+	for _, p := range plan.Lobbies[0].Roster {
+		rostered[slotByID[p.UserID]] = true
+	}
+	return rostered, plan.Lobbies[0].FairnessWarning
+}
+
+func TestNoShowScenarios_ProduceIntendedLockIn(t *testing.T) {
+	t.Parallel()
+
+	byKey := map[string]Scenario{}
+	for _, sc := range scenarioTemplates(stubSystemGames()) {
+		byKey[sc.Key] = sc
+	}
+
+	for _, sortLogic := range []string{"balanced", "ranked"} {
+		t.Run(sortLogic, func(t *testing.T) {
+			excluded := byKey["noshow_excluded"]
+			assert.Equal(t, int32(noShowScenarioThreshold), excluded.NoShowThreshold)
+			rostered, unfair := planNoShowScenario(t, excluded, sortLogic)
+			assert.False(t, rostered[0], "3 no-shows meets the limit")
+			assert.False(t, rostered[1], "5 no-shows exceeds the limit")
+			assert.Len(t, rostered, 10)
+			assert.False(t, unfair)
+
+			addBack := byKey["noshow_add_back"]
+			rostered, unfair = planNoShowScenario(t, addBack, sortLogic)
+			assert.False(t, rostered[0], "4 no-shows stays out")
+			assert.True(t, rostered[1], "3 no-shows is added back to reach 10")
+			assert.False(t, unfair)
+
+			fairness := byKey["noshow_fairness"]
+			rostered, unfair = planNoShowScenario(t, fairness, sortLogic)
+			assert.True(t, rostered[0], "only the held-out player can make the lobby fair")
+			assert.False(t, unfair)
+
+			// Prove "must" independently of the algorithm: no 10 of the clean players, split any
+			// way, passes both fairness checks.
+			assert.False(t, anyFairLobby(fairness.Events[0].Registrations[1:]), "a fair lobby exists without the held-out player")
+		})
+	}
+}
+
+func TestMaxScenarioNoShows(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 0, maxScenarioNoShows(Scenario{Events: []EventSpec{{Registrations: flatRankRegs(3, 10)}}}))
+	assert.Equal(t, 5, maxScenarioNoShows(Scenario{Events: []EventSpec{
+		{Registrations: withNoShows(flatRankRegs(3, 10), map[int]int{0: 2})},
+		{Registrations: withNoShows(flatRankRegs(3, 10), map[int]int{1: 5})},
+	}}))
+	assert.Equal(t, 0, maxScenarioNoShows(Scenario{}), "no events")
+}
+
+func TestNoShowHistoryGroupNamesFitLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, sc := range allScenarios(stubSystemGames()) {
+		if maxScenarioNoShows(sc) == 0 {
+			continue
+		}
+		_, err := formatScenarioGroupName(sc.SortLogic, "past no-shows "+sc.Key)
+		require.NoError(t, err, sc.Key)
+		assert.NotEqual(t, scenarioGroupID(sc.Key, sc.SortLogic), noShowHistoryGroupID(sc))
+	}
+}
+
+// anyFairLobby brute-forces every choice of 10 registrants and every 5/5 split, reporting whether
+// any passes both fairness checks at Valorant's 25 tiers with the .env.example defaults.
+func anyFairLobby(regs []RegSpec) bool {
+	settings := matchmaking.Settings{FairnessOutlierGap: 6, FairnessTeamSeparation: 3, FairnessReferenceTierCount: 25}
+	n := len(regs)
+	for choose := 0; choose < 1<<n; choose++ {
+		if bits.OnesCount(uint(choose)) != 10 {
+			continue
+		}
+		var ten []RegSpec
+		for i := range regs {
+			if choose&(1<<i) != 0 {
+				ten = append(ten, regs[i])
+			}
+		}
+		// Fix ten[0] on team 1 so each split is tried once.
+		for split := 1; split < 1<<10; split += 2 {
+			if bits.OnesCount(uint(split)) != 5 {
+				continue
+			}
+			roster := make([]matchmaking.Player, 0, 10)
+			for i, reg := range ten {
+				team := 2
+				if split&(1<<i) != 0 {
+					team = 1
+				}
+				roster = append(roster, matchmaking.Player{UserID: uuid.New(), AvgRank: float64(reg.RankOrder), TeamNumber: &team})
+			}
+			if !matchmaking.IsLobbyUnfair(matchmaking.LobbyPlan{Roster: roster}, settings, 25) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestAnyFairLobby(t *testing.T) {
+	t.Parallel()
+	assert.True(t, anyFairLobby(flatRankRegs(11, 10)), "equal ranks are always fair")
+	assert.False(t, anyFairLobby(regsFromSlotRanks(
+		[2]int{0, 25}, [2]int{1, 1}, [2]int{2, 1}, [2]int{3, 1}, [2]int{4, 1},
+		[2]int{5, 1}, [2]int{6, 1}, [2]int{7, 1}, [2]int{8, 1}, [2]int{9, 1},
+	)), "a lone Radiant among Irons can never be fair")
+}
+
+// planScenarioLobbies plans a scenario's first event the way lock-in would (duo requests
+// included) and returns the lobby index and team of each slot.
+func planScenarioLobbies(t *testing.T, sc Scenario, sortLogic string, teamSize int) (lobbyOf, teamOf map[int]int) {
+	t.Helper()
+	base := time.Now()
+	slotByID := map[uuid.UUID]int{}
+	var players []matchmaking.Player
+	for _, reg := range sc.Events[0].Registrations {
+		id := uuid.New()
+		slotByID[id] = reg.Slot
+		var duo *string
+		if reg.DuoPartner != nil {
+			name := scenarioDiscordName(sc.Key, sortLogic, *reg.DuoPartner)
+			duo = &name
+		}
+		players = append(players, matchmaking.Player{
+			UserID:        id,
+			DiscordName:   scenarioDiscordName(sc.Key, sortLogic, reg.Slot),
+			DuoRequest:    duo,
+			AvgRank:       float64(reg.RankOrder),
+			CanSubstitute: reg.CanSub,
+			CreatedAt:     base.Add(time.Duration(reg.Slot) * time.Second),
+		})
+	}
+	plan, err := matchmaking.PlanEvent(players, matchmaking.Config{
+		EventID: uuid.New(), TeamSize: teamSize, Slots: 2 * teamSize, TierCount: 25, SubMin: int(sc.SubMin),
+		SortLogic: sortLogic, GameLabel: sc.Key,
+	}, matchmaking.Settings{FairnessOutlierGap: 6, FairnessTeamSeparation: 3, FairnessReferenceTierCount: 25})
+	require.NoError(t, err)
+	lobbyOf, teamOf = map[int]int{}, map[int]int{}
+	for i, lobby := range plan.Lobbies {
+		for _, p := range lobby.Roster {
+			lobbyOf[slotByID[p.UserID]] = i
+			teamOf[slotByID[p.UserID]] = *p.TeamNumber
+		}
+	}
+	return lobbyOf, teamOf
+}
+
+func TestDuoScenarios_MatchTheirDescriptions(t *testing.T) {
+	t.Parallel()
+	byKey := map[string]Scenario{}
+	for _, sc := range scenarioTemplates(stubSystemGames()) {
+		byKey[sc.Key] = sc
+	}
+
+	cases := []struct {
+		key                 string
+		a, b                int
+		sameLobby, sameTeam bool
+	}{
+		{"duos_lobby_unite", 4, 14, true, true},
+		{"duos_lobby_blocked", 0, 1, false, false},
+		{"duos_team_unite", 1, 3, true, true},
+		{"duos_team_blocked", 0, 2, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			sc, ok := byKey[tc.key]
+			require.True(t, ok)
+			lobbyOf, teamOf := planScenarioLobbies(t, sc, "balanced", 5)
+			require.Contains(t, lobbyOf, tc.a)
+			require.Contains(t, lobbyOf, tc.b)
+			sameLobby := lobbyOf[tc.a] == lobbyOf[tc.b]
+			assert.Equal(t, tc.sameLobby, sameLobby, "same lobby")
+			assert.Equal(t, tc.sameTeam, sameLobby && teamOf[tc.a] == teamOf[tc.b], "same team")
+		})
+	}
+}
+
+func TestNoShowViewerScenarios(t *testing.T) {
+	t.Parallel()
+	byKey := map[string]Scenario{}
+	for _, sc := range scenarioTemplates(stubSystemGames()) {
+		byKey[sc.Key] = sc
+	}
+
+	cases := []struct {
+		key       string
+		excessive bool // red warning (at/above the limit) vs yellow notice
+	}{
+		{"noshow_viewer", true},
+		{"noshow_viewer_under", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			sc, ok := byKey[tc.key]
+			require.True(t, ok)
+			assert.Positive(t, sc.ViewerNoShows, "the --host user has no-shows")
+			assert.Positive(t, sc.NoShowThreshold, "deprioritization is on, so the banner shows")
+			assert.Equal(t, tc.excessive, sc.ViewerNoShows >= int(sc.NoShowThreshold))
+			assert.Equal(t, sc.ViewerNoShows, maxScenarioNoShows(sc), "history holds enough past games for the viewer's marks")
+		})
+	}
+	assert.GreaterOrEqual(t, byKey["noshow_viewer"].ViewerNoShows, 3, "at least 3 no-shows, as requested")
+}
+
+func TestScenarioPlayerSlotsStayBelowSeededHost(t *testing.T) {
+	t.Parallel()
+	for _, sc := range allScenarios(stubSystemGames()) {
+		for _, ev := range sc.Events {
+			for _, reg := range ev.Registrations {
+				assert.Less(t, reg.Slot, scenarioHostSlot, "%s slot %d would collide with the seeded host", sc.Key, reg.Slot)
+			}
+		}
 	}
 }

@@ -205,11 +205,12 @@ func groupExists(seed *common.SeedContext, groupID uuid.UUID) bool {
 }
 
 // insertEventGroup creates a matchmaking scenario group whose name identifies the use case in the UI.
-func insertEventGroup(seed *common.SeedContext, groupID, ownerID uuid.UUID, subMin int32, region, sortLogic, name string) {
+// A positive noShowThreshold turns on no-show deprioritization with that absence limit.
+func insertEventGroup(seed *common.SeedContext, groupID, ownerID uuid.UUID, subMin int32, region, sortLogic, name string, noShowThreshold int32, registrationOpen bool) {
 	_, err := seed.Pool.Exec(seed.Ctx, `
-		INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, created_at, updated_at)
-		VALUES ($1, $2, $3, true, $4, $5, $6, NOW(), NOW())
-	`, groupID, ownerID, subMin, region, sortLogic, name)
+		INSERT INTO event_groups (id, owner_id, sub_min, registration_open, region, sort_logic, name, deprioritize_noshows, max_noshows, created_at, updated_at)
+		VALUES ($1, $2, $3, $9, $4, $5, $6, $7, $8, NOW(), NOW())
+	`, groupID, ownerID, subMin, region, sortLogic, name, noShowThreshold > 0, noShowThreshold, registrationOpen)
 	if err != nil {
 		common.Fatal("failed creating event group", "group_id", groupID, "error", err)
 	}

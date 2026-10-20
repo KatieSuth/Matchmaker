@@ -37,6 +37,8 @@ export function EditEventSheet({
           sort_logic: group.sort_logic,
           discord_lock: (group.discord_guilds?.length ?? 0) > 0,
           discord_guild_ids: (group.discord_guilds ?? []).map((g) => g.id),
+          deprioritize_noshows: group.deprioritize_noshows ?? false,
+          max_noshows: group.max_noshows ?? 0,
         }}
         onCancel={onClose}
         onSubmitted={isHost ? onSubmitted : undefined}

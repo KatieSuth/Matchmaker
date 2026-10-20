@@ -70,52 +70,70 @@ type EventTeam struct {
 
 // EventLobby is one match lobby for a game after lock-in.
 type EventLobby struct {
-	ID                    uuid.UUID     `json:"id"`
-	HostID                *uuid.UUID    `json:"host_id"`
-	JoinCode              *string       `json:"join_code"`
-	FairnessWarning       bool          `json:"fairness_warning"`
-	FairnessWarningAtLock bool          `json:"fairness_warning_at_lock"`
-	Teams                 []EventTeam   `json:"teams"`
-	Subs                  []LobbyPlayer `json:"subs"`
+	ID              uuid.UUID  `json:"id"`
+	HostID          *uuid.UUID `json:"host_id"`
+	JoinCode        *string    `json:"join_code"`
+	FairnessWarning bool       `json:"fairness_warning"`
+	// FairnessWarningAtLock stays true only while the warning is still the lock-in one (same reasons).
+	FairnessWarningAtLock bool `json:"fairness_warning_at_lock"`
+	// FairnessOutlier / FairnessTeamSeparation say which check the live fairness_warning tripped.
+	// Both false on a flagged lobby means it was locked in before reasons were recorded.
+	FairnessOutlier        bool          `json:"fairness_outlier"`
+	FairnessTeamSeparation bool          `json:"fairness_team_separation"`
+	Teams                  []EventTeam   `json:"teams"`
+	Subs                   []LobbyPlayer `json:"subs"`
 }
 
 // EventGroupEvent is one scheduled game within a group, with optional registration rows.
 type EventGroupEvent struct {
-	ID               uuid.UUID           `json:"id"`
-	StartTime        time.Time           `json:"start_time"`
-	GameModeID       uuid.UUID           `json:"game_mode_id"`
-	GameModeName     string              `json:"game_mode_name"`
-	TeamSize         int                 `json:"team_size"`
+	ID           uuid.UUID `json:"id"`
+	StartTime    time.Time `json:"start_time"`
+	GameModeID   uuid.UUID `json:"game_mode_id"`
+	GameModeName string    `json:"game_mode_name"`
+	TeamSize     int       `json:"team_size"`
+	// DurationMinutes is the game mode's expected length, used for calendar invitation end times.
+	DurationMinutes  int                 `json:"duration_minutes"`
 	RegisteredCount  int                 `json:"registered_count"`
 	LobbiesCount     int                 `json:"lobbies_count"`
 	PlayerRegistered bool                `json:"player_registered"`
 	Registrations    []EventRegistration `json:"registrations"`
 	Lobbies          []EventLobby        `json:"lobbies"`
 	Unplaced         []EventRegistration `json:"unplaced"`
+	AbsentUserIDs    []uuid.UUID         `json:"absent_user_ids"`
 }
 
 // EventGroupDetail is the full host/participant view for a group: header plus each game.
 type EventGroupDetail struct {
-	ID               uuid.UUID         `json:"id"`
-	Name             string            `json:"name"`
-	OwnerID          uuid.UUID         `json:"owner_id"`
-	OwnerName        string            `json:"owner_name"`
-	OwnerDisplayName string            `json:"owner_display_name"`
-	OwnerPronouns    string            `json:"owner_pronouns"`
-	GameModeID       uuid.UUID         `json:"game_mode_id"`
-	GameModeName     string            `json:"game_mode_name"`
-	GameID           uuid.UUID         `json:"game_id"`
-	GameName         string            `json:"game_name"`
-	JoinLinkBase     *string           `json:"join_link_base"`
-	TeamSize         int               `json:"team_size"`
-	SubMin           int               `json:"sub_min"`
-	RegistrationOpen bool              `json:"registration_open"`
-	Region           string            `json:"region"`
-	SortLogic        string            `json:"sort_logic"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
-	Events           []EventGroupEvent `json:"events"`
-	DiscordGuilds    []DiscordGuild    `json:"discord_guilds"`
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	OwnerID          uuid.UUID `json:"owner_id"`
+	OwnerName        string    `json:"owner_name"`
+	OwnerDisplayName string    `json:"owner_display_name"`
+	OwnerPronouns    string    `json:"owner_pronouns"`
+	GameModeID       uuid.UUID `json:"game_mode_id"`
+	GameModeName     string    `json:"game_mode_name"`
+	GameID           uuid.UUID `json:"game_id"`
+	GameName         string    `json:"game_name"`
+	JoinLinkBase     *string   `json:"join_link_base"`
+	TeamSize         int       `json:"team_size"`
+	SubMin           int       `json:"sub_min"`
+	RegistrationOpen bool      `json:"registration_open"`
+	Region           string    `json:"region"`
+	SortLogic        string    `json:"sort_logic"`
+	// MaxNoshows is the 6-month no-show count that triggers deprioritization; ignored while DeprioritizeNoshows is false.
+	DeprioritizeNoshows bool              `json:"deprioritize_noshows"`
+	MaxNoshows          int               `json:"max_noshows"`
+	CreatedAt           time.Time         `json:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at"`
+	Events              []EventGroupEvent `json:"events"`
+	DiscordGuilds       []DiscordGuild    `json:"discord_guilds"`
+	// ExcessiveNoShows maps registrants at or above the deprioritization threshold to their
+	// 6-month no-show count at this host. Host viewer only; empty for everyone else.
+	ExcessiveNoShows map[uuid.UUID]int `json:"excessive_no_shows"`
+	// ViewerNoShowDates are start times of this host's games in the past 6 months where the
+	// viewer was marked absent, oldest first. Only ever the viewer's own record; empty while
+	// deprioritization is off.
+	ViewerNoShowDates []time.Time `json:"viewer_no_show_dates"`
 }
 
 /*
@@ -180,24 +198,28 @@ func MapDbGetGroupEventsSummaryRowToEventGroupEvent(row db.GetGroupEventsSummary
 		GameModeID:       row.GameModeID,
 		GameModeName:     row.GameModeName,
 		TeamSize:         int(row.TeamSize),
+		DurationMinutes:  int(row.Duration),
 		RegisteredCount:  int(row.RegisteredCount),
 		LobbiesCount:     int(row.LobbiesCount),
 		PlayerRegistered: row.PlayerRegistered,
 		Registrations:    registrations,
 		Lobbies:          []EventLobby{},
 		Unplaced:         []EventRegistration{},
+		AbsentUserIDs:    []uuid.UUID{},
 	}
 }
 
 func MapDbGetLobbiesForEventRowToEventLobby(row db.GetLobbiesForEventRow) EventLobby {
 	return EventLobby{
-		ID:                    row.ID,
-		HostID:                row.Host,
-		JoinCode:              row.JoinCode,
-		FairnessWarning:       row.FairnessWarning,
-		FairnessWarningAtLock: row.FairnessWarningAtLock,
-		Teams:                 []EventTeam{},
-		Subs:                  []LobbyPlayer{},
+		ID:                     row.ID,
+		HostID:                 row.Host,
+		JoinCode:               row.JoinCode,
+		FairnessWarning:        row.FairnessWarning,
+		FairnessWarningAtLock:  row.FairnessWarningAtLock,
+		FairnessOutlier:        row.FairnessOutlier,
+		FairnessTeamSeparation: row.FairnessTeamSeparation,
+		Teams:                  []EventTeam{},
+		Subs:                   []LobbyPlayer{},
 	}
 }
 
@@ -232,25 +254,29 @@ func MapDbGetEventGroupDetailByIdRowToEventGroupDetail(row db.GetEventGroupDetai
 		name = *row.Name
 	}
 	return EventGroupDetail{
-		ID:               row.ID,
-		Name:             name,
-		OwnerID:          row.OwnerID,
-		OwnerName:        row.OwnerName,
-		OwnerDisplayName: row.OwnerDisplayName,
-		OwnerPronouns:    row.OwnerPronouns,
-		GameModeID:       row.GameModeID,
-		GameModeName:     row.GameModeName,
-		GameID:           row.GameID,
-		GameName:         row.GameName,
-		JoinLinkBase:     row.JoinLinkBase,
-		TeamSize:         int(row.TeamSize),
-		SubMin:           int(row.SubMin),
-		RegistrationOpen: row.RegistrationOpen,
-		Region:           row.Region,
-		SortLogic:        row.SortLogic,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
-		Events:           events,
-		DiscordGuilds:    []DiscordGuild{},
+		ID:                  row.ID,
+		Name:                name,
+		OwnerID:             row.OwnerID,
+		OwnerName:           row.OwnerName,
+		OwnerDisplayName:    row.OwnerDisplayName,
+		OwnerPronouns:       row.OwnerPronouns,
+		GameModeID:          row.GameModeID,
+		GameModeName:        row.GameModeName,
+		GameID:              row.GameID,
+		GameName:            row.GameName,
+		JoinLinkBase:        row.JoinLinkBase,
+		TeamSize:            int(row.TeamSize),
+		SubMin:              int(row.SubMin),
+		RegistrationOpen:    row.RegistrationOpen,
+		Region:              row.Region,
+		SortLogic:           row.SortLogic,
+		DeprioritizeNoshows: row.DeprioritizeNoshows,
+		MaxNoshows:          int(row.MaxNoshows),
+		CreatedAt:           row.CreatedAt,
+		UpdatedAt:           row.UpdatedAt,
+		Events:              events,
+		DiscordGuilds:       []DiscordGuild{},
+		ExcessiveNoShows:    map[uuid.UUID]int{},
+		ViewerNoShowDates:   []time.Time{},
 	}
 }

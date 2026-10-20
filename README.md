@@ -22,7 +22,7 @@ It's now available live at https://matchmaker.games and currently supports Valor
 - [x] Player duo requests (best-effort at lobby and team assignment; balance takes priority)
 - [x] 1.0 web hosting with public availability
 - [x] Discord server membership requirement as host option
-- [ ] Attendance tracking and host alerts for repetitive no-show players
+- [x] Attendance tracking and host alerts for repetitive no-show players
 - [ ] Allow hosts to ban users from their events
 - [ ] Host option to auto create teams X time before match
 - [ ] "Available Games" dashboard tab populated based on server membership/upcoming games
@@ -305,7 +305,7 @@ make push-multi IMAGE=youruser/matchmaker VERSION=v1.0.0
 
 ### Matchmaking test data
 
-Seeds ~58 event groups with scenario-specific users (controlled counts, ranks, subs, and duo pairings) to exercise matchmaking manually. Each group is left open for you to review registrations and click **Lock In & Create Teams**. Users are owned by each scenario — not shared — so ranks stay stable across manual re-testing.
+Seeds ~64 event groups with scenario-specific users (controlled counts, ranks, subs, duo pairings, and no-show history) to exercise matchmaking manually. The no-show deprioritization scenarios (`noshow_*`, limit 3) also create a closed `past no-shows …` group per copy holding the past games those players were marked absent in. Each group is left open for you to review registrations and click **Lock In & Create Teams**. Users are owned by each scenario — not shared — so ranks stay stable across manual re-testing.
 
 **Prerequisites:** migrations applied; your host account must already exist in the database (log in via the app once).
 

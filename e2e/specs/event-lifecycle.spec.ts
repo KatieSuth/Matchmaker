@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Browser, expect, Page, test } from "@playwright/test";
 import { bootstrapPlayerWithValorant, fetchEventGroupApi, registerForGroupApi } from "../fixtures/api";
 import { loginAsExistingUser, uniqueUser } from "../fixtures/auth";
@@ -33,6 +34,24 @@ async function createValorantEvent(page: Page, name: string): Promise<string> {
   return match[1];
 }
 
+/** Clicks a download trigger and returns the saved file's name and text. */
+async function downloadText(page: Page, trigger: () => Promise<void>): Promise<{ name: string; text: string }> {
+  const [download] = await Promise.all([page.waitForEvent("download"), trigger()]);
+  const path = await download.path();
+  return { name: download.suggestedFilename(), text: await readFile(path, "utf8") };
+}
+
+/** Asserts an .ics invitation for eventName with the three default reminders. */
+function expectCalendarInvite(file: { name: string; text: string }, eventName: string): void {
+  expect(file.name).toMatch(/\.ics$/);
+  const text = file.text.replace(/\r\n /g, "");
+  expect(text).toContain("BEGIN:VCALENDAR");
+  expect(text).toContain(`SUMMARY:${eventName}`);
+  for (const trigger of ["-PT24H", "-PT90M", "-PT10M"]) {
+    expect(text).toContain(`TRIGGER:${trigger}`);
+  }
+}
+
 async function seedFillerRegistrations(groupId: string, alreadyRegistered: number): Promise<void> {
   const needed = LOCK_IN_PLAYERS - alreadyRegistered;
   await Promise.all(
@@ -54,11 +73,36 @@ test.describe("event lifecycle", () => {
 
     const groupId = await createValorantEvent(host.page, eventName);
 
+    // The host is offered a calendar invitation right after creating the event.
+    const created = host.page.getByRole("dialog", { name: "Your event is created!" });
+    await expect(created).toBeVisible();
+    await created.getByRole("button", { name: "Not now" }).click();
+    await expect(created).toHaveCount(0);
+    await expect(host.page).not.toHaveURL(/created=1/);
+    // It stays available from the header calendar button.
+    expectCalendarInvite(
+      await downloadText(host.page, () =>
+        host.page.getByRole("button", { name: "Download calendar invitation" }).click(),
+      ),
+      eventName,
+    );
+
     await guest.page.goto(`/event/${groupId}`);
     await expect(eventHeading(guest.page, eventName)).toBeVisible();
+    await expect(guest.page.getByRole("button", { name: "Download calendar invitation" })).toHaveCount(0);
     // Guests who are not yet registered get the editor auto-opened (same as Register Now).
     await guest.page.getByRole("button", { name: "Save Registration" }).click();
+    const registered = guest.page.getByRole("dialog", { name: "You're registered!" });
+    await expect(registered).toBeVisible();
+    expectCalendarInvite(
+      await downloadText(guest.page, () =>
+        registered.getByRole("button", { name: "Download calendar invite" }).click(),
+      ),
+      eventName,
+    );
+    await expect(registered).toHaveCount(0);
     await expect(guest.page.getByRole("button", { name: "Edit My Registration" })).toBeVisible();
+    await expect(guest.page.getByRole("button", { name: "Download calendar invitation" })).toBeVisible();
 
     await seedFillerRegistrations(groupId, 1);
 
@@ -98,8 +142,20 @@ test.describe("event lifecycle", () => {
     const renamed = `${eventName} edited`;
     await host.page.getByRole("button", { name: "Event settings" }).click();
     await host.page.getByPlaceholder("Optional custom title").fill(renamed);
+    // Turn on no-show deprioritization: the limit field appears seeded with 3; raise it to 4.
+    await host.page.getByRole("switch", { name: /Deprioritize no-shows/ }).click();
+    const limit = host.page.getByRole("spinbutton", { name: "Absences before deprioritizing", exact: true });
+    await expect(limit).toHaveValue("3");
+    await host.page.getByRole("button", { name: "Increase Absences before deprioritizing" }).click();
     await host.page.getByRole("button", { name: "Save Settings" }).click();
     await expect(eventHeading(host.page, renamed)).toBeVisible();
+
+    // The setting persists across a reload.
+    await host.page.reload();
+    await host.page.getByRole("button", { name: "Event settings" }).click();
+    await expect(host.page.getByRole("switch", { name: /Deprioritize no-shows/ })).toBeChecked();
+    await expect(host.page.getByRole("spinbutton", { name: "Absences before deprioritizing", exact: true })).toHaveValue("4");
+    await host.page.keyboard.press("Escape");
 
     await host.page.getByRole("button", { name: "Event settings" }).click();
     await host.page.getByRole("button", { name: "Delete Event" }).click();

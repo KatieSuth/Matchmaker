@@ -60,6 +60,8 @@ export function useRegistrationEditor({
   openDeleteAllForCurrentUserConfirmation,
 }: UseRegistrationEditorOptions) {
   const [registrationEditorOpen, setRegistrationEditorOpen] = useState(false);
+  // Offer the calendar invitation after each successful save (the save always leaves a registration).
+  const [calendarPromptOpen, setCalendarPromptOpen] = useState(false);
   const [registrationDraft, setRegistrationDraft] = useState<RegistrationDraft>({
     selected_event_ids: [],
     per_event: {},
@@ -266,6 +268,7 @@ export function useRegistrationEditor({
         }),
       });
       setRegistrationEditorOpen(false);
+      setCalendarPromptOpen(true);
       await loadGroup();
     } catch (err) {
       const restriction = extractDiscordGuildRestriction(err);
@@ -286,6 +289,8 @@ export function useRegistrationEditor({
   };
 
   return {
+    calendarPromptOpen,
+    setCalendarPromptOpen,
     registrationEditorOpen,
     registrationDraft,
     setRegistrationDraft,

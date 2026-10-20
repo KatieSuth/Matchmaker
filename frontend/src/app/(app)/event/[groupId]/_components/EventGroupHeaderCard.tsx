@@ -1,7 +1,7 @@
 "use client";
 
 // Title/meta card at the top of the event group page: name, first-event time, Discord-pings /
-// lock-in-teams / share / settings actions, and the status/team-size/host summary grid.
+// lock-in-teams / share / calendar / settings actions, and the status/team-size/host summary grid.
 import { CopyStatusTooltip } from "@/app/_components/CopyStatusTooltip";
 import { CopyStatus } from "@/app/_hooks/useCopyStatus";
 import { EventGroupDetail } from "@/app/_types/types";
@@ -17,6 +17,7 @@ export function EventGroupHeaderCard({
   onCopyDiscordPings,
   shareStatus,
   onShare,
+  onDownloadCalendar,
   onOpenEditSheet,
   onLockInClick,
 }: {
@@ -29,6 +30,8 @@ export function EventGroupHeaderCard({
   onCopyDiscordPings: () => void;
   shareStatus: CopyStatus;
   onShare: () => void;
+  /** Shown only once the viewer is registered for at least one game. */
+  onDownloadCalendar?: () => void;
   onOpenEditSheet: () => void;
   onLockInClick: () => void;
 }) {
@@ -131,6 +134,20 @@ export function EventGroupHeaderCard({
             </button>
             <CopyStatusTooltip status={shareStatus} successLabel="Link copied" />
           </div>
+          {onDownloadCalendar && (
+            <button
+              type="button"
+              onClick={onDownloadCalendar}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-[var(--color-text-soft)] hover:bg-white/[0.08]"
+              aria-label="Download calendar invitation"
+              title="Add to calendar"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenEditSheet}

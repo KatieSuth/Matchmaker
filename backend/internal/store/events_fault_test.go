@@ -54,10 +54,10 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		s, tx := createEventTestStoreTx(t)
 		ctx := context.Background()
 		host := createTestUser(t, ctx, s)
-		faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: tx, failOn: "GetGameModeById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, uuid.New(), 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
+		_, err := fs.CreateEventGroupWithEvents(ctx, host.ID, uuid.New(), 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil, store.NoShowPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get game mode by id")
 	})
@@ -69,10 +69,10 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		games, err := s.GetSystemGames(ctx)
 		require.NoError(t, err)
 		mode := firstModeForGame(t, ctx, s, games[0].ID)
-		faulty := &faultInjectTx{DBTX: tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: tx, failOn: "CreateEventGroup", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
+		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil, store.NoShowPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create event group")
 	})
@@ -84,10 +84,10 @@ func TestCreateEventGroupWithEvents_DatabaseErrors(t *testing.T) {
 		games, err := s.GetSystemGames(ctx)
 		require.NoError(t, err)
 		mode := firstModeForGame(t, ctx, s, games[0].ID)
-		faulty := &faultInjectTx{DBTX: tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: tx, failOn: "CreateEvent", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil)
+		_, err = fs.CreateEventGroupWithEvents(ctx, host.ID, mode.ID, 0, true, "AMER", "balanced", "", time.Now().UTC().Add(24*time.Hour), 1, nil, store.NoShowPolicy{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create event #1")
 	})
@@ -98,7 +98,7 @@ func TestGetEventGroupDetail_DatabaseErrors(t *testing.T) {
 	fixture := setupEventGroupFixture(t)
 
 	t.Run("group detail lookup fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupDetailById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -107,7 +107,7 @@ func TestGetEventGroupDetail_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("events summary fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetGroupEventsSummary", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -116,7 +116,7 @@ func TestGetEventGroupDetail_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("registration lookup fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationDataByEventId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -126,12 +126,22 @@ func TestGetEventGroupDetail_DatabaseErrors(t *testing.T) {
 
 	t.Run("lobby load fails", func(t *testing.T) {
 		insertLobbyForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, &fixture.hostID)
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetLobbiesForEvent", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "load lobbies for event")
+	})
+
+	t.Run("no-show lookup fails", func(t *testing.T) {
+		// Lobby inserted by the previous subtest: summary, registrations, lobbies, players, then no-shows.
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "ListNoShowUserIdsForEvent", injectedErr: injectedErr}
+		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
+
+		_, err := fs.GetEventGroupDetail(fixture.ctx, fixture.groupID, fixture.hostID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "list no-shows for event")
 	})
 }
 
@@ -142,64 +152,64 @@ func TestUpdateEventGroupSettings_DatabaseErrors(t *testing.T) {
 	updates := patchEventUpdates(fixture.eventID, fixture.modeID, evStart)
 
 	t.Run("get event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get event group")
 	})
 
 	t.Run("count lobbies fails when opening registration", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CountLobbiesByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "count lobbies by group")
 	})
 
 	t.Run("get events by group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventsByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get events by group")
 	})
 
 	t.Run("get event group detail fails when opening registration", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupDetailById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get event group detail")
 	})
 
 	t.Run("get game mode fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetGameModeById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get game mode")
 	})
 
 	t.Run("update event group settings fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "UpdateEventGroupSettings", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "update event group settings")
 	})
 
 	t.Run("update event schedule fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "UpdateEventSchedule", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
-		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil)
+		err := fs.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", false, "", updates, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "update event schedule")
 	})
@@ -210,7 +220,7 @@ func TestUpdateEventGroupSettings_UnknownEventID(t *testing.T) {
 	evStart := time.Now().UTC().Add(48 * time.Hour)
 
 	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "",
-		patchEventUpdates(uuid.New(), fixture.modeID, evStart), nil)
+		patchEventUpdates(uuid.New(), fixture.modeID, evStart), nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }
@@ -222,7 +232,7 @@ func TestUpdateEventGroupSettings_DuplicateEventInPayload(t *testing.T) {
 	dup := patchEventUpdates(fixture.eventID, fixture.modeID, evStart)
 	updates := append(dup, dup...)
 
-	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil)
+	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "", updates, nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }
@@ -233,7 +243,7 @@ func TestUpdateEventGroupSettings_MismatchedEventCount(t *testing.T) {
 	insertEventInGroupFixture(t, fixture.ctx, fixture.tx, fixture.groupID, fixture.modeID, evStart.Add(24*time.Hour))
 
 	err := fixture.s.UpdateEventGroupSettings(fixture.ctx, fixture.groupID, fixture.hostID, "AMER", 0, "balanced", true, "",
-		patchEventUpdates(fixture.eventID, fixture.modeID, evStart), nil)
+		patchEventUpdates(fixture.eventID, fixture.modeID, evStart), nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, store.ErrInvalidGroupEvents)
 }
@@ -243,7 +253,7 @@ func TestDeleteEventGroup_DatabaseErrors(t *testing.T) {
 	fixture := setupEventGroupFixture(t)
 
 	t.Run("get event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteEventGroup(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -252,7 +262,7 @@ func TestDeleteEventGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("delete event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "DeleteEventGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteEventGroup(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -266,7 +276,7 @@ func TestSetEventGroupRegistrationOpen_DatabaseErrors(t *testing.T) {
 	fixture := setupEventGroupFixture(t)
 
 	t.Run("get event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.SetEventGroupRegistrationOpen(fixture.ctx, fixture.groupID, fixture.hostID, true)
@@ -275,7 +285,7 @@ func TestSetEventGroupRegistrationOpen_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("count lobbies fails when opening", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CountLobbiesByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.SetEventGroupRegistrationOpen(fixture.ctx, fixture.groupID, fixture.hostID, true)
@@ -284,7 +294,7 @@ func TestSetEventGroupRegistrationOpen_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("set registration open fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "SetEventGroupRegistrationOpen", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.SetEventGroupRegistrationOpen(fixture.ctx, fixture.groupID, fixture.hostID, false)
@@ -302,7 +312,7 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 	}
 
 	t.Run("get event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
@@ -311,7 +321,7 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("count lobbies fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CountLobbiesByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
@@ -320,7 +330,7 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("close registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 5, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "SetEventGroupRegistrationOpen", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
@@ -329,7 +339,7 @@ func TestCreateTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("persist lobby fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 6, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CreateLobby", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		_, err := fs.CreateTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID, defaultMatchmakingSettings())
@@ -344,7 +354,7 @@ func TestDeleteTeamsForGroup_DatabaseErrors(t *testing.T) {
 	insertLobbyForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, &fixture.hostID)
 
 	t.Run("count lobbies fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CountLobbiesByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -353,7 +363,7 @@ func TestDeleteTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("delete players fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "DeletePlayersByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -362,7 +372,7 @@ func TestDeleteTeamsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("delete lobbies fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "DeleteLobbiesByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteTeamsForGroup(fixture.ctx, fixture.groupID, fixture.hostID)
@@ -378,7 +388,7 @@ func TestUpsertRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	createCompleteUserGameForRegistration(t, fixture.ctx, fixture.tx, fixture.s, joiner.ID, fixture.gameID)
 
 	t.Run("get event fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventWithGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, true, false, nil)
@@ -387,7 +397,7 @@ func TestUpsertRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("user game lookup fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetGameForUserByIds", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, true, false, nil)
@@ -396,7 +406,7 @@ func TestUpsertRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationByEventAndUser", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, true, false, nil)
@@ -405,7 +415,7 @@ func TestUpsertRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("create registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CreateRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, true, false, nil)
@@ -415,7 +425,7 @@ func TestUpsertRegistrationForEvent_DatabaseErrors(t *testing.T) {
 
 	t.Run("update registration fails", func(t *testing.T) {
 		registerUserForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, joiner.ID)
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "UpdateRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, false, true, nil)
@@ -432,7 +442,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 	items := []store.RegistrationUpsertItem{{EventID: fixture.eventID, CanSubstitute: true, CanLobbyHost: false}}
 
 	t.Run("get event group fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventGroupDetailById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -441,7 +451,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get group events fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventsByGroupId", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -450,7 +460,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 3, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationByEventAndUser", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -459,7 +469,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("create registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "CreateRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -469,7 +479,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 
 	t.Run("update registration fails", func(t *testing.T) {
 		registerUserForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, participant.ID)
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 4, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "UpdateRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -480,7 +490,7 @@ func TestUpsertRegistrationsForGroup_DatabaseErrors(t *testing.T) {
 	t.Run("delete unselected registration fails", func(t *testing.T) {
 		event2 := insertEventInGroupFixture(t, fixture.ctx, fixture.tx, fixture.groupID, fixture.modeID, time.Now().UTC().Add(48*time.Hour))
 		registerUserForEvent(t, fixture.ctx, fixture.tx, event2, participant.ID)
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "DeleteRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.UpsertRegistrationsForGroup(fixture.ctx, fixture.groupID, participant.ID, items, nil)
@@ -496,7 +506,7 @@ func TestDeleteRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	registerUserForEvent(t, fixture.ctx, fixture.tx, fixture.eventID, joiner.ID)
 
 	t.Run("get event fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetEventWithGroupById", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, joiner.ID)
@@ -505,7 +515,7 @@ func TestDeleteRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("get registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnQueryRowCall: 2, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "GetRegistrationByEventAndUser", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, joiner.ID)
@@ -514,7 +524,7 @@ func TestDeleteRegistrationForEvent_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("delete registration fails", func(t *testing.T) {
-		faulty := &faultInjectTx{DBTX: fixture.tx, failOnExecCall: 1, injectedErr: injectedErr}
+		faulty := &faultInjectTx{DBTX: fixture.tx, failOn: "DeleteRegistration", injectedErr: injectedErr}
 		fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 		err := fs.DeleteRegistrationForEvent(fixture.ctx, fixture.eventID, joiner.ID, joiner.ID)
@@ -528,7 +538,7 @@ func TestGetEventsForUser_QueryError(t *testing.T) {
 	ctx := context.Background()
 	host := createTestUser(t, ctx, s)
 	injectedErr := errors.New("injected database failure")
-	faulty := &faultInjectTx{DBTX: tx, failOnQueryCall: 1, injectedErr: injectedErr}
+	faulty := &faultInjectTx{DBTX: tx, failOn: "GetEventsForUser", injectedErr: injectedErr}
 	fs := store.NewPostgresStoreFromDBTXForTest(faulty)
 
 	_, _, _, err := fs.GetEventsForUser(ctx, host.ID, true, false, nil, nil, "", "", "UTC")

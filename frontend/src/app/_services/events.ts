@@ -18,6 +18,9 @@ export interface CreateEventRequest {
   sort_logic: EventSortLogic;
   name?: string;
   discord_guild_ids: string[];
+  deprioritize_noshows: boolean;
+  /** Required (>= 1) when deprioritize_noshows is true; ignored otherwise. */
+  max_noshows: number;
 }
 
 export interface CreateEventResponse {
@@ -43,6 +46,9 @@ export interface UpdateEventGroupRequest {
   name?: string;
   events: PatchGroupEventScheduleItem[];
   discord_guild_ids: string[];
+  deprioritize_noshows: boolean;
+  /** Required (>= 1) when deprioritize_noshows is true; the backend keeps the stored value when off. */
+  max_noshows: number;
 }
 
 export interface UpdateRegistrationRequest {
@@ -85,6 +91,11 @@ export async function swapPlayers(eventId: string, userIdA: string, userIdB: str
 /** Host-only. Assigns a team player as the lobby host for their lobby. */
 export async function setLobbyHost(eventId: string, userId: string): Promise<void> {
   await api.post(`/registrations/${eventId}/lobby-host`, { user_id: userId });
+}
+
+/** Host-only. Marks a team player absent (no-show) for this game, or clears the mark. */
+export async function setPlayerAbsence(eventId: string, userId: string, absent: boolean): Promise<void> {
+  await api.post(`/registrations/${eventId}/absence`, { user_id: userId, absent });
 }
 
 /** Host-only. Removes a substitute from their lobby sub pool. */
