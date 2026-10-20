@@ -79,7 +79,7 @@ describe("EventForm (create)", () => {
     await user.click(screen.getByRole("button", { name: "Create Event" }));
 
     await waitFor(() => expect(onCancel).toHaveBeenCalled());
-    expect(mockRouter.push).toHaveBeenCalledWith("/event/group-created");
+    expect(mockRouter.push).toHaveBeenCalledWith("/event/group-created?created=1");
   });
 
   it("sends the no-show deprioritization setting when creating", async () => {

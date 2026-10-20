@@ -9,6 +9,7 @@ import {
   escapeIcsText,
   foldIcsLine,
   formatIcsDate,
+  HOST_GAMES_HEADING,
   registeredGameWindow,
 } from "./calendarInvite";
 
@@ -120,6 +121,16 @@ describe("buildCalendarInvite", () => {
     expect(description).toContain("Game 3 (3v3)");
     expect(description).not.toContain("Game 2");
     expect(description).toContain(`Event page: ${URL_}`);
+  });
+
+  it("uses the host heading when given, covering every game", () => {
+    const all = new Set(["g1", "g2", "g3"]);
+    const lines = unfold(buildCalendarInvite(threeGameGroup(), all, URL_, NOW, "UTC", HOST_GAMES_HEADING)!);
+    expect(lines).toContain("DTSTART:20261106T230000Z");
+    expect(lines).toContain("DTEND:20261107T010000Z");
+    const description = lines.find((l) => l.startsWith("DESCRIPTION:Games"))!;
+    expect(description.startsWith("DESCRIPTION:Games in this event:")).toBe(true);
+    expect(description).toContain("Game 2 (5v5)");
   });
 
   it("escapes punctuation in the event name", () => {

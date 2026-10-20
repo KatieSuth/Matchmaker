@@ -25,6 +25,12 @@ describe("CalendarInviteSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("uses host wording for a newly created event", () => {
+    render(<CalendarInviteSheet isOpen variant="created" onClose={vi.fn()} onDownload={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Your event is created!" });
+    expect(dialog).toHaveTextContent("10 minutes before the first game.");
+  });
+
   it("closes on Escape", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();

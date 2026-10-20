@@ -2,7 +2,7 @@
 // and the click wiring that opens sheets / copy actions / registration (hook internals stay in
 // their own files).
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildEventGroupDetail,
   buildEventGroupEvent,
@@ -16,7 +16,7 @@ import {
 import { server } from "@/test/msw/server";
 import { axe } from "@/test/axe";
 import { TEST_API_URL } from "@/test/constants";
-import { resetNextNavigationMock, setMockParams } from "@/test/nextNavigationMock";
+import { mockRouter, resetNextNavigationMock, setMockParams, setMockSearchParams } from "@/test/nextNavigationMock";
 import { renderWithProviders, screen, userEvent, waitFor, within } from "@/test/render";
 import EventGroupPage from "./page";
 
@@ -230,16 +230,95 @@ describe("EventGroupPage", () => {
     expect(screen.queryByRole("region", { name: /No-show (notice|warning)/ })).not.toBeInTheDocument();
   });
 
-  it("shows the calendar button only to registered viewers", async () => {
+  it("shows the calendar button to the host and registered players only", async () => {
     stubGroup(groupPayload());
-    const { unmount } = renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+    const { unmount: unmountGuest } = renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
     expect(await screen.findByRole("button", { name: "Download calendar invitation" })).toBeInTheDocument();
-    unmount();
+    unmountGuest();
 
     stubGroup(groupPayload());
-    renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+    const { unmount: unmountHost } = renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+    expect(await screen.findByRole("button", { name: "Download calendar invitation" })).toBeInTheDocument();
+    unmountHost();
+
+    stubGroup(groupPayload());
+    renderWithProviders(<EventGroupPage />, { user: buildUser({ id: "bystander-1" }), isAuthenticated: true });
     expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Download calendar invitation" })).not.toBeInTheDocument();
+  });
+
+  describe("calendar invitation after creating an event", () => {
+    // After router.push the browser URL still shows the previous page while this page first
+    // renders, so the flag must come from the router's search params, not window.location.
+    beforeEach(() => {
+      window.history.replaceState(null, "", "/my_events");
+    });
+    afterEach(() => {
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("offers the host an invitation for every game, then drops the created flag", async () => {
+      setMockSearchParams({ created: "1" });
+      stubGroup(
+        groupPayload({
+          events: [
+            buildEventGroupEvent({ id: "event-1", start_time: "2026-12-01T18:00:00Z", registrations: [] }),
+            buildEventGroupEvent({ id: "event-2", start_time: "2026-12-01T19:00:00Z", registrations: [] }),
+          ],
+        }),
+      );
+      const originalCreate = URL.createObjectURL;
+      const originalRevoke = URL.revokeObjectURL;
+      let blob: Blob | undefined;
+      URL.createObjectURL = vi.fn((b: Blob) => {
+        blob = b;
+        return "blob:invite";
+      });
+      URL.revokeObjectURL = vi.fn();
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      try {
+        const user = userEvent.setup();
+        renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+        expect(await screen.findByRole("dialog", { name: "Your event is created!" })).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", { name: "Download calendar invite" }));
+        expect(click).toHaveBeenCalledTimes(1);
+        const ics = await blob!.text();
+        expect(ics).toContain("DTSTART:20261201T180000Z");
+        expect(ics).toContain("Games in this event:");
+        expect(ics).toContain(`URL:${window.location.origin}/event/${GROUP_ID}`);
+        expect(screen.queryByRole("dialog", { name: "Your event is created!" })).not.toBeInTheDocument();
+        expect(mockRouter.replace).toHaveBeenCalledWith(`/event/${GROUP_ID}`, { scroll: false });
+      } finally {
+        URL.createObjectURL = originalCreate;
+        URL.revokeObjectURL = originalRevoke;
+        click.mockRestore();
+      }
+    });
+
+    it("does not offer it without the created flag, or to anyone but the host", async () => {
+      stubGroup(groupPayload());
+      const { unmount } = renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+      expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Your event is created!" })).not.toBeInTheDocument();
+      unmount();
+
+      setMockSearchParams({ created: "1" });
+      stubGroup(groupPayload());
+      renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
+      expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Your event is created!" })).not.toBeInTheDocument();
+    });
+
+    it("can be dismissed without downloading", async () => {
+      setMockSearchParams({ created: "1" });
+      stubGroup(groupPayload());
+      const user = userEvent.setup();
+      renderWithProviders(<EventGroupPage />, { user: HOST, isAuthenticated: true });
+      await user.click(await screen.findByRole("button", { name: "Not now" }));
+      expect(screen.queryByRole("dialog", { name: "Your event is created!" })).not.toBeInTheDocument();
+      expect(mockRouter.replace).toHaveBeenCalledWith(`/event/${GROUP_ID}`, { scroll: false });
+    });
   });
 
   it("hides unplaced players from a non-host after lock-in", async () => {

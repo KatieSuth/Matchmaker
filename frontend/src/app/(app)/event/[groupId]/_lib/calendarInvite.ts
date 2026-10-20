@@ -1,6 +1,11 @@
-// Builds and downloads an .ics calendar invitation covering the viewer's registered games in a group.
+// Builds and downloads an .ics calendar invitation covering a set of games in a group: the viewer's
+// registered games, or every game for the host.
 import { EventGroupDetail, EventGroupEvent } from "@/app/_types/types";
 import { formatDateTime } from "./formatters";
+
+/** Description headings for the two audiences of an invitation. */
+export const PLAYER_GAMES_HEADING = "Games you registered for:";
+export const HOST_GAMES_HEADING = "Games in this event:";
 
 /** Reminder offsets before the start, as RFC 5545 durations: 24 hours, 90 minutes, 10 minutes. */
 export const CALENDAR_REMINDERS = ["-PT24H", "-PT90M", "-PT10M"] as const;
@@ -64,25 +69,26 @@ export function foldIcsLine(line: string): string {
 }
 
 /**
- * Builds the .ics text for the viewer's registered games, or null when they have none.
- * The UID is stable per group so re-downloading after a registration change updates the
- * same calendar entry in clients that honor it.
+ * Builds the .ics text for the given games (the viewer's registrations, or every game for the
+ * host), or null when there are none. The UID is stable per group so re-downloading after a
+ * change updates the same calendar entry in clients that honor it.
  */
 export function buildCalendarInvite(
   group: EventGroupDetail,
-  registeredEventIds: ReadonlySet<string>,
+  eventIds: ReadonlySet<string>,
   pageUrl: string,
   now: Date = new Date(),
   timeZone?: string,
+  heading: string = PLAYER_GAMES_HEADING,
 ): string | null {
-  const window = registeredGameWindow(group, registeredEventIds);
+  const window = registeredGameWindow(group, eventIds);
   if (!window) return null;
 
   const gameLines = window.games.map((game) => {
     const number = group.events.findIndex((event) => event.id === game.id) + 1;
     return `• Game ${number} (${game.game_mode_name}): ${formatDateTime(game.start_time, timeZone)}`;
   });
-  const description = [`Games you registered for:`, ...gameLines, "", `Event page: ${pageUrl}`].join("\n");
+  const description = [heading, ...gameLines, "", `Event page: ${pageUrl}`].join("\n");
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -120,13 +126,14 @@ export function calendarFileName(group: EventGroupDetail): string {
   return `${slug || "event"}.ics`;
 }
 
-/** Triggers a browser download of the viewer's calendar invitation. No-op when unregistered. */
+/** Triggers a browser download of the calendar invitation for eventIds. No-op when the set is empty. */
 export function downloadCalendarInvite(
   group: EventGroupDetail,
-  registeredEventIds: ReadonlySet<string>,
+  eventIds: ReadonlySet<string>,
   pageUrl: string,
+  heading: string = PLAYER_GAMES_HEADING,
 ): void {
-  const ics = buildCalendarInvite(group, registeredEventIds, pageUrl);
+  const ics = buildCalendarInvite(group, eventIds, pageUrl, new Date(), undefined, heading);
   if (!ics) return;
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
   const link = document.createElement("a");

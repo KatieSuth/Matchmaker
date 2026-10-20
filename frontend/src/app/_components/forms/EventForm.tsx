@@ -229,7 +229,8 @@ export function EventForm({
           max_noshows: data.max_noshows,
         });
         onCancel();
-        router.push(`/event/${result.group_id}`);
+        // ?created=1 lets the event page offer the host a calendar invitation once.
+        router.push(`/event/${result.group_id}?created=1`);
         return;
       }
 

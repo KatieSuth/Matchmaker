@@ -1,21 +1,26 @@
 "use client";
 
-// Modal shown right after a registration is saved: offers the .ics invitation for the viewer's games.
+// Modal offering the .ics invitation: to a player right after saving a registration, or to the
+// host right after creating the event.
 import { ResponsiveSheet } from "@/app/_components/ResponsiveSheet";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onDownload: () => void;
+  /** "registered" after a player saves a registration; "created" after the host creates the event. */
+  variant?: "registered" | "created";
 }
 
-export function CalendarInviteSheet({ isOpen, onClose, onDownload }: Props) {
+export function CalendarInviteSheet({ isOpen, onClose, onDownload, variant = "registered" }: Props) {
+  const title = variant === "created" ? "Your event is created!" : "You're registered!";
+  const firstGame = variant === "created" ? "the first game" : "your first game";
   return (
-    <ResponsiveSheet isOpen={isOpen} onClose={onClose} title="You're registered!">
+    <ResponsiveSheet isOpen={isOpen} onClose={onClose} title={title}>
       <div className="flex flex-col gap-4">
         <p className="text-sm text-[var(--color-text-soft)]">
-          Add this event to your calendar to get reminders 24 hours, 90 minutes, and 10 minutes before your first
-          game. You can download it again later from the calendar button at the top of this page.
+          Add this event to your calendar to get reminders 24 hours, 90 minutes, and 10 minutes before {firstGame}.
+          You can download it again later from the calendar button at the top of this page.
         </p>
         <div className="flex justify-end gap-2">
           <button
