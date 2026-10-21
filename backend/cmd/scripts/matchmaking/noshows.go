@@ -1,22 +1,33 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/KatieSuth/MatchmakerAPI/cmd/scripts/common"
 	"github.com/google/uuid"
 )
 
-// noShowHistoryGroupID is the past-games group that holds a scenario's seeded no-show marks.
-func noShowHistoryGroupID(sc Scenario) uuid.UUID {
-	return scenarioGroupID(sc.Key+"_history", sc.SortLogic)
+// noShowHistoryGroupID is the index-th past one-game group holding a scenario's seeded no-show
+// marks. Index 0 keeps the ID of the former single history group so cleanup still removes data
+// seeded before no-shows were counted per event group.
+func noShowHistoryGroupID(sc Scenario, index int) uuid.UUID {
+	if index == 0 {
+		return scenarioGroupID(sc.Key+"_history", sc.SortLogic)
+	}
+	return scenarioGroupID(fmt.Sprintf("%s_history_%d", sc.Key, index), sc.SortLogic)
+}
+
+// noShowHistoryGroupUseCase is the name suffix for the index-th history group.
+func noShowHistoryGroupUseCase(sc Scenario, index int) string {
+	return fmt.Sprintf("past no-shows %s #%d", sc.Key, index+1)
 }
 
 // scenarioHostSlot is the user slot of the seeded host in viewer scenarios; player slots stay below it.
 const scenarioHostSlot = 99
 
 // maxScenarioNoShows is the most no-shows any registrant in the scenario needs (including the
-// --host user in a viewer scenario), which is also how many past games the history group must hold.
+// --host user in a viewer scenario), which is also how many past history groups must exist.
 func maxScenarioNoShows(sc Scenario) int {
 	max := sc.ViewerNoShows
 	for _, ev := range sc.Events {
@@ -29,25 +40,25 @@ func maxScenarioNoShows(sc Scenario) int {
 	return max
 }
 
-// seedNoShowHistory creates a closed group of past 5v5 games owned by ownerID (one week apart,
-// all inside the 6-month lookback). Each player is registered for, and marked absent in, the
-// first RegSpec.NoShows of them; in a viewer scenario viewerID gets sc.ViewerNoShows the same way.
-// Players must already exist. No-op when nobody has no-shows.
+// seedNoShowHistory creates closed past groups owned by ownerID, each holding one 5v5 game (one
+// week apart, all inside the 6-month lookback). Each player is registered for, and marked absent
+// in, the first RegSpec.NoShows of them; in a viewer scenario viewerID gets sc.ViewerNoShows the
+// same way. One game per group because no-shows count once per event group. Players must
+// already exist. No-op when nobody has no-shows.
 func seedNoShowHistory(seed *common.SeedContext, ownerID, viewerID uuid.UUID, game *gameInfo, sc Scenario) {
-	pastGames := maxScenarioNoShows(sc)
-	if pastGames == 0 {
+	pastGroups := maxScenarioNoShows(sc)
+	if pastGroups == 0 {
 		return
 	}
 
-	groupID := noShowHistoryGroupID(sc)
-	name := scenarioGroupName(sc.SortLogic, "past no-shows "+sc.Key)
-	insertEventGroup(seed, groupID, ownerID, 0, sc.Region, sc.SortLogic, name, 0, false)
-
 	mode := game.modeByName(modeName5v5)
 	now := time.Now().UTC()
-	eventIDs := make([]uuid.UUID, pastGames)
+	eventIDs := make([]uuid.UUID, pastGroups)
 	for i := range eventIDs {
-		eventIDs[i] = scenarioEventID(groupID, i)
+		groupID := noShowHistoryGroupID(sc, i)
+		name := scenarioGroupName(sc.SortLogic, noShowHistoryGroupUseCase(sc, i))
+		insertEventGroup(seed, groupID, ownerID, 0, sc.Region, sc.SortLogic, name, 0, false)
+		eventIDs[i] = scenarioEventID(groupID, 0)
 		insertEvent(seed, eventIDs[i], groupID, mode.ID, now.AddDate(0, 0, -7*(i+1)))
 	}
 

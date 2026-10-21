@@ -57,6 +57,25 @@ func TestBuildGroupNoShowCounts_CountsHostGamesInWindowByStartTime(t *testing.T)
 	assert.Equal(t, map[uuid.UUID]int{player.ID: 2}, counts, "only this host's games within 6 months; registrants only")
 }
 
+func TestBuildGroupNoShowCounts_MultipleGamesInOneEventCountOnce(t *testing.T) {
+	f := setupEventGroupFixture(t)
+	now := time.Now().UTC()
+	player := createTestUser(t, f.ctx, f.s)
+
+	pastGroup, game1 := insertEventFixture(t, f.ctx, f.tx, f.hostID, f.modeID, now.AddDate(0, -1, 0))
+	game2 := insertEventInGroupFixture(t, f.ctx, f.tx, pastGroup, f.modeID, now.AddDate(0, -1, 0).Add(time.Hour))
+	game3 := insertEventInGroupFixture(t, f.ctx, f.tx, pastGroup, f.modeID, now.AddDate(0, -1, 0).Add(2*time.Hour))
+	_, otherEventGame := insertEventFixture(t, f.ctx, f.tx, f.hostID, f.modeID, now.AddDate(0, -2, 0))
+	for _, game := range []uuid.UUID{game1, game2, game3, otherEventGame} {
+		insertNoShow(t, f.ctx, f.tx, game, player.ID, f.hostID)
+	}
+
+	group := enableDeprioritization(t, f, 2)
+	counts, err := store.BuildGroupNoShowCountsForTest(f.s, f.ctx, group, map[uuid.UUID]int{player.ID: 1}, now)
+	require.NoError(t, err)
+	assert.Equal(t, map[uuid.UUID]int{player.ID: 2}, counts, "three missed games in one event plus one other event = 2")
+}
+
 func TestBuildGroupNoShowCounts_DisabledSkipsQuery(t *testing.T) {
 	f := setupEventGroupFixture(t)
 	_, err := f.tx.Exec(f.ctx, `UPDATE event_groups SET max_noshows = 1 WHERE id = $1`, f.groupID)
@@ -336,6 +355,24 @@ func TestGetEventGroupDetail_ViewerNoShowDatesOwnRecordOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, detail.ViewerNoShowDates)
 	assert.Empty(t, detail.ViewerNoShowDates, "the host is never shown another player's dates")
+}
+
+func TestGetEventGroupDetail_ViewerNoShowDatesOnePerEvent(t *testing.T) {
+	f := setupEventGroupFixture(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	viewer := createTestUser(t, f.ctx, f.s)
+
+	first := now.AddDate(0, -1, 0)
+	pastGroup, game1 := insertEventFixture(t, f.ctx, f.tx, f.hostID, f.modeID, first)
+	game2 := insertEventInGroupFixture(t, f.ctx, f.tx, pastGroup, f.modeID, first.Add(time.Hour))
+	insertNoShow(t, f.ctx, f.tx, game2, viewer.ID, f.hostID)
+	insertNoShow(t, f.ctx, f.tx, game1, viewer.ID, f.hostID)
+
+	enableDeprioritization(t, f, 3)
+	detail, err := f.s.GetEventGroupDetail(f.ctx, f.groupID, viewer.ID)
+	require.NoError(t, err)
+	require.Len(t, detail.ViewerNoShowDates, 1, "missed games in one event are a single absence")
+	assert.True(t, first.Equal(detail.ViewerNoShowDates[0]), "dated by the earliest missed game")
 }
 
 func TestGetEventGroupDetail_ViewerNoShowDatesQueryFails(t *testing.T) {

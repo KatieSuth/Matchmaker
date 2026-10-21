@@ -19,7 +19,7 @@ type RegSpec struct {
 	CanSub     bool
 	CanHost    bool
 	DuoPartner *int
-	// NoShows is how many past games at this host the player is marked absent for (see seedNoShowHistory).
+	// NoShows is how many past events at this host the player is marked absent for (see seedNoShowHistory).
 	NoShows int
 }
 

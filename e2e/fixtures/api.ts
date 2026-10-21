@@ -183,3 +183,36 @@ export async function bootstrapExistingUser(user: TestUser, withValorant: boolea
     await upsertValorantGameApi(accessToken, game.id, rank.id, `${user.username}#E2E`);
   }
 }
+
+interface CatalogGameMode {
+  id: string;
+  name: string;
+}
+
+/** Creates an open Valorant 5v5 AMER event group starting tomorrow and returns its id. */
+export async function createValorantEventApi(accessToken: string, gameId: string, name: string): Promise<string> {
+  const modesRes = await fetch(`${e2eApiUrl}/games/${gameId}/modes`, { headers: authHeaders(accessToken) });
+  await assertOk(modesRes, "list game modes");
+  const modes = (await modesRes.json()) as CatalogGameMode[];
+  const mode = modes.find((m) => m.name === "5v5");
+  if (!mode) {
+    throw new Error("Valorant has no 5v5 game mode");
+  }
+
+  const res = await fetch(`${e2eApiUrl}/events`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({
+      name,
+      game_mode_id: mode.id,
+      region: "AMER",
+      start_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      sub_min: 0,
+      games_to_run: 1,
+      registration_open: true,
+    }),
+  });
+  await assertOk(res, "create event");
+  const body = (await res.json()) as { group_id: string };
+  return body.group_id;
+}

@@ -39,7 +39,8 @@ type Player struct {
 	RegisteredGameCount int
 	CreatedAt           time.Time
 	TeamNumber          *int
-	// NoShowCount is this player's no-shows at the host's games in the past 6 months (store-supplied).
+	// NoShowCount is the number of this host's event groups in the past 6 months where this player
+	// was marked absent at one or more games (store-supplied).
 	NoShowCount int
 	// Deprioritized is set per plan by markDeprioritized; never set by callers.
 	Deprioritized bool

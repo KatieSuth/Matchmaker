@@ -30,13 +30,19 @@ export default function AboutIntro() {
           substitute minimum, and whether registration is open. Hosts can optionally lock
           an event to one or more Discord servers they belong to; only members of at least
           one selected server can open the event or register. Turning the lock off or
-          saving with no servers selected removes the lock. The first lobby can be created
-          as soon as there are enough players to fill its teams. Before Matchmaker creates a
-          second lobby, there must also be enough players who volunteered to substitute to
-          meet the host&apos;s minimum, with at least one volunteer still able to play so
-          extra lobbies do not lock every sub on the bench. Volunteering to sub is optional and does
-          not affect a player&apos;s chance of being placed on a team. The host also chooses
-          how Matchmaker should build lobbies:
+          saving with no servers selected removes the lock. Hosts can also
+          choose to deprioritize players who have no-showed at their events within the last 6
+          months. Deprioritization is off by default, and while it&apos;s off, every player gets
+          equal matchmaking regardless of past no-shows. Hosts who turn it on choose how many
+          no-shows a player must have before deprioritization affects them.
+        </p>
+        <p className={bodyText}>
+          The first lobby can be created as soon as there are enough players to fill its teams.
+          Before Matchmaker creates a second lobby, there must also be enough players who
+          volunteered to substitute to meet the host&apos;s minimum, with at least one volunteer
+          still able to play so extra lobbies do not lock every sub on the bench. Volunteering
+          to sub is optional and does not affect a player&apos;s chance of being placed on a team.
+          The host also chooses how Matchmaker should build lobbies:
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 flex flex-col gap-1">
@@ -104,6 +110,16 @@ export default function AboutIntro() {
         <p className={bodyText}>
           Once teams exist, the host can copy a Discord ping message that mentions every player
           on a team and in the substitute pool, ready to paste into Discord as a reminder.
+        </p>
+        <p className={bodyText}>
+          After a game&apos;s start time, the host can mark any player on a team as absent. This
+          lets hosts keep track of players who repeatedly no-show at their events. In future events,
+          a player who has been marked absent may be deprioritized if the host chooses to do so.
+          A deprioritized player is still registered; they&apos;re just left out of the initial
+          team creation. They can still be placed on a team if there aren&apos;t enough other
+          players to fill the teams, or swapped back in during the final fairness checks of
+          lock-in if they&apos;re needed to balance a team. Deprioritized players who volunteered to
+          substitute are also still available as substitutes.
         </p>
       </section>
 

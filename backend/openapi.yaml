@@ -2451,18 +2451,19 @@ components:
             type: integer
           description: >
             Host viewer only (empty object for everyone else, and when deprioritize_noshows is off).
-            Maps registrant user IDs to their no-show count at this host's games in the past 6 months,
-            limited to players at or above max_noshows.
+            Maps registrant user IDs to their no-show count at this host's events in the past 6 months,
+            limited to players at or above max_noshows. Missing several games of one event group counts once.
         viewer_no_show_dates:
           type: array
           items:
             type: string
             format: date-time
           description: >
-            Start times of this host's games in the past 6 months where the viewer was marked
-            absent, oldest first. Always the viewer's own record. Empty when they have none or
-            when deprioritize_noshows is off. Compared with max_noshows to decide whether the
-            viewer is currently deprioritized.
+            One entry per event group of this host, in the past 6 months, where the viewer was
+            marked absent: the start time of the earliest missed game, oldest first. Always the
+            viewer's own record. Empty when they have none or when deprioritize_noshows is off.
+            Its length is compared with max_noshows to decide whether the viewer is currently
+            deprioritized.
         created_at:
           type: string
           format: date-time
