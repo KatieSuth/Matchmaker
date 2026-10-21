@@ -85,8 +85,8 @@ func (s *PostgresStore) buildGroupRegistrationCounts(ctx context.Context, groupI
 	return counts, nil
 }
 
-// buildGroupNoShowCounts returns each registrant's no-shows at the group owner's games that
-// started in the noShowLookbackMonths before now. Returns nil without querying when the
+// buildGroupNoShowCounts returns each registrant's no-show count at the group owner's events
+// (one per event group) for games that started in the noShowLookbackMonths before now. Returns nil without querying when the
 // group has deprioritization off, since the counts would be unused.
 func (s *PostgresStore) buildGroupNoShowCounts(ctx context.Context, group db.EventGroup, regCounts map[uuid.UUID]int, now time.Time) (map[uuid.UUID]int, error) {
 	if !group.DeprioritizeNoshows || len(regCounts) == 0 {
@@ -99,8 +99,9 @@ func (s *PostgresStore) buildGroupNoShowCounts(ctx context.Context, group db.Eve
 	return s.recentNoShowCounts(ctx, group.OwnerID, userIDs, now)
 }
 
-// recentNoShowCounts returns each user's no-shows at hostID's games that started in the
-// noShowLookbackMonths before now. Users with no recent no-shows are absent from the map.
+// recentNoShowCounts returns each user's no-show count at hostID's events for games that started
+// in the noShowLookbackMonths before now. Several missed games in one event group count once.
+// Users with no recent no-shows are absent from the map.
 func (s *PostgresStore) recentNoShowCounts(ctx context.Context, hostID uuid.UUID, userIDs []uuid.UUID, now time.Time) (map[uuid.UUID]int, error) {
 	since, until := noShowWindow(now)
 	rows, err := s.q.CountRecentNoShowsForHost(ctx, db.CountRecentNoShowsForHostParams{

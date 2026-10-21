@@ -136,52 +136,6 @@ export default function AboutFaq() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <h2 className={questionCls}>
-          Why is an event blocked, and how does the Discord server lock work?
-        </h2>
-        <p className={bodyText}>
-          Hosts can lock an event to one or more Discord servers they belong to. Anyone else,
-          including lobby hosts, must be in at least one of those servers to open the event or
-          register. The event owner is never locked out. Saving the lock with no servers, or
-          turning it off, makes the event open to anyone with the link again.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <h2 className={questionCls}>
-          Discord is having trouble and users can&apos;t register for events. What do I do?
-        </h2>
-        <p className={bodyText}>
-          Generally wait, and check{" "}
-          <a
-            href="https://discordstatus.com"
-            className="body-link"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            discordstatus.com
-          </a>
-          . If the Discord API is having an outage, it can affect Matchmaker&apos;s ability to check
-          server membership. Hosts are never locked out of their own events, so they can temporarily
-          turn off the Discord server lock and save until Discord&apos;s API recovers, then lock it again.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <h2 className={questionCls}>
-          Why does my display name and event name hit the 50-character limit so fast when I use emojis?
-        </h2>
-        <p className={bodyText}>
-          Display names and event names are capped at 50 characters. Ordinary letters and numbers
-          usually count as one character each, but many emojis (and especially ones made of several
-          parts, like some family or flag emojis) count as more than one toward that limit even though
-          they look like a single symbol on screen. That&apos;s just how computers store those
-          characters; it isn&apos;t a bug in the counter. The counter on the form shows how much
-          of the limit you have left; if it turns red, shorten the name or use fewer emojis.
-        </p>
-      </div>
-
       <div className="flex flex-col gap-3">
         <h2 className={questionCls}>How can teams be edited?</h2>
         <p className={bodyText}>
@@ -265,6 +219,111 @@ export default function AboutFaq() {
           reopen them, click &quot;Edit&quot; in the event header. At the bottom of the modal,
           there is a &quot;Registration Status&quot; toggle. Toggle it on and click &quot;Save
           Settings&quot; to allow new players to register.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          Why is an event blocked, and how does the Discord server lock work?
+        </h2>
+        <p className={bodyText}>
+          Hosts can lock an event to one or more Discord servers they belong to. Anyone else,
+          including lobby hosts, must be in at least one of those servers to open the event or
+          register. The event owner is never locked out. Saving the lock with no servers, or
+          turning it off, makes the event open to anyone with the link again.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          Discord is having trouble and users can&apos;t register for events. What do I do?
+        </h2>
+        <p className={bodyText}>
+          Generally wait, and check{" "}
+          <a
+            href="https://discordstatus.com"
+            className="body-link"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            discordstatus.com
+          </a>
+          . If the Discord API is having an outage, it can affect Matchmaker&apos;s ability to check
+          server membership. Hosts are never locked out of their own events, so they can temporarily
+          turn off the Discord server lock and save until Discord&apos;s API recovers, then lock it again.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          Why does my display name and event name hit the 50-character limit so fast when I use emojis?
+        </h2>
+        <p className={bodyText}>
+          Display names and event names are capped at 50 characters. Ordinary letters and numbers
+          usually count as one character each, but many emojis (and especially ones made of several
+          parts, like some family or flag emojis) count as more than one toward that limit even though
+          they look like a single symbol on screen. That&apos;s just how computers store those
+          characters; it isn&apos;t a bug in the counter. The counter on the form shows how much
+          of the limit you have left; if it turns red, shorten the name or use fewer emojis.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          I missed an event I registered for and was marked absent. What happens now?
+        </h2>
+        <p className={bodyText}>
+          If this is the first time it&apos;s happened, it probably won&apos;t affect you this time,
+          but it&apos;s up to the host of that event. An absence is only visible to you and the host
+          who marked it, and it doesn&apos;t count toward events created by other hosts. If you missed
+          several games within a single event, that counts as only one absence. No-shows are counted on
+          a rolling 6-month basis: only absences from games in the last 6 months count, and older ones
+          drop off automatically. Each host decides whether to deprioritize no-shows at all. Hosts who
+          do can change how many no-shows it takes before a player is deprioritized, but the default
+          is 3, so missing one event is unlikely to affect you.
+        </p>
+        <p className={bodyText}>
+          If you later find out you can&apos;t make a game you&apos;ve registered for, delete your
+          registration for that game ahead of time. If teams have already been created, let the
+          host know in advance so they can find a substitute in time.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          I&apos;ve missed several events I registered for and now I see a warning that I&apos;m
+          being deprioritized from matchmaking. Should I still register?
+        </h2>
+        <p className={bodyText}>
+          Yes. Being deprioritized means you&apos;re left out of the initial team creation, not
+          that you can&apos;t play. While it&apos;s unlikely, you might still be placed on a team
+          if you&apos;re needed to fairly balance a game or if there aren&apos;t enough other
+          players to fill the teams. More likely, you may be called on to substitute, so make sure
+          you keep <strong>Can substitute</strong> turned on in your registration.
+        </p>
+        <p className={bodyText}>
+          No-shows are counted on a rolling 6-month basis, so each absence stops counting once the
+          game it was for is more than 6 months old, and the warning goes away when you drop back
+          below the host&apos;s limit. In the future, if you know ahead of time that you can&apos;t
+          make a game, delete your registration for it if you can. If registration has already
+          closed and you&apos;ve made it onto a team, let the host know in advance so they can find a
+          substitute in time.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className={questionCls}>
+          I was marked absent for an event I attended. How can I clear my name?
+        </h2>
+        <p className={bodyText}>
+          First, check whether you were on a team for more than one game in that event. If you
+          were placed on a team for two or more games and only played in one of them, that still
+          counts as an absence.
+        </p>
+        <p className={bodyText}>
+          If you played in every game of the event that you were on a team for and were really
+          marked absent by mistake, past games are still available in Matchmaker. Reach out to
+          the host and ask them to mark you present for each game you were marked absent in.
         </p>
       </div>
     </div>

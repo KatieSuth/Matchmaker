@@ -3,7 +3,7 @@
 import { formatDate } from "@/app/_lib/dateTime";
 
 interface Props {
-  /** Start times of the host's games where the viewer was a no-show, oldest first. */
+  /** One date per host event where the viewer was a no-show (earliest missed game), oldest first. */
   noShowDates: string[];
   deprioritizeNoShows: boolean;
   /** No-show count that triggers deprioritization; only used while deprioritizeNoShows is on. */

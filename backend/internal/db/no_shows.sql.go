@@ -13,7 +13,7 @@ import (
 )
 
 const countRecentNoShowsForHost = `-- name: CountRecentNoShowsForHost :many
-SELECT ns.user_id, COUNT(*)::INT AS no_show_count
+SELECT ns.user_id, COUNT(DISTINCT e.group_id)::INT AS no_show_count
 FROM no_shows ns
 JOIN events e ON e.id = ns.event_id
 WHERE ns.host_id = $1
@@ -34,8 +34,9 @@ type CountRecentNoShowsForHostRow struct {
 	NoShowCount int32
 }
 
-// Per-player no-show counts at one host's games whose start_time falls in [since, until].
-// Counted by game date, not when the mark was recorded.
+// Per-player no-show counts at one host's events, using absences at games whose start_time falls
+// in [since, until] (game date, not when the mark was recorded). Missing several games of one
+// event group counts once.
 func (q *Queries) CountRecentNoShowsForHost(ctx context.Context, arg CountRecentNoShowsForHostParams) ([]CountRecentNoShowsForHostRow, error) {
 	rows, err := q.db.Query(ctx, countRecentNoShowsForHost,
 		arg.HostID,
@@ -104,13 +105,14 @@ func (q *Queries) ListNoShowUserIdsForEvent(ctx context.Context, eventID uuid.UU
 }
 
 const listRecentNoShowDatesForHostUser = `-- name: ListRecentNoShowDatesForHostUser :many
-SELECT e.start_time
+SELECT MIN(e.start_time)::timestamptz AS start_time
 FROM no_shows ns
 JOIN events e ON e.id = ns.event_id
 WHERE ns.host_id = $1
   AND ns.user_id = $2
   AND e.start_time BETWEEN $3 AND $4
-ORDER BY e.start_time ASC
+GROUP BY e.group_id
+ORDER BY start_time ASC
 `
 
 type ListRecentNoShowDatesForHostUserParams struct {
@@ -120,7 +122,8 @@ type ListRecentNoShowDatesForHostUserParams struct {
 	Until  time.Time
 }
 
-// Start times of one host's games in [since, until] where this user was marked absent, oldest first.
+// One date per event group of this host where the user was marked absent at a game starting in
+// [since, until]: the earliest missed game's start time, oldest first. Matches CountRecentNoShowsForHost.
 func (q *Queries) ListRecentNoShowDatesForHostUser(ctx context.Context, arg ListRecentNoShowDatesForHostUserParams) ([]time.Time, error) {
 	rows, err := q.db.Query(ctx, listRecentNoShowDatesForHostUser,
 		arg.HostID,

@@ -48,7 +48,7 @@ Built by `mapRegistrationsToPlayers` in `store/teams_planning.go` from `GetMatch
 | `CanLobbyHost` | `registrations.can_lobby_host` | Lobby host selection |
 | `RegisteredGameCount` | Registrations across all games in the group | Tie-break |
 | `CreatedAt` | Registration timestamp | Tie-break; host fallback |
-| `NoShowCount` | `no_shows` at this host's games, past 6 months | No-show deprioritization |
+| `NoShowCount` | Event groups with a `no_shows` row at this host, past 6 months | No-show deprioritization |
 | `Deprioritized` | Set per plan by `markDeprioritized` | Excludes from fill and sub-capacity replacements |
 
 Rank orders come from `game_ranks.order` for the event's game. Tier count for fairness scaling is `MAX(game_ranks.order)` for that game.
@@ -137,7 +137,7 @@ That ceiling **may bench every can-sub** (`MaxSubstituteEligibleOnRoster == 0`).
 
 Opt-in per event group (`event_groups.deprioritize_noshows`). When it is off, `NoShowThreshold` is 0, `max_noshows` is ignored, and the pipeline behaves exactly as if this section did not exist.
 
-**Counting.** The store counts each registrant's `no_shows` rows whose `host_id` is this group's owner and whose game (`events.start_time`) falls in the 6 months before lock-in. The count is by game date, not by when the mark was recorded.
+**Counting.** The store counts each registrant's `no_shows` rows whose `host_id` is this group's owner and whose game (`events.start_time`) falls in the 6 months before lock-in, counting **distinct event groups**: missing several games of one event is a single no-show. The count is by game date, not by when the mark was recorded.
 
 **Hold-out.** A player with `NoShowCount ≥ NoShowThreshold` is *deprioritized*:
 

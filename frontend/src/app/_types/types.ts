@@ -157,9 +157,9 @@ export interface EventGroupDetail {
   updated_at: string;
   events: EventGroupEvent[];
   discord_guilds: DiscordGuild[];
-  /** Host-only: user ID → no-show count at this host in the last 6 months, for players at/above max_noshows. */
+  /** Host-only: user ID → no-show count (one per event) at this host in the last 6 months, for players at/above max_noshows. */
   excessive_no_shows: Record<string, number>;
-  /** The viewer's own no-show game start times at this host in the last 6 months, oldest first. */
+  /** The viewer's own no-shows at this host in the last 6 months, one per event (earliest missed game's start time), oldest first. */
   viewer_no_show_dates: string[];
 }
 

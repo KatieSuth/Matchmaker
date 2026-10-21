@@ -242,10 +242,24 @@ func TestNoShowHistoryGroupNamesFitLimit(t *testing.T) {
 		if maxScenarioNoShows(sc) == 0 {
 			continue
 		}
-		_, err := formatScenarioGroupName(sc.SortLogic, "past no-shows "+sc.Key)
-		require.NoError(t, err, sc.Key)
-		assert.NotEqual(t, scenarioGroupID(sc.Key, sc.SortLogic), noShowHistoryGroupID(sc))
+		ids := map[uuid.UUID]bool{scenarioGroupID(sc.Key, sc.SortLogic): true}
+		for i := 0; i < maxScenarioNoShows(sc); i++ {
+			_, err := formatScenarioGroupName(sc.SortLogic, noShowHistoryGroupUseCase(sc, i))
+			require.NoError(t, err, sc.Key)
+			id := noShowHistoryGroupID(sc, i)
+			assert.False(t, ids[id], "%s history group %d needs its own ID", sc.Key, i)
+			ids[id] = true
+		}
 	}
+}
+
+func TestNoShowHistoryGroupID_IndexZeroKeepsLegacyID(t *testing.T) {
+	t.Parallel()
+
+	sc := Scenario{Key: "noshow_excluded", SortLogic: "balanced"}
+	assert.Equal(t, scenarioGroupID("noshow_excluded_history", "balanced"), noShowHistoryGroupID(sc, 0),
+		"cleanup must still find groups seeded with the single-history-group layout")
+	assert.NotEqual(t, noShowHistoryGroupID(sc, 0), noShowHistoryGroupID(sc, 1))
 }
 
 // anyFairLobby brute-forces every choice of 10 registrants and every 5/5 split, reporting whether

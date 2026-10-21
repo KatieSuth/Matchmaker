@@ -128,11 +128,12 @@ type EventGroupDetail struct {
 	Events              []EventGroupEvent `json:"events"`
 	DiscordGuilds       []DiscordGuild    `json:"discord_guilds"`
 	// ExcessiveNoShows maps registrants at or above the deprioritization threshold to their
-	// 6-month no-show count at this host. Host viewer only; empty for everyone else.
+	// 6-month no-show count at this host (one per event group, however many of its games were
+	// missed). Host viewer only; empty for everyone else.
 	ExcessiveNoShows map[uuid.UUID]int `json:"excessive_no_shows"`
-	// ViewerNoShowDates are start times of this host's games in the past 6 months where the
-	// viewer was marked absent, oldest first. Only ever the viewer's own record; empty while
-	// deprioritization is off.
+	// ViewerNoShowDates has one entry per event group of this host, in the past 6 months, where the
+	// viewer was marked absent: the earliest missed game's start time, oldest first. Only ever
+	// the viewer's own record; empty while deprioritization is off.
 	ViewerNoShowDates []time.Time `json:"viewer_no_show_dates"`
 }
 
