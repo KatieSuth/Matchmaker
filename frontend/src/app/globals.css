@@ -76,6 +76,34 @@
     background: rgba(58, 140, 255, 0.45);
     color: #fff;
   }
+
+  /*
+   * Tailwind v4 utilities (border, outline, ring, shadow, translate) read
+   * --tw-* vars whose defaults come only from @property registrations. Its own
+   * fallback is gated to pre-@property Safari/Firefox, so when a modern
+   * browser (seen in Firefox desktop + mobile) misses the registration,
+   * `border` resolves to border-style: none and button outlines
+   * intermittently disappear. Set the non-`initial` defaults
+   * unconditionally; utilities still override since they sit in a later layer.
+   */
+  *, ::before, ::after, ::backdrop {
+    --tw-border-style: solid;
+    --tw-outline-style: solid;
+    --tw-translate-x: 0;
+    --tw-translate-y: 0;
+    --tw-translate-z: 0;
+    --tw-space-y-reverse: 0;
+    --tw-shadow: 0 0 #0000;
+    --tw-shadow-alpha: 100%;
+    --tw-inset-shadow: 0 0 #0000;
+    --tw-inset-shadow-alpha: 100%;
+    --tw-ring-shadow: 0 0 #0000;
+    --tw-inset-ring-shadow: 0 0 #0000;
+    --tw-ring-offset-width: 0px;
+    --tw-ring-offset-color: #fff;
+    --tw-ring-offset-shadow: 0 0 #0000;
+    --tw-drop-shadow-alpha: 100%;
+  }
 }
 
 /*
