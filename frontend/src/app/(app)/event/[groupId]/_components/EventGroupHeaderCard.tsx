@@ -38,7 +38,8 @@ export function EventGroupHeaderCard({
   return (
     <div className="card rounded-xl p-4 sm:p-5 flex flex-col gap-4 relative overflow-visible">
       <div className="absolute top-0 left-4 right-4 h-px bg-top-edge opacity-20 rounded-full" />
-      <div className="flex items-start justify-between gap-3">
+      {/* Mobile: title block stacks above the actions; sm+: side-by-side row. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[var(--color-text)] tracking-tight">
             {group.name.trim() ? group.name : group.game_name}
@@ -52,8 +53,9 @@ export function EventGroupHeaderCard({
             First event: {firstEventStart ? formatDateTime(firstEventStart) : "Not scheduled"}
           </p>
         </div>
-        {/* shrink-0 + nowrap: a long wrapping title must not squeeze these into a taller stacked label. */}
-        <div className="flex shrink-0 flex-nowrap items-center gap-2">
+        {/* Mobile: buttons wrap under the title. sm+: shrink-0 + nowrap so a long wrapping title
+            can't squeeze these into a taller stacked label. */}
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
           {isHost && hasAnyLobbies && (
             <div className="relative">
               <button
