@@ -17,5 +17,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /mobile-.*\.spec\.ts/ },
+    // Phone-width layout checks only; Pixel 7 keeps this on the Chromium binary CI already installs.
+    { name: "mobile-chromium", use: { ...devices["Pixel 7"] }, testMatch: /mobile-.*\.spec\.ts/ },
+  ],
 });

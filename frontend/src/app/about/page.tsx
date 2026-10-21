@@ -38,28 +38,31 @@ export default function AboutPage() {
               />
             </div>
           </Link>
-          <nav
-            aria-label="On this page"
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm"
-          >
-            <a href="#about" className="body-link">
-              About
-            </a>
-            <span className="text-[var(--color-text-faint)]" aria-hidden>
-              ·
-            </span>
-            <a href="#faq" className="body-link">
-              FAQ &amp; Troubleshooting
-            </a>
-            <span className="text-[var(--color-text-faint)]" aria-hidden>
-              ·
-            </span>
-            <a href="#privacy" className="body-link">
-              Privacy
-            </a>
-          </nav>
           <UserAccountMenu />
         </header>
+
+        {/* Section links live below the header, not in it: centered over the header they collided
+            with the logo at phone width. Wraps between (never inside) links on narrow screens. */}
+        <nav
+          aria-label="On this page"
+          className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 pb-6 text-sm"
+        >
+          <a href="#about" className="body-link whitespace-nowrap">
+            About
+          </a>
+          <span className="text-[var(--color-text-faint)]" aria-hidden>
+            ·
+          </span>
+          <a href="#faq" className="body-link whitespace-nowrap">
+            FAQ &amp; Troubleshooting
+          </a>
+          <span className="text-[var(--color-text-faint)]" aria-hidden>
+            ·
+          </span>
+          <a href="#privacy" className="body-link whitespace-nowrap">
+            Privacy
+          </a>
+        </nav>
 
         <main className="flex flex-1 flex-col items-center gap-8 px-5 pb-12">
           <article
