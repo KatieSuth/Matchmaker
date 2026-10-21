@@ -143,17 +143,21 @@ export default function EventGroupPage() {
     void copyShareLink(shareUrl);
   };
 
-  // The host's invitation spans every game; a player's spans the games they registered for.
-  const calendarEventIds = useMemo(
-    () => new Set(isHost ? (group?.events ?? []).map((event) => event.id) : myRegistrationsByEvent.keys()),
-    [isHost, group, myRegistrationsByEvent],
-  );
+  // Every invitation spans the whole event. A registered player's description lists their games;
+  // the host's, and that of anyone not yet registered, lists every game.
+  const listsOwnGames = !isHost && myRegistrationsByEvent.size > 0;
+  const hasGames = (group?.events.length ?? 0) > 0;
 
   const handleDownloadCalendar = () => {
     if (!group) return;
     // Built from the group ID: the browser URL can lag behind the router right after navigation.
     const pageUrl = typeof window !== "undefined" ? `${window.location.origin}/event/${group.id}` : "";
-    downloadCalendarInvite(group, calendarEventIds, pageUrl, isHost ? HOST_GAMES_HEADING : PLAYER_GAMES_HEADING);
+    downloadCalendarInvite(
+      group,
+      listsOwnGames ? new Set(myRegistrationsByEvent.keys()) : new Set<string>(),
+      pageUrl,
+      listsOwnGames ? PLAYER_GAMES_HEADING : HOST_GAMES_HEADING,
+    );
   };
 
   // The create form lands here with ?created=1 so the host is offered the invitation once.
@@ -281,7 +285,7 @@ export default function EventGroupPage() {
           onCopyDiscordPings={handleCopyDiscordPings}
           shareStatus={shareStatus}
           onShare={handleShare}
-          onDownloadCalendar={calendarEventIds.size > 0 ? handleDownloadCalendar : undefined}
+          onDownloadCalendar={hasGames ? handleDownloadCalendar : undefined}
           onOpenEditSheet={() => setEditSheetOpen(true)}
           onLockInClick={() => {
             if (!group.registration_open && hasAnyLobbies) {
@@ -506,7 +510,7 @@ export default function EventGroupPage() {
       </div>
 
       <CalendarInviteSheet
-        isOpen={registrationEditor.calendarPromptOpen && calendarEventIds.size > 0}
+        isOpen={registrationEditor.calendarPromptOpen && myRegistrationsByEvent.size > 0}
         onClose={() => registrationEditor.setCalendarPromptOpen(false)}
         onDownload={() => {
           handleDownloadCalendar();
@@ -516,7 +520,7 @@ export default function EventGroupPage() {
 
       <CalendarInviteSheet
         variant="created"
-        isOpen={justCreated && !createdSheetDismissed && isHost && calendarEventIds.size > 0}
+        isOpen={justCreated && !createdSheetDismissed && isHost && hasGames}
         onClose={closeCreatedSheet}
         onDownload={() => {
           handleDownloadCalendar();

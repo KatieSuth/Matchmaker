@@ -1,30 +1,44 @@
-// Builds and downloads an .ics calendar invitation covering a set of games in a group: the viewer's
-// registered games, or every game for the host.
+// Builds and downloads an .ics calendar invitation for an event group. Every viewer's invitation
+// spans the whole event (first game's start to last game's end); the description lists the games
+// a player registered for, or every game for the host and for viewers not yet registered.
 import { EventGroupDetail, EventGroupEvent } from "@/app/_types/types";
 import { formatDateTime } from "./formatters";
 
-/** Description headings for the two audiences of an invitation. */
+/** Description headings: a registered player's games, or every game (host / not yet registered). */
 export const PLAYER_GAMES_HEADING = "Games you registered for:";
 export const HOST_GAMES_HEADING = "Games in this event:";
 
 /** Reminder offsets before the start, as RFC 5545 durations: 24 hours, 90 minutes, 10 minutes. */
 export const CALENDAR_REMINDERS = ["-PT24H", "-PT90M", "-PT10M"] as const;
 
-/** Event title as the page header shows it: the group name, or the game name when unnamed. */
-export function calendarTitle(group: EventGroupDetail): string {
-  return group.name.trim() ? group.name : group.game_name;
+/** The event's own label: its name, or "Game Mode" (e.g. "Valorant 5v5") when unnamed. */
+export function calendarBaseTitle(group: EventGroupDetail): string {
+  const name = group.name.trim();
+  if (name) return name;
+  return [group.game_name.trim(), group.game_mode_name.trim()].filter(Boolean).join(" ");
 }
 
 /**
- * The span of the viewer's registered games: the first one's start to the last one's end
- * (start + mode duration). Null when they are registered for none of the group's games.
+ * Calendar entry title: the event's label plus its host, e.g. "Friday Customs (hosted by Hosty)",
+ * so entries from different hosts' events are distinguishable. The host is their display name,
+ * else their Discord name; the suffix is dropped if neither is set.
  */
-export function registeredGameWindow(
+export function calendarTitle(group: EventGroupDetail): string {
+  const base = calendarBaseTitle(group);
+  const host = group.owner_display_name.trim() || group.owner_name.trim();
+  return host ? `${base} (hosted by ${host})` : base;
+}
+
+/**
+ * The span of the given games: the earliest one's start to the latest one's end (start + mode
+ * duration), with the games in start order. Null when none of the group's games are given.
+ */
+export function gameWindow(
   group: EventGroupDetail,
-  registeredEventIds: ReadonlySet<string>,
+  eventIds: ReadonlySet<string>,
 ): { start: Date; end: Date; games: EventGroupEvent[] } | null {
   const games = group.events
-    .filter((event) => registeredEventIds.has(event.id))
+    .filter((event) => eventIds.has(event.id))
     .sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time));
   if (games.length === 0) return null;
 
@@ -43,7 +57,7 @@ export function formatIcsDate(date: Date): string {
 
 /** Escapes TEXT values per RFC 5545: backslash, semicolon, comma, and newlines. */
 export function escapeIcsText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  return value.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
 /** Folds a content line at 75 octets (continuations start with a space), never splitting a character. */
@@ -69,22 +83,24 @@ export function foldIcsLine(line: string): string {
 }
 
 /**
- * Builds the .ics text for the given games (the viewer's registrations, or every game for the
- * host), or null when there are none. The UID is stable per group so re-downloading after a
- * change updates the same calendar entry in clients that honor it.
+ * Builds the .ics text for the group, or null when it has no games. The entry always spans the
+ * whole event; listedEventIds picks the games named in the description (empty lists every game).
+ * The UID is stable per group so re-downloading updates the same calendar entry in clients that
+ * honor it.
  */
 export function buildCalendarInvite(
   group: EventGroupDetail,
-  eventIds: ReadonlySet<string>,
+  listedEventIds: ReadonlySet<string>,
   pageUrl: string,
   now: Date = new Date(),
   timeZone?: string,
   heading: string = PLAYER_GAMES_HEADING,
 ): string | null {
-  const window = registeredGameWindow(group, eventIds);
+  const window = gameWindow(group, new Set(group.events.map((event) => event.id)));
   if (!window) return null;
+  const listed = (listedEventIds.size > 0 && gameWindow(group, listedEventIds)?.games) || window.games;
 
-  const gameLines = window.games.map((game) => {
+  const gameLines = listed.map((game) => {
     const number = group.events.findIndex((event) => event.id === game.id) + 1;
     return `• Game ${number} (${game.game_mode_name}): ${formatDateTime(game.start_time, timeZone)}`;
   });
@@ -117,23 +133,23 @@ export function buildCalendarInvite(
   return lines.map(foldIcsLine).join("\r\n") + "\r\n";
 }
 
-/** File name for the invitation: the title lower-cased with non-alphanumerics collapsed to dashes. */
+/** File name for the invitation: the event's label (no host) lower-cased with non-alphanumerics as dashes. */
 export function calendarFileName(group: EventGroupDetail): string {
-  const slug = calendarTitle(group)
+  const slug = calendarBaseTitle(group)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `${slug || "event"}.ics`;
 }
 
-/** Triggers a browser download of the calendar invitation for eventIds. No-op when the set is empty. */
+/** Triggers a browser download of the group's calendar invitation. No-op when it has no games. */
 export function downloadCalendarInvite(
   group: EventGroupDetail,
-  eventIds: ReadonlySet<string>,
+  listedEventIds: ReadonlySet<string>,
   pageUrl: string,
   heading: string = PLAYER_GAMES_HEADING,
 ): void {
-  const ics = buildCalendarInvite(group, eventIds, pageUrl, new Date(), undefined, heading);
+  const ics = buildCalendarInvite(group, listedEventIds, pageUrl, new Date(), undefined, heading);
   if (!ics) return;
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
   const link = document.createElement("a");

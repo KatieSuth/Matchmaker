@@ -230,7 +230,7 @@ describe("EventGroupPage", () => {
     expect(screen.queryByRole("region", { name: /No-show (notice|warning)/ })).not.toBeInTheDocument();
   });
 
-  it("shows the calendar button to the host and registered players only", async () => {
+  it("shows the calendar button to every viewer, and lists every game for someone not registered", async () => {
     stubGroup(groupPayload());
     const { unmount: unmountGuest } = renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
     expect(await screen.findByRole("button", { name: "Download calendar invitation" })).toBeInTheDocument();
@@ -242,7 +242,31 @@ describe("EventGroupPage", () => {
     unmountHost();
 
     stubGroup(groupPayload());
-    renderWithProviders(<EventGroupPage />, { user: buildUser({ id: "bystander-1" }), isAuthenticated: true });
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    let blob: Blob | undefined;
+    URL.createObjectURL = vi.fn((b: Blob) => {
+      blob = b;
+      return "blob:invite";
+    });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<EventGroupPage />, { user: buildUser({ id: "bystander-1" }), isAuthenticated: true });
+      await user.click(await screen.findByRole("button", { name: "Download calendar invitation" }));
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(await blob!.text()).toContain("Games in this event:");
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      click.mockRestore();
+    }
+  });
+
+  it("hides the calendar button when the event has no games", async () => {
+    stubGroup(groupPayload({ events: [] }));
+    renderWithProviders(<EventGroupPage />, { user: GUEST, isAuthenticated: true });
     expect(await screen.findByRole("heading", { name: "Friday Customs" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Download calendar invitation" })).not.toBeInTheDocument();
   });

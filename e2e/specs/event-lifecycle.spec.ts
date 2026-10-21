@@ -41,12 +41,12 @@ async function downloadText(page: Page, trigger: () => Promise<void>): Promise<{
   return { name: download.suggestedFilename(), text: await readFile(path, "utf8") };
 }
 
-/** Asserts an .ics invitation for eventName with the three default reminders. */
-function expectCalendarInvite(file: { name: string; text: string }, eventName: string): void {
+/** Asserts an .ics invitation titled "<event> (hosted by <host>)" with the three default reminders. */
+function expectCalendarInvite(file: { name: string; text: string }, eventName: string, hostName: string): void {
   expect(file.name).toMatch(/\.ics$/);
   const text = file.text.replace(/\r\n /g, "");
   expect(text).toContain("BEGIN:VCALENDAR");
-  expect(text).toContain(`SUMMARY:${eventName}`);
+  expect(text).toContain(`SUMMARY:${eventName} (hosted by ${hostName})`);
   for (const trigger of ["-PT24H", "-PT90M", "-PT10M"]) {
     expect(text).toContain(`TRIGGER:${trigger}`);
   }
@@ -85,11 +85,13 @@ test.describe("event lifecycle", () => {
         host.page.getByRole("button", { name: "Download calendar invitation" }).click(),
       ),
       eventName,
+      host.user.globalName ?? host.user.username,
     );
 
     await guest.page.goto(`/event/${groupId}`);
     await expect(eventHeading(guest.page, eventName)).toBeVisible();
-    await expect(guest.page.getByRole("button", { name: "Download calendar invitation" })).toHaveCount(0);
+    // The invitation is the same for everyone, so it is offered before registering too.
+    await expect(guest.page.getByRole("button", { name: "Download calendar invitation" })).toBeVisible();
     // Guests who are not yet registered get the editor auto-opened (same as Register Now).
     await guest.page.getByRole("button", { name: "Save Registration" }).click();
     const registered = guest.page.getByRole("dialog", { name: "You're registered!" });
@@ -99,6 +101,7 @@ test.describe("event lifecycle", () => {
         registered.getByRole("button", { name: "Download calendar invite" }).click(),
       ),
       eventName,
+      host.user.globalName ?? host.user.username,
     );
     await expect(registered).toHaveCount(0);
     await expect(guest.page.getByRole("button", { name: "Edit My Registration" })).toBeVisible();
