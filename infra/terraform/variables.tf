@@ -210,6 +210,23 @@ variable "cloud_run_memory" {
   default = "512Mi"
 }
 
+variable "cloud_run_public_invoker" {
+  description = "Keep allUsers run.invoker on API/frontend. Set false after the Worker is invoking with the edge service account (infra/README.md → Origin lockdown)."
+  type        = bool
+  default     = true
+}
+
+variable "api_rate_limit_per_10s" {
+  description = "Cloudflare WAF limit: max /api/* requests per client IP per 10s before a 10s block (Free plan: 10s period/timeout)."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.api_rate_limit_per_10s >= 10
+    error_message = "api_rate_limit_per_10s must be at least 10."
+  }
+}
+
 variable "budget_amounts" {
   description = "Billing budget alert thresholds (USD)"
   type        = list(number)

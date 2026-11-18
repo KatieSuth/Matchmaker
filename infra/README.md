@@ -26,7 +26,10 @@ Typical idle cost is roughly **$10–15/month**, dominated by Cloud SQL.
 | Alerts   | Billing budgets ($15 / $30 / $50 email) + uptime on `/api/health` |
 
 Origin protection: Worker injects `X-Origin-Verify`; API and frontend reject
-mismatches when `ORIGIN_VERIFY_SECRET` is set. Use `https://{domain}` as the public
+mismatches when `ORIGIN_VERIFY_SECRET` is set. With `cloud_run_public_invoker = false`,
+Cloud Run IAM also requires a Google ID token (minted by the Worker as the `matchmaker-edge`
+SA), so direct `*.run.app` hits are refused before a container starts. A Cloudflare WAF rule
+limits `/api/*` per client IP (`api_rate_limit_per_10s`). Use `https://{domain}` as the public
 entrypoint — not raw `*.run.app` origins (those are for the Worker/operators; this repo
 is public, so do not commit real origin URLs or secrets).
 
@@ -67,6 +70,7 @@ Terraform’s Google providers set `user_project_override` + `billing_project` t
      - **Account** → **Workers Scripts** → **Edit**
      - **Zone** → **Workers Routes** → **Edit** (for the `matchmaker.games/*` route)
      - **Zone** → **DNS** → **Edit** (for the apex record)
+     - **Zone** → **Zone WAF** → **Edit** (listed under the **App Security** group; for the `/api/*` rate-limit ruleset)
    - **Zone Resources** → Include → Specific zone → `matchmaker.games` (or your domain)
    - **Account Resources** → Include → the account that owns that zone
    - Create the token, copy it once, and store it for `cloudflare_api_token` in `terraform.tfvars`
@@ -273,6 +277,20 @@ Cloud SQL starts with a transitional `matchmaker` login (`cloudsqlsuperuser`). A
 
 Re-run bootstrap only when changing role grants or rotating migrator/app passwords via SQL `ALTER ROLE` (bootstrap updates passwords from Secret Manager env).
 
+### Origin lockdown + API rate limit (two applies)
+
+The Worker must be sending ID tokens before `allUsers` is removed, or every request 403s.
+
+1. Add **Zone → Zone WAF → Edit** (under **App Security**) to the Cloudflare API token.
+2. **Apply A** — `cloud_run_public_invoker = true` (default) → `make infra-plan` / `make infra-apply`.  
+   Creates the `matchmaker-edge` SA + key, edge `run.invoker` bindings, the updated Worker, and the `/api/*` rate-limit rule.
+3. Verify through the domain: `curl -fsS https://{domain}/api/health` and `https://{domain}/health`, then log in and load an event.
+4. **Apply B** — set `cloud_run_public_invoker = false` → plan / apply (removes the two `allUsers` bindings only).
+5. Verify the domain still works, and that `curl -i <cloud_run_api_uri>/health` now returns a Google 403.
+
+Rollback: set `cloud_run_public_invoker = true` and apply.
+Key rotation: `terraform apply -replace=google_service_account_key.edge` (re-uploads the Worker binding in the same run).
+
 ---
 
 ## Phase 2 — Images and go-live
@@ -446,8 +464,11 @@ Tag `x.x.x` on `main` (e.g. `1.2.3`) to run the same `make gcp-deploy` path from
 |--------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | Cloud Run unhealthy after first apply            | Still on placeholder image — push real images                                                                                   |
 | Budget create 403 / quota project `764086051850` | Provider quota override missing or Billing Budgets API disabled; re-apply after `providers.tf` fix; confirm billing account IAM |
-| 403 on API/pages via `*.run.app`                 | Origin-verify working as intended; use the Cloudflare domain                                                                    |
+| 403 on API/pages via `*.run.app`                 | Origin-verify / Cloud Run IAM working as intended; use the Cloudflare domain                                                    |
 | 403 through the domain                           | Worker secret out of sync with Secret Manager — re-apply Cloudflare/secret bindings                                             |
+| 502 through the domain after origin lockdown     | Worker could not mint an ID token — check Worker logs; `GCP_INVOKER_KEY` deleted/rotated without re-apply                       |
+| 429 on `/api/*`                                  | Cloudflare rate limit; many players behind one IP (LAN venue) may need a higher `api_rate_limit_per_10s`                       |
+| `google_service_account_key` create fails        | Org policy `iam.disableServiceAccountKeyCreation` enforced — needs an exception on this project                                 |
 | API cannot reach DB                              | Direct VPC / private IP; confirm same region and PSA connection                                                                 |
 | Discord login fails                              | Wrong `FRONTEND_URL` / redirect URI / cookie domain                                                                             |
 | `permission denied` for relation / schema        | Forgot `gcp-db-bootstrap` or `db_roles_bootstrapped=true` apply; wrong DATABASE_URL role                                        |

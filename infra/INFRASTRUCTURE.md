@@ -75,7 +75,7 @@ sequenceDiagram
 
 **Not used / deferred:** GKE, GCE+Compose for prod, Serverless VPC Access connector, Cloud SQL public IP,
 GCP Global HTTPS LB / Cloud Armor, billing auto-kill switch, HA SQL, staging project,
-Cloudflare paid rate limiting.
+Cloudflare paid rate limiting (Free plan's single `/api/*` per-IP rule is used).
 Reconsider those when you need stronger edge WAF or SQL HA/RPO.
 
 ---
@@ -196,7 +196,8 @@ Common labels: `app=matchmaker`, `env=prod`, `managed_by=terraform`.
 |---------------------------------|---------------------------------------------------------------|-------------------------------------------------------------|
 | `matchmaker-api` SA             | `roles/cloudsql.client`, `roles/secretmanager.secretAccessor` | Connect to SQL; read secrets                                |
 | `matchmaker-frontend` SA        | `roles/secretmanager.secretAccessor`                          | Read origin-verify / optional Sentry DSN                    |
-| `allUsers` on both Run services | `roles/run.invoker`                                           | Public HTTPS invoke (Cloudflare is not identity-aware here) |
+| `matchmaker-edge` SA            | `roles/run.invoker` on API + frontend                         | Cloudflare Worker invokes Cloud Run with a Google ID token  |
+| `allUsers` on both Run services | `roles/run.invoker` (only while `cloud_run_public_invoker`)   | Transitional public invoke during origin-lockdown rollout   |
 
 App SAs intentionally have **no** access to the Terraform state bucket.
 
@@ -209,15 +210,19 @@ App SAs intentionally have **no** access to the Terraform state bucket.
 
 | Surface                                    | Trust                                                                  |
 |--------------------------------------------|------------------------------------------------------------------------|
-| Public internet → Cloudflare               | TLS + CF edge; Free-tier DDoS basics                                   |
-| Cloudflare Worker → Cloud Run              | Shared secret header `X-Origin-Verify`                                 |
+| Public internet → Cloudflare               | TLS + CF edge; Free-tier DDoS basics; WAF per-IP limit on `/api/*`     |
+| Cloudflare Worker → Cloud Run              | Google ID token (`X-Serverless-Authorization`) + `X-Origin-Verify`     |
 | Cloud Run → Cloud SQL                      | Private VPC only; no public SQL IP                                     |
+| Direct `*.run.app` without ID token        | Rejected by Cloud Run IAM (403) before a container starts              |
 | Direct `*.run.app` without secret          | Rejected by app (403) when secret set                                  |
-| Attacker who steals `ORIGIN_VERIFY_SECRET` | Can call origins as the Worker would — rotate secret in tfvars + apply |
-| Cloud Run probes `/health`                 | Exempt from origin-verify                                              |
+| Attacker who steals `ORIGIN_VERIFY_SECRET` | Still blocked by IAM; rotate secret in tfvars + apply                  |
+| Attacker who steals the edge SA key        | Can invoke Cloud Run; app still needs origin-verify — rotate the key   |
+| Cloud Run probes `/health`                 | Exempt from origin-verify (internal probes bypass IAM)                 |
 
-`allUsers` invoker means any client that can reach `*.run.app` may invoke Cloud Run.
-**Origin-verify** is the access control for application traffic, not URL secrecy. A public
+Once `cloud_run_public_invoker = false`, only the `matchmaker-edge` SA may invoke Cloud Run, so
+`*.run.app` floods are refused at Google's front end without starting instances. The Worker sends
+the ID token in `X-Serverless-Authorization`, which Cloud Run checks instead of `Authorization`,
+leaving the app's JWT header untouched. **Origin-verify** remains as defense in depth. A public
 repo can describe that model; do not treat “people might not find the hostname” as
 security. Still prefer `{domain}` everywhere user-facing so traffic stays on the Worker path
 (correct headers, TLS policy, logging).

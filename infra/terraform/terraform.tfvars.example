@@ -37,6 +37,10 @@ api_link_encryption_key_id = "1"
 # api_link_encryption_previous_keys = ""                          # optional: "1:<old-64-hex>" after rotating
 origin_verify_secret    = "replace-with-strong-secret"            # openssl rand -hex 32
 
+# Edge hardening (infra/README.md → Origin lockdown). Flip to false after step 1 is verified.
+# cloud_run_public_invoker = true
+# api_rate_limit_per_10s   = 50
+
 # Optional — leave empty to disable Sentry on that service
 sentry_dsn_api      = ""
 sentry_dsn_frontend = ""
